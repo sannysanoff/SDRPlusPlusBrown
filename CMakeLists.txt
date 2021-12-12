@@ -6,6 +6,9 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 else()
     set(CMAKE_INSTALL_PREFIX "/usr")
 endif()
+#if (NOT ("${SDRPP_INSTALL_PREFIX}" STREQUAL ""))
+    set(CMAKE_INSTALL_PREFIX "/tmp/sdrpp")
+    #endif()
 
 # Compatibility Options
 option(OPT_OVERRIDE_STD_FILESYSTEM "Use a local version of std::filesystem on systems that don't have it yet" OFF)
@@ -58,6 +61,8 @@ add_subdirectory("core")
 if (OPT_BUILD_AIRSPY_SOURCE)
 add_subdirectory("source_modules/airspy_source")
 endif (OPT_BUILD_AIRSPY_SOURCE)
+
+add_subdirectory("source_modules/hl2_source")
 
 if (OPT_BUILD_AIRSPYHF_SOURCE)
 add_subdirectory("source_modules/airspyhf_source")
@@ -184,9 +189,9 @@ target_link_libraries(sdrpp PRIVATE sdrpp_core)
 if (MSVC)
     target_compile_options(sdrpp PRIVATE /O2 /Ob2 /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(sdrpp PRIVATE -O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+    target_compile_options(sdrpp PRIVATE -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
 else ()
-    target_compile_options(sdrpp PRIVATE -O3 -std=c++17)
+    target_compile_options(sdrpp PRIVATE -std=c++17)
 endif ()
 
 
