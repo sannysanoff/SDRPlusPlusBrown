@@ -399,6 +399,9 @@ private:
             vfo->setSampleRate(selectedDemod->getIFSampleRate(), bandwidth);
         }
 
+        // Configure bandwidth
+        setBandwidth(bandwidth);
+
         // Configure FM IF Noise Reduction
         setFMIFNREnabled(FMIFNRAllowed ? FMIFNREnabled : false);
 
@@ -413,6 +416,7 @@ private:
         setLogMMSEEnabled(logmmseNrEnabled);
 
         // Configure noise blanker
+        fmnr.block.setTapCount((selectedDemod->getIFSampleRate() < 100000.0f) ? 8 : 32);
         nb.block.setLevel(nbLevel);
         setNoiseBlankerEnabled(nbEnabled);
 
