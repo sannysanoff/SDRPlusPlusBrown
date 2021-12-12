@@ -10,6 +10,7 @@ namespace sdrpp_credits {
         "Cropinghigh",
         "Fred F4EED",
         "Howard0su",
+        "John Donkersley",
         "Joshua Kimsey",
         "Martin Hauke",
         "Marvin Sinister",
@@ -34,12 +35,25 @@ namespace sdrpp_credits {
         "Portable File Dialogs"
     };
 
+    const char* hardwareDonators[] = {
+        "Airspy",
+        "Analog Devices",
+        "CaribouLabs",
+        "Howard Su",
+        "MyriadRF",
+        "Nuand",
+        "RFspace",
+        "RTL-SDRblog",
+        "SDRplay"
+    };
+
     const char* patrons[] = {
         "Bob Logan",
         "Christian Häusler",
         "Croccydile",
         "Dale L Puckett (K0HYD)",
         "Daniele D'Agnelli",
+        "D. Jones",
         "EB3FRN",
         "Eric Johnson",
         "Flinger Films",
@@ -56,5 +70,6 @@ namespace sdrpp_credits {
 
     const int contributorCount = sizeof(contributors) / sizeof(char*);
     const int libraryCount = sizeof(libraries) / sizeof(char*);
+    const int hardwareDonatorCount = sizeof(hardwareDonators) / sizeof(char*);
     const int patronCount = sizeof(patrons) / sizeof(char*);
 }

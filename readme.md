@@ -7,6 +7,8 @@ SDR++ is a cross-platform and open source SDR software with the aim of being blo
 
 * [Patreon](https://patreon.com/ryzerth)
 * [Discord Server](https://discord.gg/aFgWjyD)
+* [Reddit](https://www.reddit.com/r/sdrpp/)
+* IRC: `#sdrpp` ([libera.chat](https://libera.chat))
 
 ## Features
 
@@ -404,6 +406,7 @@ I will soon publish a contributing.md listing the code style to use.
 * Croccydile
 * Dale L Puckett (K0HYD)
 * [Daniele D'Agnelli](https://linkedin.com/in/dagnelli)
+* D. Jones
 * [EB3FRN](https://www.eb3frn.net/)
 * Eric Johnson
 * Flinger Films
@@ -427,6 +430,7 @@ I will soon publish a contributing.md listing the code style to use.
 * [Cropinghigh](https://github.com/cropinghigh)
 * [Fred F4EED](http://f4eed.wordpress.com/)
 * [Howard0su](https://github.com/howard0su)
+* John Donkersley
 * [Joshua Kimsey](https://github.com/JoshuaKimsey)
 * [Martin Hauke](https://github.com/mnhauke)
 * [Marvin Sinister](https://github.com/marvin-sinister)
