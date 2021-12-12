@@ -527,6 +527,11 @@ struct HL2Device {
                 if (setsockopt(data_socket, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
                     throw std::runtime_error("data_socket: SO_REUSEPORT");
                 }
+                auto flags = fcntl(data_socket,F_GETFL,0);
+                if (flags != -1) {
+                    fcntl(data_socket, F_SETFL, flags | O_NONBLOCK);
+                }
+
 
                 // bind to the interface
                 if (bind(data_socket, (struct sockaddr *) &discovered->info.network.interface_address, discovered->info.network.interface_length) < 0) {
@@ -566,7 +571,8 @@ struct HL2Device {
                         bytes_read = recvfrom(data_socket, buffer, sizeof(buffer), 0, (struct sockaddr *) &addr, &length);
                         if (bytes_read < 0) {
                             if (errno == EAGAIN) {
-                                printf("protocol1: receiver_thread: recvfrom socket failed: %s\n", "Radio not sending data\n");
+                                usleep(10000);
+//                                printf("protocol1: receiver_thread: recvfrom socket failed: %s\n", "Radio not sending data\n");
                             } else {
                                 printf("protocol1: receiver_thread: recvfrom socket failed: %s\n", strerror(errno));
                             }

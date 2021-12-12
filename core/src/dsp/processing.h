@@ -362,6 +362,8 @@ namespace dsp {
     };
 
     class Squelch : public generic_block<Squelch> {
+
+        int activateDelay = 0;
     public:
         Squelch() {}
 
@@ -412,10 +414,15 @@ namespace dsp {
             volk_32f_accumulator_s32f(&sum, normBuffer, count);
             sum /= (float)count;
 
-            if (10.0f * log10f(sum) >= _level) {
+            bool passByDecibel = 10.0f * log10f(sum) >= _level;
+            if (passByDecibel || activateDelay > 0) {
+                if (passByDecibel) {
+                    activateDelay = 20;
+                } else {
+                    activateDelay--;
+                }
                 memcpy(out.writeBuf, _in->readBuf, count * sizeof(complex_t));
-            }
-            else {
+            } else {
                 memset(out.writeBuf, 0, count * sizeof(complex_t));
             }
 
