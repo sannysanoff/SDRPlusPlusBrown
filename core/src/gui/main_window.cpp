@@ -205,9 +205,13 @@ void MainWindow::init() {
         }
     }
 
+    ImGui::GetIO().FontAllowUserScaling = true;
+
     initComplete = true;
 
     core::moduleManager.doPostInitAll();
+
+
 }
 
 void MainWindow::fftHandler(dsp::complex_t* samples, int count, void* ctx) {

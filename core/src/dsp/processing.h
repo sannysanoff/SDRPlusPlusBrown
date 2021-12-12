@@ -417,9 +417,9 @@ namespace dsp {
             bool passByDecibel = 10.0f * log10f(sum) >= _level;
             if (passByDecibel || activateDelay > 0) {
                 if (passByDecibel) {
-                    activateDelay = 20;
+                    activateDelay = 512*20;
                 } else {
-                    activateDelay--;
+                    activateDelay-=count;
                 }
                 memcpy(out.writeBuf, _in->readBuf, count * sizeof(complex_t));
             } else {
