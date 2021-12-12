@@ -613,6 +613,7 @@ void MainWindow::draw() {
             gui::waterfall.setViewOffset(vfo->centerOffset); // center vfo on screen
         }
     }
+    ImGui::SetItemUsingMouseWheel();
 
     ImGui::NewLine();
 
@@ -625,7 +626,7 @@ void MainWindow::draw() {
         core::configManager.conf["max"] = fftMax;
         core::configManager.release(true);
     }
-
+    ImGui::SetItemUsingMouseWheel();
     ImGui::NewLine();
 
     ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::CalcTextSize("Min").x / 2.0));
@@ -637,7 +638,7 @@ void MainWindow::draw() {
         core::configManager.conf["min"] = fftMin;
         core::configManager.release(true);
     }
-
+    ImGui::SetItemUsingMouseWheel();
     ImGui::EndChild();
 
     gui::waterfall.setFFTMin(fftMin);

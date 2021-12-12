@@ -2748,6 +2748,22 @@ bool ImGui::SliderBehaviorT(const ImRect& bb, ImGuiID id, ImGuiDataType data_typ
 
     // Process interacting with the slider
     bool value_changed = false;
+    if (g.IO.MouseWheel != 0) {
+        if (bb.Contains(g.IO.MousePos)) {
+            auto stepPerPixel = fabs((double)v_max - (double)v_min) / bb.GetHeight();
+            if (g.IO.MouseWheel > 0) { // scroll up -> fewer
+                *v -= stepPerPixel;
+                if (*v < std::min(v_min, v_max))
+                    *v = std::min(v_min, v_max);
+                value_changed = true;
+            } else {
+                *v += stepPerPixel;
+                if (*v > std::max(v_min, v_max))
+                    *v = std::max(v_min, v_max);
+                value_changed = true;
+            }
+        }
+    }
     if (g.ActiveId == id)
     {
         bool set_new_value = false;
