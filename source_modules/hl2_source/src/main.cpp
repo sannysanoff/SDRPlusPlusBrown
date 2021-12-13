@@ -7,7 +7,6 @@
 #include <gui/style.h>
 #include <config.h>
 #include <options.h>
-#include <airspyhf.h>
 #include <gui/widgets/stepped_slider.h>
 #include <arpa/inet.h>
 
@@ -353,15 +352,7 @@ private:
 //        }
     }
 
-    static int callback(airspyhf_transfer_t* transfer) {
-        HermesLite2SourceModule* _this = (HermesLite2SourceModule*)transfer->ctx;
-        memcpy(_this->stream.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
-        if (!_this->stream.swap(transfer->sample_count)) { return -1; }
-        return 0;
-    }
-
     std::string name;
-    airspyhf_device_t* openDev;
     bool enabled = true;
     dsp::stream<dsp::complex_t> stream;
     int sampleRate;
