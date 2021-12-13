@@ -166,7 +166,7 @@ namespace dsp {
             generic_block<Reshaper<T>>::tempStart();
         }
 
-        int run() {
+        int run() override {
             int count = _in->read();
             if (count < 0) { return -1; }
             ringBuf.write(_in->readBuf, count);
