@@ -294,6 +294,7 @@ void MainWindow::draw() {
     
     sigpath::vfoManager.updateFromWaterfall(&gui::waterfall);
 
+    lockWaterfallControls = false;
     // Handle selection of another VFO
     if (gui::waterfall.selectedVFOChanged) {
         gui::freqSelect.setFrequency((vfo != NULL) ? (vfo->generalOffset + gui::waterfall.getCenterFrequency()) : gui::waterfall.getCenterFrequency());
@@ -431,7 +432,10 @@ void MainWindow::draw() {
         showCredits = true;
     }
     if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        showCredits = false;
+        if (showCredits) {
+            showCredits = false;
+            lockWaterfallControls = true;
+        }
     }
     if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
         showCredits = false;
@@ -469,7 +473,6 @@ void MainWindow::draw() {
 
 
     // Left Column
-    lockWaterfallControls = false;
     if (showMenu) {
         ImGui::Columns(3, "WindowColumns", false);
         ImGui::SetColumnWidth(0, menuWidth);
@@ -544,11 +547,20 @@ void MainWindow::draw() {
     ImGui::NextColumn();
     ImGui::PopStyleVar();
 
+    if (demoWindow) {
+        lockWaterfallControls = true;
+        ImGui::ShowDemoWindow();
+    }
+    if (showCredits) {
+        lockWaterfallControls = true;
+    }
+
     ImGui::BeginChild("Waterfall");
 
     gui::waterfall.draw();    
 
     ImGui::EndChild();
+
 
     if (!lockWaterfallControls) {
         // Handle arrow keys
@@ -651,9 +663,6 @@ void MainWindow::draw() {
         credits::show();
     }
 
-    if (demoWindow) {
-        ImGui::ShowDemoWindow();
-    }
 }
 
 void MainWindow::setPlayState(bool _playing) {
@@ -709,3 +718,4 @@ void MainWindow::setUiScale(float scale) {
 bool MainWindow::isPlaying() {
     return playing;
 }
+
