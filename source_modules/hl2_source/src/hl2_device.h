@@ -39,7 +39,7 @@ struct HL2Device {
         SKIP
     };
 
-    ControlData deviceControl[12];
+    ControlData deviceControl[50];
 
     const int SYNC0 = 0;
     const int SYNC1 = 1;
@@ -111,6 +111,13 @@ struct HL2Device {
         discovered = &this->_discovered;
     }
 
+    void setADCGain(int gain) {
+        gain += 12;
+        deviceControl[0x14].C4 = gain | 0b1000000;
+        gain |= 0x40; // ptt is off ??
+        secondControlIndex = 0x14;
+    }
+
     void setFrequency(long long frequency) {
         deviceControl[0x02].C1 = frequency >> 24;
         deviceControl[0x02].C2 = frequency >> 16;
@@ -149,6 +156,13 @@ struct HL2Device {
     }
 
     void prepareRequest(int secondControlIndex) {
+        switch(secondControlIndex) {
+            case 0x14:      // rx gain / LNA ?
+            case 2:         // rx freq
+                break;
+            default:
+                secondControlIndex = 2; // something safe ;)
+        }
         memset(output_buffer, 0, sizeof(output_buffer));
         output_buffer[SYNC0] = SYNC;
         output_buffer[SYNC1] = SYNC;
@@ -188,19 +202,19 @@ struct HL2Device {
             perror("sendto socket failed for metis_send_data\n");
         }
 
-        char pbuf[50000];
-        int ix = 0;
-        for (int i = 0; i < 1024 + 8; ++i) {
-            if (!(i % 128) && i) {
-                sprintf(pbuf + ix, "\n");
-                ix += 1;
-            }
-            sprintf(pbuf + ix, "%02x ", metis_buffer[i]);
-            ix += 3;
-        }
-        static int cnt = 0;
-        cnt++;
-        printf("---------- begin %d ----------------\n%s\n--------------------end--------\n", cnt, pbuf);
+//        char pbuf[50000];
+//        int ix = 0;
+//        for (int i = 0; i < 1024 + 8; ++i) {
+//            if (!(i % 128) && i) {
+//                sprintf(pbuf + ix, "\n");
+//                ix += 1;
+//            }
+//            sprintf(pbuf + ix, "%02x ", metis_buffer[i]);
+//            ix += 3;
+//        }
+//        static int cnt = 0;
+//        cnt++;
+//        printf("---------- begin %d ----------------\n%s\n--------------------end--------\n", cnt, pbuf);
 
     };
 
@@ -408,12 +422,11 @@ struct HL2Device {
                 add_iq_samples(nreceiver, left_sample_double, right_sample_double);
                 static int q = 0;
                 q++;
-                if (q % 100000 == 0) {
-                    printf("Add iq samples: %d\n", q);
-                    prepareRequest(2);
-//                    if (secondControlIndex == 12) {
-//                        secondControlIndex = 1;
-//                    }
+                if (q % 10000 == 0) {
+                    prepareRequest(secondControlIndex++);
+                    if (secondControlIndex == 32) {
+                        secondControlIndex = 1;
+                    }
                     sendToEndpoint(0x2, output_buffer);
                 }
 //                }
@@ -466,7 +479,7 @@ struct HL2Device {
         metis_start_stop(0);
     }
 
-    //int secondControlIndex = 1;
+    int secondControlIndex = 1;
 
     void metis_restart() {
         prepareRequest(2);

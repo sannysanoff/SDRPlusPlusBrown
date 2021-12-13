@@ -35,7 +35,10 @@ std::string discoveredToIp(DISCOVERED &d) {
 
 
 class HermesLite2SourceModule : public ModuleManager::Instance {
+
+    int adcGain = 0;
 public:
+
     HermesLite2SourceModule(std::string name) {
         this->name = name;
 
@@ -212,6 +215,7 @@ private:
 
         if (_this->device) {
             _this->device->setRxSampleRate(_this->sampleRate);
+            _this->device->setADCGain(_this->adcGain);
             _this->device->start();
         }
 
@@ -298,6 +302,15 @@ private:
         }
 
         if (_this->running) { style::endDisabled(); }
+//        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        ImGui::LeftLabel("ADC Gain");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::SliderInt(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->adcGain, -12, +48, "%.3f dB")) {
+            if (_this->device) {
+                _this->device->setADCGain(_this->adcGain);
+            }
+        }
 
 //        ImGui::LeftLabel("AGC Mode");
 //        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
