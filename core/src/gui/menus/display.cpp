@@ -17,6 +17,7 @@ namespace displaymenu {
     std::string colorMapNamesTxt = "";
     std::string colorMapAuthor = "";
     int selectedWindow = 0;
+    float uiScale = 1.0;
     int fftRate = 20;
 
     const int FFTSizes[] = {
@@ -85,6 +86,9 @@ namespace displaymenu {
 
         selectedWindow = std::clamp<int>((int)core::configManager.conf["fftWindow"], 0, _FFT_WINDOW_COUNT-1);
         gui::mainWindow.setFFTWindow(selectedWindow);
+
+        uiScale = core::configManager.conf["uiScale"];
+        gui::mainWindow.setUiScale(uiScale);
     }
 
     void draw(void* ctx) {
@@ -137,6 +141,17 @@ namespace displaymenu {
             gui::mainWindow.setFFTWindow(selectedWindow);
             core::configManager.acquire();
             core::configManager.conf["fftWindow"] = selectedWindow;
+            core::configManager.release(true);
+        }
+
+        ImGui::LeftLabel("UI Scale");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::SliderFloat("##sdrpp_ui_scale", &uiScale, 0.5f, 4.0f, "x %.1f")) {
+            gui::mainWindow.setFFTWindow(selectedWindow);
+            gui::mainWindow.setUiScale(uiScale);
+            core::configManager.acquire();
+            core::configManager.conf["uiScale"] = uiScale;
             core::configManager.release(true);
         }
 

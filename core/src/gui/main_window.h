@@ -19,6 +19,7 @@ public:
     bool sdrIsRunning();
     void setFFTSize(int size);
     void setFFTWindow(int win);
+    void setUiScale(float scale);
 
     // TODO: Replace with it's own class 
     void setVFO(double freq);
@@ -60,6 +61,7 @@ private:
     dsp::stream<dsp::complex_t> dummyStream;
     bool demoWindow = false;
     int selectedWindow = 0;
+    float uiScale = 1.0f;
 
     bool initComplete = false;
 

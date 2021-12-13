@@ -205,8 +205,6 @@ void MainWindow::init() {
         }
     }
 
-    ImGui::GetIO().FontAllowUserScaling = true;
-
     initComplete = true;
 
     core::moduleManager.doPostInitAll();
@@ -478,6 +476,7 @@ void MainWindow::draw() {
         ImGui::SetColumnWidth(1, winSize.x - menuWidth - 60);
         ImGui::SetColumnWidth(2, 60);
         ImGui::BeginChild("Left Column");
+        ImGui::SetWindowFontScale(uiScale);
         float menuColumnWidth = ImGui::GetContentRegionAvailWidth();
 
         if (gui::menu.draw(firstMenuRender)) {
@@ -701,6 +700,10 @@ void MainWindow::setFFTSize(int size) {
 void MainWindow::setFFTWindow(int win) {
     std::lock_guard<std::mutex> lck(fft_mtx);
     sigpath::signalPath.setFFTWindow(win);
+}
+
+void MainWindow::setUiScale(float scale) {
+    this->uiScale = scale;
 }
 
 bool MainWindow::isPlaying() {
