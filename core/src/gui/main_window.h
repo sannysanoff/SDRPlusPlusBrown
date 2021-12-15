@@ -20,6 +20,9 @@ public:
     void setFFTSize(int size);
     void setFFTWindow(int win);
     void setUiScale(float scale);
+    float getUiScale() {
+        return uiScale;
+    }
 
     // TODO: Replace with it's own class 
     void setVFO(double freq);

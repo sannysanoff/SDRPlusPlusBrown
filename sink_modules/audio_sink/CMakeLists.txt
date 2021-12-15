@@ -10,7 +10,7 @@ set_target_properties(audio_sink PROPERTIES PREFIX "")
 target_include_directories(audio_sink PRIVATE "src/")
 
 if (MSVC)
-    target_compile_options(audio_sink PRIVATE /O2 /Ob2 /std:c++17 /EHsc)
+    target_compile_options(audio_sink PRIVATE /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(audio_sink PRIVATE -O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
 else ()

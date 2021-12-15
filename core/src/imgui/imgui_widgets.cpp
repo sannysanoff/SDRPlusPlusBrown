@@ -46,6 +46,8 @@ Index of this file:
 #include <stddef.h>     // intptr_t
 #else
 #include <stdint.h>     // intptr_t
+#include <algorithm>
+
 #endif
 
 //-------------------------------------------------------------------------

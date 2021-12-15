@@ -10,7 +10,7 @@ set_target_properties(hl2_source PROPERTIES PREFIX "")
 target_include_directories(hl2_source PRIVATE "src/")
 
 if (MSVC)
-    target_compile_options(hl2_source PRIVATE /O2 /Ob2 /std:c++17 /EHsc)
+    target_compile_options(hl2_source PRIVATE /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(hl2_source PRIVATE -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
 else ()
@@ -19,7 +19,8 @@ endif ()
 
 if (MSVC)
     # Lib path
-    target_link_directories(hl2_source PRIVATE "C:/Program Files/PothosSDR/bin/")
+#    target_link_directories(hl2_source PRIVATE "C:/Program Files/PothosSDR/bin/")
+    target_link_libraries(hl2_source PUBLIC iphlpapi.lib )
 
 #    target_include_directories(hl2_source PUBLIC "C:/Program Files/PothosSDR/include/libairspyhf/")
 
@@ -29,9 +30,8 @@ else (MSVC)
 
 #    pkg_check_modules(LIBAIRSPYHF REQUIRED libairspyhf)
 
-    target_include_directories(hl2_source PRIVATE ${LIBAIRSPYHF_INCLUDE_DIRS})
-    target_link_directories(hl2_source PRIVATE ${LIBAIRSPYHF_LIBRARY_DIRS})
-    target_link_libraries(hl2_source PRIVATE ${LIBAIRSPYHF_LIBRARIES})
+#    target_include_directories(hl2_source PRIVATE )
+#    target_link_directories(hl2_source PRIVATE )
 
     # Include it because for some reason pkgconfig doesn't look here?
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

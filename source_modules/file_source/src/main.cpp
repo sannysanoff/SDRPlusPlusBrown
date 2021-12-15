@@ -196,6 +196,7 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
+    printf("Init file source...\n");
     json def = json({});
     def["path"] = "";
     config.setPath(options::opts.root + "/file_source_config.json");

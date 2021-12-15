@@ -39,7 +39,7 @@ struct HL2Device {
         SKIP
     };
 
-    ControlData deviceControl[50];
+    ControlData deviceControl[50] = {0};
 
     const int SYNC0 = 0;
     const int SYNC1 = 1;
@@ -58,7 +58,7 @@ struct HL2Device {
 
 #define SYNC 0x7F
 
-    int data_socket;
+    SOCKET data_socket;
     struct sockaddr_in data_addr;
     int data_addr_length;
     bool running;
@@ -109,6 +109,8 @@ struct HL2Device {
 
     HL2Device(DISCOVERED _discovered, const std::function<void(double, double)> &handler) : _discovered(_discovered), handler(handler) {
         discovered = &this->_discovered;
+        setADCGain(0);
+        setFrequency(7000000);
     }
 
     void setADCGain(int gain) {
@@ -198,7 +200,7 @@ struct HL2Device {
             metis_buffer[i + 8] = buffer[i];
         }
 
-        if (sendto(data_socket, metis_buffer, 1024+8, 0, (struct sockaddr *) &data_addr, data_addr_length) != 1024+8) {
+        if (sendto(data_socket, (const char *)metis_buffer, 1024+8, 0, (struct sockaddr *) &data_addr, data_addr_length) != 1024+8) {
             perror("sendto socket failed for metis_send_data\n");
         }
 
@@ -407,7 +409,7 @@ struct HL2Device {
                 right_sample |= (int) ((((unsigned char) b) << 8) & 0xFF00);
                 state++;
                 break;
-            case RIGHT_SAMPLE_LOW:
+            case RIGHT_SAMPLE_LOW: {
                 right_sample |= (int) ((unsigned char) b & 0xFF);
                 right_sample_double = (double) right_sample / 8388607.0; // 24 bit sample 2^23-1
                 //find receiver
@@ -437,6 +439,7 @@ struct HL2Device {
                     state = LEFT_SAMPLE_HI;
                 }
                 break;
+            }
             case MIC_SAMPLE_HI:
                 mic_sample = (short) (b << 8);
                 state++;
@@ -475,8 +478,12 @@ struct HL2Device {
     void stop() {
         running = false;
         receiveThread->join();
-        close(data_socket);
         metis_start_stop(0);
+#ifdef WIN32
+        closesocket(data_socket);
+#else
+        close(data_socket);
+#endif
     }
 
     int secondControlIndex = 1;
@@ -484,8 +491,9 @@ struct HL2Device {
     void metis_restart() {
         prepareRequest(2);
         sendToEndpoint(0x2, output_buffer);
-
-        usleep(20000);
+        prepareRequest(0x14);
+        sendToEndpoint(0x2, output_buffer);
+        usleep(50000);
 
         // start the data flowing
         metis_start_stop(1); // IQ data (wideband data disabled)
@@ -518,7 +526,7 @@ struct HL2Device {
     }
 
     void metis_send_buffer(unsigned char *buffer, int length) {
-        if (sendto(data_socket, buffer, length, 0, (struct sockaddr *) &data_addr, data_addr_length) != length) {
+        if (sendto(data_socket, (const char *)buffer, length, 0, (struct sockaddr *) &data_addr, data_addr_length) != length) {
             perror("sendto socket failed for metis_send_data\n");
         }
     }
@@ -534,17 +542,22 @@ struct HL2Device {
                 }
 
                 int optval = 1;
-                if (setsockopt(data_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+                if (setsockopt(data_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval, sizeof(optval)) < 0) {
                     throw std::runtime_error("data_socket: SO_REUSEADDR");
                 }
-                if (setsockopt(data_socket, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
+#ifndef WIN32
+                if (setsockopt(data_socket, SOL_SOCKET, SO_REUSEPORT, (const char *)&optval, sizeof(optval)) < 0) {
                     throw std::runtime_error("data_socket: SO_REUSEPORT");
                 }
-                auto flags = fcntl(data_socket,F_GETFL,0);
-                if (flags != -1) {
-                    fcntl(data_socket, F_SETFL, flags | O_NONBLOCK);
-                }
-
+                struct timeval tv;
+                tv.tv_sec = 0;
+                tv.tv_usec = 100000;
+                version=0;
+                setsockopt(data_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
+#else
+                DWORD msec = 100;
+                setsockopt(data_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&msec,sizeof(msec));
+#endif
 
                 // bind to the interface
                 if (bind(data_socket, (struct sockaddr *) &discovered->info.network.interface_address, discovered->info.network.interface_length) < 0) {
@@ -567,7 +580,7 @@ struct HL2Device {
             int ep;
             long sequence;
 
-            fprintf(stderr, "protocol1: receive_thread\n");
+//            fprintf(stderr, "protocol1: receive_thread\n");
             running = true;
 
             length = sizeof(addr);
@@ -581,13 +594,19 @@ struct HL2Device {
 #endif
 
                     default:
-                        bytes_read = recvfrom(data_socket, buffer, sizeof(buffer), 0, (struct sockaddr *) &addr, &length);
+                        bytes_read = recvfrom(data_socket, (char *)buffer, sizeof(buffer), 0, (struct sockaddr *) &addr, &length);
                         if (bytes_read < 0) {
-                            if (errno == EAGAIN) {
-                                usleep(10000);
+                            DWORD err = WSAGetLastError();
+                            bool timeout = false;
+#ifdef WIN32
+                            timeout = err == WSATRY_AGAIN || err == WSAETIMEDOUT;
+#else
+                            timeout = errno == EAGAIN;
+#endif
+                            if (timeout) {
 //                                printf("protocol1: receiver_thread: recvfrom socket failed: %s\n", "Radio not sending data\n");
                             } else {
-                                printf("protocol1: receiver_thread: recvfrom socket failed: %s\n", strerror(errno));
+                                spdlog::info("protocol1: receiver_thread: recvfrom socket failed: {0}\n", getLastSocketError());
                             }
                             //running=FALSE;
                             continue;

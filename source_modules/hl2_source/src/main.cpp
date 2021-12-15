@@ -1,3 +1,6 @@
+
+#define _WINSOCKAPI_    // stops windows.h including winsock.h
+
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 #include <module.h>
@@ -8,7 +11,6 @@
 #include <config.h>
 #include <options.h>
 #include <gui/widgets/stepped_slider.h>
-#include <arpa/inet.h>
 
 #include "hl2_device.h"
 
@@ -374,6 +376,18 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
+#ifdef WIN32
+    int iResult;
+
+// Initialize Winsock
+    WSADATA wsaData;
+
+    iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+    if (iResult != 0) {
+        spdlog::error("WSAStartup failed: %d\n", iResult);
+        exit(1);
+    }
+#endif
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";

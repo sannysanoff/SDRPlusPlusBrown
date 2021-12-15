@@ -3,6 +3,7 @@
 #include <core.h>
 #include <string.h>
 #include <gui/style.h>
+#include <gui/gui.h>
 
 namespace module_manager_menu {
     char modName[1024];
@@ -29,7 +30,7 @@ namespace module_manager_menu {
         if (ImGui::BeginTable("Module Manager Table", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 200))) {
             ImGui::TableSetupColumn("Name");
             ImGui::TableSetupColumn("Type");
-            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 10);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 10 * gui::mainWindow.getUiScale());
             ImGui::TableSetupScrollFreeze(3, 1);
             ImGui::TableHeadersRow();
 
@@ -68,7 +69,7 @@ namespace module_manager_menu {
         ImGui::BeginTable("Module Manager Add Table", 3);
         ImGui::TableSetupColumn("Name");
         ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 16);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 36 * gui::mainWindow.getUiScale());
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
@@ -81,7 +82,7 @@ namespace module_manager_menu {
 
         ImGui::TableSetColumnIndex(2);
         if (strlen(modName) == 0) { style::beginDisabled(); }
-        if (ImGui::Button("+##module_mgr_add_btn", ImVec2(16,0))) {
+        if (ImGui::Button("+##module_mgr_add_btn", ImVec2(16 * gui::mainWindow.getUiScale(),16 * gui::mainWindow.getUiScale()))) {
             core::moduleManager.createInstance(modName, modTypes[modTypeId]);
             core::moduleManager.postInit(modName);
             modified = true;

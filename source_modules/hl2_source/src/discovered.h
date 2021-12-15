@@ -20,7 +20,22 @@
 #ifndef DISCOVERED_H
 #define DISCOVERED_H
 
+#ifndef WIN32
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#define SOCKET int
+#else
+
+
+#include <winsock2.h>
+#include <ws2ipdef.h>
+#include <ws2tcpip.h>
+typedef int socklen_t;
+inline void usleep(int micros) {
+    Sleep(micros / 1000);
+}
+
+#endif
 
 #ifdef SOAPYSDR
 #include <SoapySDR/Device.h>

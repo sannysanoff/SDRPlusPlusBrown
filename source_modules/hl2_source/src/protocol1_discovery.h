@@ -20,6 +20,9 @@
 #ifndef _OLD_DISCOVERY_H
 #define _OLD_DISCOVERY_H
 
+#include <string>
+
 void protocol1_discovery(void);
+std::string getLastSocketError();
 
 #endif
