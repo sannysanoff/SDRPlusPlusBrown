@@ -552,7 +552,7 @@ struct HL2Device {
                 struct timeval tv;
                 tv.tv_sec = 0;
                 tv.tv_usec = 100000;
-                version=0;
+//                version=0;
                 setsockopt(data_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 #else
                 DWORD msec = 100;
@@ -596,9 +596,9 @@ struct HL2Device {
                     default:
                         bytes_read = recvfrom(data_socket, (char *)buffer, sizeof(buffer), 0, (struct sockaddr *) &addr, &length);
                         if (bytes_read < 0) {
-                            DWORD err = WSAGetLastError();
                             bool timeout = false;
 #ifdef WIN32
+                            DWORD err = WSAGetLastError();
                             timeout = err == WSATRY_AGAIN || err == WSAETIMEDOUT;
 #else
                             timeout = errno == EAGAIN;
