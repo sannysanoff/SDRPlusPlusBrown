@@ -52,7 +52,7 @@ namespace module_manager_menu {
                 ImGui::TableSetColumnIndex(2);
                 ImVec2 origPos = ImGui::GetCursorPos();
                 ImGui::SetCursorPos(ImVec2(origPos.x - 3, origPos.y));
-                if (ImGui::Button(("##module_mgr_"+name).c_str(), ImVec2(height,height))) {
+                if (ImGui::Button(("##module_mgr_" + name).c_str(), ImVec2(height, height))) {
                     toBeRemoved = name;
                     confirmOpened = true;
                 }
@@ -62,14 +62,14 @@ namespace module_manager_menu {
             ImGui::EndTable();
         }
 
-        if (ImGui::GenericDialog("module_mgr_confirm_", confirmOpened, GENERIC_DIALOG_BUTTONS_YES_NO, [](){
-            ImGui::Text("Deleting \"%s\". Are you sure?", toBeRemoved.c_str());
-        }) == GENERIC_DIALOG_BUTTON_YES) {
+        if (ImGui::GenericDialog("module_mgr_confirm_", confirmOpened, GENERIC_DIALOG_BUTTONS_YES_NO, []() {
+                ImGui::Text("Deleting \"%s\". Are you sure?", toBeRemoved.c_str());
+            }) == GENERIC_DIALOG_BUTTON_YES) {
             core::moduleManager.deleteInstance(toBeRemoved);
             modified = true;
         }
 
-        ImGui::GenericDialog("module_mgr_error_", errorOpen, GENERIC_DIALOG_BUTTONS_OK, [](){
+        ImGui::GenericDialog("module_mgr_error_", errorOpen, GENERIC_DIALOG_BUTTONS_OK, []() {
             ImGui::Text(errorMessage.c_str());
         });
 

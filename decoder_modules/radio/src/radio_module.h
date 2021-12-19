@@ -15,12 +15,12 @@
 
 ConfigManager config;
 
-#define CONCAT(a, b)    ((std::string(a) + b).c_str())
+#define CONCAT(a, b) ((std::string(a) + b).c_str())
 
 std::map<DeemphasisMode, double> deempTaus = {
-    {DEEMP_MODE_22US, 22e-6},
-    {DEEMP_MODE_50US, 50e-6},
-    {DEEMP_MODE_75US, 75e-6}
+    { DEEMP_MODE_22US, 22e-6 },
+    { DEEMP_MODE_50US, 50e-6 },
+    { DEEMP_MODE_75US, 75e-6 }
 };
 
 class RadioModule : public ModuleManager::Instance {
@@ -93,11 +93,11 @@ public:
                 config.conf[name][demod->getName()]["squelchEnabled"] = false;
             }
             bw = std::clamp<double>(bw, demod->getMinBandwidth(), demod->getMaxBandwidth());
-            
+
             // Initialize
             demod->init(name, &config, ifChain.getOutput(), bw, _demodOutputChangeHandler, stream.getSampleRate());
         }
-        
+
         // Initialize audio DSP chain
         afChainOutputChanged.ctx = this;
         afChainOutputChanged.handler = afChainOutputChangeHandler;
@@ -197,7 +197,7 @@ private:
         ImGui::BeginGroup();
 
         ImGui::Columns(4, CONCAT("RadioModeColumns##_", _this->name), false);
-        if (ImGui::RadioButton(CONCAT("NFM##_", _this->name), _this->selectedDemodID == 0) && _this->selectedDemodID != 0) { 
+        if (ImGui::RadioButton(CONCAT("NFM##_", _this->name), _this->selectedDemodID == 0) && _this->selectedDemodID != 0) {
             _this->selectDemodByID(RADIO_DEMOD_NFM);
         }
         if (ImGui::RadioButton(CONCAT("WFM##_", _this->name), _this->selectedDemodID == 1) && _this->selectedDemodID != 1) {
@@ -207,7 +207,7 @@ private:
         if (ImGui::RadioButton(CONCAT("AM##_", _this->name), _this->selectedDemodID == 2) && _this->selectedDemodID != 2) {
             _this->selectDemodByID(RADIO_DEMOD_AM);
         }
-        if (ImGui::RadioButton(CONCAT("DSB##_", _this->name), _this->selectedDemodID == 3) && _this->selectedDemodID != 3)  {
+        if (ImGui::RadioButton(CONCAT("DSB##_", _this->name), _this->selectedDemodID == 3) && _this->selectedDemodID != 3) {
             _this->selectDemodByID(RADIO_DEMOD_DSB);
         }
         ImGui::NextColumn();
@@ -291,7 +291,7 @@ private:
             }
             if (!_this->nbEnabled && _this->enabled) { style::endDisabled(); }
         }
-        
+
 
         // // Notch filter
         // if (ImGui::Checkbox("Notch##_radio_notch_ena_", &_this->notchEnabled)) {
@@ -502,7 +502,7 @@ private:
 
         // Configure deemphasis sample rate
         deemp.block.setSampleRate(audioSampleRate);
-        
+
         afChain.start();
     }
 
@@ -659,7 +659,7 @@ private:
         // Success
         return;
     }
-    
+
     // Handlers
     EventHandler<double> onUserChangedBandwidthHandler;
     EventHandler<float> srChangeHandler;
@@ -723,5 +723,4 @@ private:
     const double MAX_SQUELCH = 0.0;
 
     bool enabled = true;
-
 };
