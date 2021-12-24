@@ -23,6 +23,13 @@ std::map<DeemphasisMode, double> deempTaus = {
     { DEEMP_MODE_75US, 75e-6 }
 };
 
+std::map<IFNRPreset, double> ifnrTaps = {
+    { IFNR_PRESET_NOAA_APT, 9},
+    { IFNR_PRESET_VOICE, 15 },
+    { IFNR_PRESET_NARROW_BAND, 31 },
+    { IFNR_PRESET_BROADCAST, 32 }
+};
+
 class RadioModule : public ModuleManager::Instance {
 public:
     RadioModule(std::string name) {
@@ -33,6 +40,10 @@ public:
         deempModes.define("22us", DEEMP_MODE_22US);
         deempModes.define("50us", DEEMP_MODE_50US);
         deempModes.define("75us", DEEMP_MODE_75US);
+
+        ifnrPresets.define("NOAA APT", IFNR_PRESET_NOAA_APT);
+        ifnrPresets.define("Voice", IFNR_PRESET_VOICE);
+        ifnrPresets.define("Narrow Band", IFNR_PRESET_NARROW_BAND);
 
         // Initialize the config if it doesn't exist
         bool created = false;
@@ -309,6 +320,15 @@ private:
             if (ImGui::Checkbox(("IF Noise Reduction##_radio_fmifnr_ena_" + _this->name).c_str(), &_this->FMIFNREnabled)) {
                 _this->setFMIFNREnabled(_this->FMIFNREnabled);
             }
+            if (_this->selectedDemodID == RADIO_DEMOD_NFM) {
+                if (!_this->FMIFNREnabled && _this->enabled) { style::beginDisabled(); }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+                if (ImGui::Combo(("##_radio_fmifnr_ena_" + _this->name).c_str(), &_this->fmIFPresetId, _this->ifnrPresets.txt)) {
+                    _this->setIFNRPreset(_this->ifnrPresets[_this->fmIFPresetId]);
+                }
+                if (!_this->FMIFNREnabled && _this->enabled) { style::endDisabled(); }
+            }
         }
 
         // Demodulator specific menu
@@ -359,6 +379,7 @@ private:
         postProcEnabled = selectedDemod->getPostProcEnabled();
         FMIFNRAllowed = selectedDemod->getFMIFNRAllowed();
         FMIFNREnabled = false;
+        fmIFPresetId = ifnrPresets.valueId(IFNR_PRESET_VOICE);
         nbAllowed = selectedDemod->getNBAllowed();
         nbEnabled = false;
         nbLevel = 0.0f;
@@ -377,7 +398,6 @@ private:
             squelchEnabled = config.conf[name][selectedDemod->getName()]["squelchEnabled"];
         }
         if (config.conf[name][selectedDemod->getName()].contains("deempMode")) {
-            // Upgrade to the text key
             if (!config.conf[name][selectedDemod->getName()]["deempMode"].is_string()) {
                 config.conf[name][selectedDemod->getName()]["deempMode"] = deempModes.key(deempId);
             }
@@ -392,6 +412,12 @@ private:
         }
         if (config.conf[name][selectedDemod->getName()].contains("FMIFNREnabled")) {
             FMIFNREnabled = config.conf[name][selectedDemod->getName()]["FMIFNREnabled"];
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("fmifnrPreset")) {
+            std::string presetOpt = config.conf[name][selectedDemod->getName()]["fmifnrPreset"];
+            if (ifnrPresets.keyExists(presetOpt)) {
+                fmIFPresetId = ifnrPresets.keyId(presetOpt);
+            }
         }
         if (config.conf[name][selectedDemod->getName()].contains("noiseBlankerEnabled")) {
             nbEnabled = config.conf[name][selectedDemod->getName()]["noiseBlankerEnabled"];
@@ -416,6 +442,7 @@ private:
         setBandwidth(bandwidth);
 
         // Configure FM IF Noise Reduction
+        setIFNRPreset((selectedDemodID == RADIO_DEMOD_NFM) ? ifnrPresets[fmIFPresetId] : IFNR_PRESET_BROADCAST);
         setFMIFNREnabled(FMIFNRAllowed ? FMIFNREnabled : false);
 
         // Configure notch
@@ -429,7 +456,6 @@ private:
         setLogMMSEEnabled(logmmseNrEnabled);
 
         // Configure noise blanker
-        fmnr.block.setTapCount((selectedDemod->getIFSampleRate() < 100000.0f) ? 9 : 32);
         nb.block.setLevel(nbLevel);
         setNoiseBlankerEnabled(nbEnabled);
 
@@ -588,6 +614,24 @@ private:
         config.release(true);
     }
 
+    void setIFNRPreset(IFNRPreset preset) {
+        // Don't save if in broadcast mode
+        if (preset == IFNR_PRESET_BROADCAST) {
+            if (!selectedDemod) { return; }
+            fmnr.block.setTapCount(ifnrTaps[preset]);
+            return;
+        }
+
+        fmIFPresetId = ifnrPresets.valueId(preset);
+        if (!selectedDemod) { return; }
+        fmnr.block.setTapCount(ifnrTaps[preset]);
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["fmifnrPreset"] = ifnrPresets.key(fmIFPresetId);
+        config.release(true);
+    }
+
     static void vfoUserChangedBandwidthHandler(double newBw, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
         _this->setBandwidth(newBw);
@@ -689,6 +733,7 @@ private:
     demod::Demodulator* selectedDemod = NULL;
 
     OptionList<std::string, DeemphasisMode> deempModes;
+    OptionList<std::string, IFNRPreset> ifnrPresets;
 
     double audioSampleRate = 48000.0;
     float minBandwidth;
@@ -710,6 +755,7 @@ private:
 
     bool FMIFNRAllowed;
     bool FMIFNREnabled = false;
+    int fmIFPresetId;
 
     bool notchEnabled = false;
     float notchPos = 0;
