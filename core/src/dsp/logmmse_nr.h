@@ -795,7 +795,7 @@ namespace dsp {
             params->Xk_prev = npzeros(params->len1);
             params->x_old = npzeros(params->len1);
             params->ksi_min = ::pow(10, -25.0 / 10.0);
-            std::cout << "sample: noisemu: " << sampleArr(params->noise_mu2) << std::endl;
+//            std::cout << "sample: noisemu: " << sampleArr(params->noise_mu2) << std::endl;
         }
 
 
@@ -846,22 +846,22 @@ namespace dsp {
                 auto gammak = npminimum(diveach(sig2, params->noise_mu2), 40);
                 FloatArray ksi;
                 if (!npall(params->Xk_prev)) {
-                    if (temporaryIn->size() < 50000) {
-                        std::cout << "all: !npall" << " " << sampleArr(params->Xk_prev) << std::endl;
-                    }
+//                    if (temporaryIn->size() < 50000) {
+//                        std::cout << "all: !npall" << " " << sampleArr(params->Xk_prev) << std::endl;
+//                    }
                     ksi = add(mul(npmaximum(add(gammak, -1), 0), 1 - params->aa), params->aa);
                 } else {
                     const FloatArray d1 = diveach(mul(params->Xk_prev, params->aa), params->noise_mu2);
                     const FloatArray m1 = mul(npmaximum(add(gammak, -1), 0), (1 - params->aa));
                     ksi = addeach(d1, m1);
-                    if (temporaryIn->size() < 50000) {
-                        std::cout << "all: npall: " << sampleArr(d1) << " " << sampleArr(m1) << " " << sampleArr(ksi) << std::endl;
-                    }
+//                    if (temporaryIn->size() < 50000) {
+//                        std::cout << "all: npall: " << sampleArr(d1) << " " << sampleArr(m1) << " " << sampleArr(ksi) << std::endl;
+//                    }
                     ksi = npmaximum(ksi, params->ksi_min);
                 }
-                if (temporaryIn->size() < 50000) {
-                    std::cout << "all: "<<k<<": insign: " << sampleArr(insign) << " sign=" << sampleArr(sig2) << " ksi=" << sampleArr(ksi) << " gammak=" << sampleArr(gammak) << " noisemu2" << sampleArr(params->noise_mu2) << std::endl;
-                }
+//                if (temporaryIn->size() < 50000) {
+//                    std::cout << "all: "<<k<<": insign: " << sampleArr(insign) << " sign=" << sampleArr(sig2) << " ksi=" << sampleArr(ksi) << " gammak=" << sampleArr(gammak) << " noisemu2" << sampleArr(params->noise_mu2) << std::endl;
+//                }
 
                 auto log_sigma_k = addeach(diveach(muleach(gammak, ksi), add(ksi, 1)), neg(nplog(add(ksi, 1))));
                 auto vad_decision = npsum(log_sigma_k) / params->Slen;
@@ -879,23 +879,23 @@ namespace dsp {
                 auto hwmulspec = muleach(hw, spec);
                 auto xi_w0 = npfftifft(hwmulspec, params->nFFT, 0);
                 auto xi_w = npreal(xi_w0);
-                if (temporaryIn->size() < 50000) {
-                    std::cout << "all: hwmulspec: " << sampleArr(hwmulspec) << " xkprev=" << sampleArr(params->Xk_prev) << " out=" << sampleArr(xi_w) << std::endl;
-                }
+//                if (temporaryIn->size() < 50000) {
+//                    std::cout << "all: hwmulspec: " << sampleArr(hwmulspec) << " xkprev=" << sampleArr(params->Xk_prev) << " out=" << sampleArr(xi_w) << std::endl;
+//                }
                 nparangeset(xfinal, k, addeach(params->x_old, nparange(xi_w, 0, params->len1)));
                 params->x_old = nparange(xi_w, params->len1, params->Slen);
             }
-            for (int q = 0; q < xfinal->size(); q++) {
-                if (temporaryIn->size() < 500000) {
-                    temporaryIn->emplace_back((*x)[q]);
-                    temporaryOut->emplace_back((*xfinal)[q]);
-                    if (temporaryIn->size() == 500000) {
-                        writeWav(temporaryIn, "/tmp/sample_in.wav");
-                        writeWav(temporaryOut, "/tmp/sample_out.wav");
-                        std::cout << "Wrote WAVs." << std::endl;
-                    }
-                }
-            }
+//            for (int q = 0; q < xfinal->size(); q++) {
+//                if (temporaryIn->size() < 500000) {
+//                    temporaryIn->emplace_back((*x)[q]);
+//                    temporaryOut->emplace_back((*xfinal)[q]);
+//                    if (temporaryIn->size() == 500000) {
+//                        writeWav(temporaryIn, "/tmp/sample_in.wav");
+//                        writeWav(temporaryOut, "/tmp/sample_out.wav");
+//                        std::cout << "Wrote WAVs." << std::endl;
+//                    }
+//                }
+//            }
             return xfinal;
         }
 
@@ -918,7 +918,16 @@ namespace dsp {
             }
         }
 
+        int getCurrentBandwidth() {
+            if (gui::waterfall.selectedVFO == "") {
+                return 2700;
+            } else {
+                return sigpath::vfoManager.getBandwidth(gui::waterfall.selectedVFO);
+            }
+        }
+
         double lastFrequency = 0;
+        int lastBandwidth = 2700;
         Arg<LowPassFilter> lpf;
         Arg<LowPassFilter> lpf2;
         Arg<LowPassFilter> lpf3;
@@ -940,10 +949,11 @@ namespace dsp {
                 dumpArr_(FloatArray ());
                 abort();
             }
-            if (!lpf) {
-                lpf = std::make_shared<LowPassFilter>(1.0/48000, 2900);
-                lpf2 = std::make_shared<LowPassFilter>(1.0/48000, 2900);
-                lpf3 = std::make_shared<LowPassFilter>(1.0/48000, 2900);
+            if (!lpf || lastBandwidth != getCurrentBandwidth()) {
+                lastBandwidth = getCurrentBandwidth();
+                lpf = std::make_shared<LowPassFilter>(1.0/48000, lastBandwidth+200);
+                lpf2 = std::make_shared<LowPassFilter>(1.0/48000, lastBandwidth+200);
+                lpf3 = std::make_shared<LowPassFilter>(1.0/48000, lastBandwidth+200);
             }
             int count = _in->read();
             if (count < 0) { return -1; }

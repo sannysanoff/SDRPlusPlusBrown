@@ -552,7 +552,6 @@ struct HL2Device {
                 struct timeval tv;
                 tv.tv_sec = 0;
                 tv.tv_usec = 100000;
-                version=0;
                 setsockopt(data_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 #else
                 DWORD msec = 100;
