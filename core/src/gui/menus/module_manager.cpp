@@ -5,7 +5,6 @@
 #include <gui/style.h>
 #include <gui/gui.h>
 #include <gui/dialogs/dialog_box.h>
-#include <gui/gui.h>
 
 namespace module_manager_menu {
     char modName[1024];
