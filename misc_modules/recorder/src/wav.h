@@ -43,7 +43,6 @@ public:
         file.close();
     }
 
-private:
     struct WavHeader_t {
         char signature[4];              // "RIFF"
         uint32_t fileSize;              // data bytes + sizeof(WavHeader_t) - 8
@@ -59,6 +58,8 @@ private:
         char dataMarker[4];             // "data"
         uint32_t dataSize;
     };
+
+private:
 
     std::ofstream file;
     size_t bytesWritten = 0;

@@ -1,6 +1,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "../../misc_modules/recorder/src/wav.h"
 #include <stdio.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <gui/menus/theme.h>
 #include <server.h>
+#include <memory>
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb_image_resize.h>
@@ -85,6 +87,8 @@ namespace core {
 bool maximized = false;
 bool fullScreen = false;
 
+
+
 static void glfw_error_callback(int error, const char* description) {
     spdlog::error("Glfw Error {0}: {1}", error, description);
 }
@@ -98,9 +102,61 @@ static void maximized_callback(GLFWwindow* window, int n) {
     }
 }
 
+
+#include "dsp/logmmse_nr.h"
+void test1() {
+    std::string fname = "sample_in.wav";
+    std::string rdfile = "/db/recordings/"+fname;
+    FILE *f = fopen(rdfile.c_str(),"rb");
+    fseek(f, 0, SEEK_END);
+    auto len = ftell(f);
+    WavWriter::WavHeader_t hdr;
+    fseek(f, 0, SEEK_SET);
+    fread(&hdr, 1, sizeof(WavWriter::WavHeader_t), f);
+    auto datalen = len - sizeof(WavWriter::WavHeader_t);
+    int16_t *buf = (int16_t *)volk_malloc(datalen, volk_get_alignment());
+    fread(buf, 1, datalen, f);
+    fclose(f);
+    dsp::stereo_t *floatd = (dsp::stereo_t *)volk_malloc(datalen * 2, volk_get_alignment());
+    auto nitems = datalen / 4;
+    volk_16i_s32f_convert_32f((float *)floatd, buf, 32767.0f, nitems*2);        // 2 channels
+    auto inputArray = std::make_shared<std::vector<float>>(nitems, 0.0);
+    for(int i=0; i<nitems; i++) {
+        (*inputArray)[i] = floatd[i].l;
+    }
+    dsp::logmmseSavedParams params;
+    dsp::LogMMSENoiseReduction::logmmse_sample(inputArray, 48000, 0.15, &params, 6);
+    std::string wrfile = "/db/recordings/"+fname+".cout.wav";
+    f = fopen(wrfile.c_str(),"wb");
+    fwrite(&hdr, 1, sizeof(WavWriter::WavHeader_t), f);
+    int step = 14592;
+    for(int scan=0; scan<inputArray->size()-step;) {
+        auto part = std::make_shared<std::vector<float>>();
+        std::copy(inputArray->data() + scan, inputArray->data() + scan + step, std::back_inserter(*part));
+        auto retv = dsp::LogMMSENoiseReduction::logmmse_all(part, 48000, 0.15, &params);
+        std::cout << "test: in: " << part->size() << " out: " << retv->size() << std::endl;
+        int16_t *outb = (int16_t *) volk_malloc(retv->size() * sizeof(int16_t), volk_get_alignment());
+        volk_32f_s32f_convert_16i(outb, retv->data(), 32767, retv->size());
+        for (int i = 0; i < retv->size(); i++) {
+            buf[2 * i] = outb[i];
+            buf[2 * i + 1] = outb[i];
+        }
+        fwrite(buf, 1, retv->size() * 2 * sizeof(int16_t), f);
+        volk_free(outb);
+        scan += retv->size();
+    }
+    fclose(f);
+}
+
+
 // main
 int sdrpp_main(int argc, char *argv[]) {
     spdlog::info("SDR++ v" VERSION_STR);
+
+    if (argc > 1 && !strcmp(argv[1],"test1")) {
+        test1();
+        exit(1);
+    }
 
 #ifdef IS_MACOS_BUNDLE
     // If this is a MacOS .app, CD to the correct directory

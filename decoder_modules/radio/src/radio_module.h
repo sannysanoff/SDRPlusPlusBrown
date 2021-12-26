@@ -7,6 +7,7 @@
 #include <config.h>
 #include <dsp/chain.h>
 #include <dsp/noise_reduction.h>
+#include <dsp/logmmse_nr.h>
 #include <core.h>
 #include "radio_interface.h"
 #include "demod.h"
@@ -62,6 +63,7 @@ public:
         fmnr.block.init(NULL, 32);
         notch.block.init(NULL, 0.5, 0, 250000); // TODO: The rate has to depend on IF sample rate so the width is always the same
         squelch.block.init(NULL, MIN_SQUELCH);
+        lmmsenr.block.init(NULL);
         nb.block.init(NULL, -100.0f);
 
         ifChain.add(&notch);
@@ -102,6 +104,7 @@ public:
 
         afChain.add(&resamp);
         afChain.add(&deemp);
+        afChain.add(&lmmsenr);
 
         // Initialize the sink
         srChangeHandler.ctx = this;
@@ -248,6 +251,15 @@ private:
             }
         }
 
+        if (ImGui::Checkbox(("NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
+            _this->setLogMMSEEnabled(_this->logmmseNrEnabled);
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 8, 192, "%d KHz")) {
+            _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
+        }
+
         // Squelch
         if (ImGui::Checkbox(("Squelch##_radio_sqelch_ena_" + _this->name).c_str(), &_this->squelchEnabled)) {
             _this->setSquelchEnabled(_this->squelchEnabled);
@@ -361,6 +373,9 @@ private:
         if (config.conf[name][selectedDemod->getName()].contains("deempMode")) {
             deempMode = config.conf[name][selectedDemod->getName()]["deempMode"];
         }
+        if (config.conf[name][selectedDemod->getName()].contains("logmmseNrEnabled")) {
+            logmmseNrEnabled = config.conf[name][selectedDemod->getName()]["logmmseNrEnabled"];
+        }
         if (config.conf[name][selectedDemod->getName()].contains("FMIFNREnabled")) {
             FMIFNREnabled = config.conf[name][selectedDemod->getName()]["FMIFNREnabled"];
         }
@@ -393,6 +408,9 @@ private:
         // Configure squelch
         squelch.block.setLevel(squelchLevel);
         setSquelchEnabled(squelchEnabled);
+
+        // noise reduction
+        setLogMMSEEnabled(logmmseNrEnabled);
 
         // Configure noise blanker
         nb.block.setLevel(nbLevel);
@@ -484,6 +502,21 @@ private:
         config.acquire();
         config.conf[name][selectedDemod->getName()]["deempMode"] = deempMode;
         config.release(true);
+    }
+
+    void setLogMMSEEnabled(bool enable) {
+        logmmseNrEnabled = enable;
+        if (!selectedDemod) { return; }
+        afChain.setState(&lmmsenr, logmmseNrEnabled);
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["logmmseNrEnabled"] = logmmseNrEnabled;
+        config.release(true);
+    }
+
+    void setLogMMSEFrequency(int freq) {
+        lmmsenr.block.setIF(freq);
     }
 
     void setSquelchEnabled(bool enable) {
@@ -633,6 +666,7 @@ private:
     dsp::filter_window::BlackmanWindow win;
     dsp::ChainLink<dsp::PolyphaseResampler<dsp::stereo_t>, dsp::stereo_t> resamp;
     dsp::ChainLink<dsp::BFMDeemp, dsp::stereo_t> deemp;
+    dsp::ChainLink<dsp::LogMMSENoiseReduction, dsp::stereo_t> lmmsenr;
 
     SinkManager::Stream stream;
 
@@ -650,7 +684,9 @@ private:
 
     bool squelchEnabled = false;
     float squelchLevel;
+    int logmmseFreq = 24;
 
+    bool logmmseNrEnabled = false;
     int deempMode = DEEMP_MODE_NONE;
     bool deempAllowed;
 
