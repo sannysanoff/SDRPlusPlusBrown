@@ -747,11 +747,12 @@ private:
     bool squelchEnabled = false;
     float squelchLevel;
     int logmmseFreq = 24;
-    bool logmmseNrEnabled = false;
 
     int deempMode = DEEMP_MODE_NONE;
     int deempId = 0;
     bool deempAllowed;
+
+    bool logmmseNrEnabled = false;
 
     bool FMIFNRAllowed;
     bool FMIFNREnabled = false;
