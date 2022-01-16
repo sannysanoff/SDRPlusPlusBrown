@@ -18,6 +18,7 @@
 #include <signal_path/signal_path.h>
 #include <core.h>
 #include <gui/menus/source.h>
+#include <gui/menus/tx.h>
 #include <gui/menus/display.h>
 #include <gui/menus/bandplan.h>
 #include <gui/menus/sink.h>
@@ -76,6 +77,7 @@ void MainWindow::init() {
     }
 
     gui::menu.registerEntry("Source", sourecmenu::draw, NULL);
+    gui::menu.registerEntry("Transmitter", txmenu::draw, NULL);
     gui::menu.registerEntry("Sinks", sinkmenu::draw, NULL);
     gui::menu.registerEntry("Band Plan", bandplanmenu::draw, NULL);
     gui::menu.registerEntry("Display", displaymenu::draw, NULL);
@@ -165,6 +167,7 @@ void MainWindow::init() {
     gui::waterfall.updatePalletteFromArray(colormaps::maps["Turbo"].map, colormaps::maps["Turbo"].entryCount);
 
     sourecmenu::init();
+    txmenu::init();
     sinkmenu::init();
     bandplanmenu::init();
     displaymenu::init();
@@ -574,7 +577,11 @@ void MainWindow::draw() {
 
     gui::waterfall.draw();
 
+    ImGui::SNRMeterAverages();
     ImGui::EndChild();
+
+
+
 
 
     if (!lockWaterfallControls) {

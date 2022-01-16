@@ -42,20 +42,51 @@ namespace dsp {
 
     inline std::string dumpArr(const FloatArray &x) {
         std::string s;
+        auto minn = x->at(0);
+        auto maxx = x->at(0);
+        int lim = 10;
         for(int q=0; q<x->size(); q++) {
-            s.append(" ");
-            s.append(std::to_string(x->at(q)));
+            auto v = x->at(q);
+            if (q < lim) {
+                s.append(" ");
+                s.append(std::to_string(v));
+            }
+            if (v > maxx) {
+                maxx = v;
+            }
+            if (v < minn) {
+                minn = v;
+            }
         }
-        return s;
+        std::string pre = "min/max=";
+        pre.append(std::to_string(minn));
+        pre += "/";
+        pre.append(std::to_string(maxx));
+        pre.append(" ");
+        return pre+s;
     }
 
     inline std::string dumpArr(const ComplexArray &x) {
         std::string s;
+        auto minn = x->at(0).re;
+        auto maxx = x->at(0).re;
         for(int q=0; q<x->size(); q++) {
             s.append(" ");
-            s.append(std::to_string(x->at(q).re));
+            auto v = x->at(q).re;
+            s.append(std::to_string(v));
+            if (v > maxx) {
+                maxx = v;
+            }
+            if (v < minn) {
+                minn = v;
+            }
         }
-        return s;
+        std::string pre = "min/max=";
+        pre.append(std::to_string(minn));
+        pre += "/";
+        pre.append(std::to_string(maxx));
+        pre.append(" ");
+        return pre+s;
     }
 
     inline void dumpArr_(const FloatArray &x) {
@@ -718,7 +749,10 @@ namespace dsp {
             auto index = ::pow(x, 1.0 / 4) * 1000;
             auto iindex = floor(index);
             auto f = index - iindex;
-            auto v1 = expnarr[index] + (expnarr[index + 1] - expnarr[index]) * f;
+            auto v1 = expnarr[iindex] + (expnarr[iindex + 1] - expnarr[iindex]) * f;
+            if (iindex < 0 || iindex >=expnarr.size()-1 ) {
+                std::cerr << "Index out of range in expn" << std::endl;
+            }
             return v1;
         }
 
@@ -878,11 +912,15 @@ namespace dsp {
                 params->Xk_prev = muleach(sig, sig);
                 auto hwmulspec = muleach(hw, spec);
                 auto xi_w0 = npfftifft(hwmulspec, params->nFFT, 0);
+//                auto xi_w0 = npfftifft(spec, params->nFFT, 0);
                 auto xi_w = npreal(xi_w0);
+//                std::cout << "xi: "; dumpArr_(xi_w);
 //                if (temporaryIn->size() < 50000) {
 //                    std::cout << "all: hwmulspec: " << sampleArr(hwmulspec) << " xkprev=" << sampleArr(params->Xk_prev) << " out=" << sampleArr(xi_w) << std::endl;
 //                }
-                nparangeset(xfinal, k, addeach(params->x_old, nparange(xi_w, 0, params->len1)));
+                auto final = addeach(params->x_old, nparange(xi_w, 0, params->len1));
+//                std::cout << "fi: "; dumpArr_(final);
+                nparangeset(xfinal, k, final);
                 params->x_old = nparange(xi_w, params->len1, params->Slen);
             }
 //            for (int q = 0; q < xfinal->size(); q++) {
@@ -960,7 +998,7 @@ namespace dsp {
             static int switchTrigger = 0;
             static int overlapTrigger = -100000;
             for (int i = 0; i < count; i++) {
-                worker1c->emplace_back(_in->readBuf[i].l);
+                worker1c->emplace_back(_in->readBuf[i].l / 2);
                 switchTrigger++;
                 overlapTrigger++;
             }
@@ -1011,7 +1049,8 @@ namespace dsp {
             int limit = rv->size();
             auto dta = rv->data();
             for (int i = 0; i < limit; i++) {
-                auto lp = lpf3->update(lpf2->update(lpf->update(dta[i] * 2)));
+                auto lp = lpf3->update(lpf2->update(lpf->update(dta[i] * 4)));
+//                auto lp = dta[i] * 2;
                 out.writeBuf[i].l = lp;
                 out.writeBuf[i].r = lp;
             }

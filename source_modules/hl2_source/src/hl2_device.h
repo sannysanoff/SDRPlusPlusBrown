@@ -13,6 +13,25 @@ struct ControlData {
     unsigned char C4;
 };
 
+#ifndef WIN32
+#include <sys/prctl.h>
+#endif
+static void SetThreadName( const char* threadName)
+{
+#ifndef WIN32
+    prctl(PR_SET_NAME,threadName,0,0,0);
+#endif
+}
+static std::string GetThreadName( ) {
+#ifndef WIN32
+    char thread_name_buffer[100] = { 0 };
+    prctl(PR_GET_NAME,thread_name_buffer,0,0,0);
+    return std::string(thread_name_buffer);
+#endif
+    return "??";
+}
+
+
 
 struct HL2Device {
 
@@ -113,18 +132,46 @@ struct HL2Device {
         setFrequency(7000000);
     }
 
+    bool isADCOverload() {
+        return adc_overload;
+    }
+
     void setADCGain(int gain) {
         gain += 12;
-        deviceControl[0x14].C4 = gain | 0b1000000;
+        deviceControl[0xA].C4 = gain | 0b1000000;
         gain |= 0x40; // ptt is off ??
-        secondControlIndex = 0x14;
+        secondControlIndex = 0xA;
     }
 
     void setFrequency(long long frequency) {
-        deviceControl[0x02].C1 = frequency >> 24;
-        deviceControl[0x02].C2 = frequency >> 16;
-        deviceControl[0x02].C3 = frequency >> 8;
-        deviceControl[0x02].C4 = frequency >> 0;
+        deviceControl[0x01].C1 = frequency >> 24;
+        deviceControl[0x01].C2 = frequency >> 16;
+        deviceControl[0x01].C3 = frequency >> 8;
+        deviceControl[0x01].C4 = frequency >> 0;
+    }
+
+    void setTxFrequency(long long frequency) {
+        deviceControl[0x01].C1 = frequency >> 24;
+        deviceControl[0x01].C2 = frequency >> 16;
+        deviceControl[0x01].C3 = frequency >> 8;
+        deviceControl[0x01].C4 = frequency >> 0;
+    }
+
+    void setTune(bool tune) {
+        if (tune) {
+            deviceControl[0x0].C2 |= 0x10;
+        } else {
+            deviceControl[0x0].C2 &= ~0x10;
+        }
+    }
+
+    bool transmitMode = false;
+
+    void doTuneActive(bool tune) {
+        setTune(tune);
+        transmitMode = tune;
+        prepareRequest(1);
+        sendToEndpoint(0x2, output_buffer);
     }
 
     void setRxSampleRate(int rx_sample_rate) {
@@ -159,8 +206,8 @@ struct HL2Device {
 
     void prepareRequest(int secondControlIndex) {
         switch(secondControlIndex) {
-            case 0x14:      // rx gain / LNA ?
-            case 2:         // rx freq
+            case 0xA:       // rx gain / LNA
+            case 1:         // rx freq
                 break;
             default:
                 secondControlIndex = 2; // something safe ;)
@@ -169,7 +216,7 @@ struct HL2Device {
         output_buffer[SYNC0] = SYNC;
         output_buffer[SYNC1] = SYNC;
         output_buffer[SYNC2] = SYNC;
-        output_buffer[C0] = 0x00;
+        output_buffer[C0] = 0x00 | (transmitMode ? 1: 0);
         output_buffer[C1] = deviceControl[0].C1;
         output_buffer[C2] = deviceControl[0].C2;
         output_buffer[C3] = deviceControl[0].C3;
@@ -177,7 +224,7 @@ struct HL2Device {
         output_buffer[512+SYNC0] = SYNC;
         output_buffer[512+SYNC1] = SYNC;
         output_buffer[512+SYNC2] = SYNC;
-        output_buffer[512+C0] = secondControlIndex;
+        output_buffer[512+C0] = (secondControlIndex << 1)| (transmitMode ? 1: 0);
         output_buffer[512+C1] = deviceControl[secondControlIndex].C1;
         output_buffer[512+C2] = deviceControl[secondControlIndex].C2;
         output_buffer[512+C3] = deviceControl[secondControlIndex].C3;
@@ -579,7 +626,9 @@ struct HL2Device {
             int ep;
             long sequence;
 
-//            fprintf(stderr, "protocol1: receive_thread\n");
+            SetThreadName("hl2_receive_thread");
+
+            fprintf(stderr, "hl2: protocol1: receive_thread started\n");
             running = true;
 
             length = sizeof(addr);
@@ -655,7 +704,7 @@ struct HL2Device {
 
             }
 
-            fprintf(stderr, "EXIT: protocol1: receive_thread\n");
+            fprintf(stderr, "hl2: protocol1: receive_thread exited\n");
             return 0;
         });
 

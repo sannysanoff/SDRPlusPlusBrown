@@ -79,11 +79,13 @@ public:
 
         fmnr.block.init(NULL, 32);
         notch.block.init(NULL, 0.5, 0, 250000); // TODO: The rate has to depend on IF sample rate so the width is always the same
+        ifavg.block.init(NULL);
         squelch.block.init(NULL, MIN_SQUELCH);
         lmmsenr.block.init(NULL);
         nb.block.init(NULL, -100.0f);
 
         ifChain.add(&notch);
+        ifChain.add(&ifavg);
         ifChain.add(&squelch);
         ifChain.add(&fmnr);
         ifChain.add(&nb);
@@ -268,7 +270,7 @@ private:
             }
         }
 
-        if (ImGui::Checkbox(("NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
+        if (ImGui::Checkbox(("AF NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
             _this->setLogMMSEEnabled(_this->logmmseNrEnabled);
         }
         ImGui::SameLine();
@@ -276,6 +278,15 @@ private:
         if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 8, 192, "%d KHz")) {
             _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
         }
+
+        if (ImGui::Checkbox(("IF AVG##_radio_if_avg_" + _this->name).c_str(), &_this->ifavgEnabled)) {
+            _this->setIFAVGEnabled(_this->ifavgEnabled);
+        }
+//        ImGui::SameLine();
+//        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+//        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 8, 192, "%d KHz")) {
+//            _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
+//        }
 
         // Squelch
         if (ImGui::Checkbox(("Squelch##_radio_sqelch_ena_" + _this->name).c_str(), &_this->squelchEnabled)) {
@@ -560,6 +571,10 @@ private:
         lmmsenr.block.setIF(freq);
     }
 
+    void setIFAVGEnabled(bool enabled) {
+        ifChain.setState(&ifavg, enabled);
+    }
+
     void setSquelchEnabled(bool enable) {
         squelchEnabled = enable;
         if (!selectedDemod) { return; }
@@ -716,6 +731,7 @@ private:
     dsp::Chain<dsp::complex_t> ifChain;
     dsp::ChainLink<dsp::FMIFNoiseReduction, dsp::complex_t> fmnr;
     dsp::ChainLink<dsp::NotchFilter, dsp::complex_t> notch;
+    dsp::ChainLink<dsp::IFAVGFilter, dsp::complex_t> ifavg;
     dsp::ChainLink<dsp::Squelch, dsp::complex_t> squelch;
     dsp::ChainLink<dsp::NoiseBlanker, dsp::complex_t> nb;
 
@@ -753,6 +769,7 @@ private:
     bool deempAllowed;
 
     bool logmmseNrEnabled = false;
+    bool ifavgEnabled = false;
 
     bool FMIFNRAllowed;
     bool FMIFNREnabled = false;

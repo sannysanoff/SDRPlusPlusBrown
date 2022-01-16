@@ -2,7 +2,9 @@
 
 namespace sigpath {
     SignalPath signalPath;
+    SignalPath transmitSignalPath;
     VFOManager vfoManager;
     SourceManager sourceManager;
+    TransmitterManager transmitterManager;
     SinkManager sinkManager;
 };

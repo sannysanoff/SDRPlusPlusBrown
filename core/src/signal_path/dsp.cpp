@@ -15,6 +15,7 @@ void SignalPath::init(uint64_t sampleRate, int fftRate, int fftSize, dsp::stream
 
     inputBuffer.init(input);
     corrector.init(&inputBuffer.out, 50.0f / sampleRate);
+    corrector.setEffectiveSampleRate(sampleRate);
     split.init(&inputBuffer.out);
 
     // Allocate the fft taps
@@ -55,6 +56,7 @@ void SignalPath::setSampleRate(double sampleRate) {
 
     // Update correction rate on the IQ corrector
     corrector.setCorrectionRate(50.0f / sampleRate);
+    corrector.setEffectiveSampleRate(sampleRate);
 
     // Start the splitter
     split.start();

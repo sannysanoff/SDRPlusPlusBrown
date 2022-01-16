@@ -355,6 +355,65 @@ namespace dsp {
         stream<T>* _in;
     };
 
+    class IFAVGFilter : public generic_block<IFAVGFilter> {
+
+        int activateDelay = 0;
+    public:
+        IFAVGFilter() {}
+
+        IFAVGFilter(stream<complex_t>* in) { init(in); }
+
+        ~IFAVGFilter() {
+            if (!generic_block<IFAVGFilter>::_block_init) { return; }
+            generic_block<IFAVGFilter>::stop();
+            generic_block<IFAVGFilter>::_block_init = false;
+        }
+
+        void init(stream<complex_t>* in) {
+            _in = in;
+            generic_block<IFAVGFilter>::registerInput(_in);
+            generic_block<IFAVGFilter>::registerOutput(&out);
+            generic_block<IFAVGFilter>::_block_init = true;
+        }
+
+        void setInput(stream<complex_t>* in) {
+            assert(generic_block<IFAVGFilter>::_block_init);
+            std::lock_guard<std::mutex> lck(generic_block<IFAVGFilter>::ctrlMtx);
+            generic_block<IFAVGFilter>::tempStop();
+            generic_block<IFAVGFilter>::unregisterInput(_in);
+            _in = in;
+            generic_block<IFAVGFilter>::registerInput(_in);
+            generic_block<IFAVGFilter>::tempStart();
+        }
+
+        std::vector<complex_t> buffer;
+
+        int run() {
+            int count = _in->read();
+            if (count < 0) { return -1; }
+
+            for(int i=0; i<count; i++) {
+                buffer.emplace_back(_in->readBuf[i]);
+            }
+            _in->flush();
+
+            for(auto i=0; i<buffer.size(); i++) {
+                out.writeBuf[i] = buffer[i];
+            }
+            buffer.clear();
+
+            if (!out.swap(buffer.size())) { return -1; }
+            return count;
+        }
+
+        stream<complex_t> out;
+
+
+    private:
+        stream<complex_t>* _in;
+    };
+
+
     class Squelch : public generic_block<Squelch> {
 
         int activateDelay = 0;

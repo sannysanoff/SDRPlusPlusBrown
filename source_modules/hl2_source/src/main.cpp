@@ -11,6 +11,7 @@
 #include <config.h>
 #include <options.h>
 #include <gui/widgets/stepped_slider.h>
+#include <iostream>
 
 #include "hl2_device.h"
 
@@ -34,6 +35,11 @@ std::string discoveredToIp(DISCOVERED &d) {
     return str;
 }
 
+static long long currentTimeMillis() {
+    std::chrono::system_clock::time_point t1 = std::chrono::system_clock::now();
+    long long msec = std::chrono::time_point_cast<std::chrono::milliseconds>(t1).time_since_epoch().count();
+    return msec;
+}
 
 class HermesLite2SourceModule : public ModuleManager::Instance {
 
@@ -54,6 +60,15 @@ public:
         handler.tuneHandler = tune;
         handler.stream = &stream;
 
+        txhandler.ctx = this;
+        txhandler.selectHandler = txmenuSelected;
+        txhandler.deselectHandler = txmenuDeselected;
+        txhandler.menuHandler = txmenuHandler;
+        txhandler.startHandler = start;
+        txhandler.stopHandler = stop;
+        txhandler.tuneHandler = txtune;
+        txhandler.stream = &txstream;
+
         refresh();
 
         config.acquire();
@@ -61,6 +76,7 @@ public:
         config.release();
 
         sigpath::sourceManager.registerSource("Hermes Lite 2", &handler);
+        sigpath::transmitterManager.registerTransmitter("Hermes Lite 2", &txhandler);
         selectFirst();
     }
 
@@ -71,11 +87,6 @@ public:
 
     void postInit() {}
 
-    enum AGCMode {
-        AGC_MODE_OFF,
-        AGC_MODE_LOW,
-        AGC_MODE_HIGG
-    };
 
     void enable() {
         enabled = true;
@@ -178,9 +189,20 @@ private:
         spdlog::info("HermerList2SourceModule '{0}': Menu Select!", _this->name);
     }
 
+    static void txmenuSelected(void* ctx) {
+        HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
+//        core::setInputSampleRate(_this->sampleRate);
+        spdlog::info("HermerList2SourceModule '{0}': TX Menu Select!", _this->name);
+    }
+
     static void menuDeselected(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
         spdlog::info("HermerList2SourceModule '{0}': Menu Deselect!", _this->name);
+    }
+
+    static void txmenuDeselected(void* ctx) {
+        HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
+        spdlog::info("HermerList2SourceModule '{0}': TX Menu Deselect!", _this->name);
     }
 
     std::vector<dsp::complex_t> incomingBuffer;
@@ -208,6 +230,15 @@ private:
         for(int i=0; i<devices; i++) {
             if (_this->selectedIP == discoveredToIp(discovered[i])) {
                 _this->device = std::make_shared<HL2Device>(discovered[i], [=](double i, double q) {
+                    static auto lastCtm = currentTimeMillis();
+                    static auto totalCount = 0;
+                    totalCount++;
+                    if (totalCount % 10000 == 0) {
+                        if (lastCtm < currentTimeMillis() - 1000) {
+                            lastCtm = currentTimeMillis();
+                            std::cout << "HL2: Received samples: " << totalCount << std::endl;
+                        }
+                    }
                     _this->incomingSample(i, q);
                 });
             }
@@ -219,27 +250,6 @@ private:
             _this->device->setADCGain(_this->adcGain);
             _this->device->start();
         }
-
-
-//        int err = airspyhf_open_sn(&_this->openDev, _this->selectedSerial);
-//        if (err != 0) {
-//            char buf[1024];
-//            sprintf(buf, "%016" PRIX64, _this->selectedSerial);
-//            spdlog::error("Could not open Hermes Lite 2 {0}", buf);
-//            return;
-//        }
-//
-//        airspyhf_set_samplerate(_this->openDev, _this->sampleRateList[_this->srId]);
-//        airspyhf_set_freq(_this->openDev, _this->freq);
-//        airspyhf_set_hf_agc(_this->openDev, (_this->agcMode != 0));
-//        if (_this->agcMode > 0) {
-//            airspyhf_set_hf_agc_threshold(_this->openDev, _this->agcMode - 1);
-//        }
-//        airspyhf_set_hf_att(_this->openDev, _this->atten / 6.0f);
-//        airspyhf_set_hf_lna(_this->openDev, _this->hfLNA);
-//
-//        airspyhf_start(_this->openDev, callback, _this);
-
         _this->running = true;
         spdlog::info("HL2SourceModule '{0}': Start!", _this->name);
     }
@@ -262,6 +272,44 @@ private:
             _this->device->setFrequency((int)freq);
         }
         spdlog::info("HermerList2SourceModule '{0}': Tune: {1}!", _this->name, freq);
+    }
+
+    static void txtune(double freq, void* ctx) {
+        HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
+        _this->txfreq = freq;
+        if (_this->device) {
+            _this->device->setTxFrequency((int)freq);
+        }
+        spdlog::info("HermerList2SourceModule '{0}': TxTune: {1}!", _this->name, freq);
+    }
+
+    bool hardTune = false;
+
+    static void txmenuHandler(void* ctx) {
+        HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
+        float menuWidth = ImGui::GetContentRegionAvailWidth();
+
+        if (!_this->running) { style::beginDisabled(); }
+
+        int drawHardTune = _this->hardTune;
+        if (drawHardTune) {
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0, 0, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0, 0, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0, 0, 1.0f));
+        }
+        if (ImGui::Button("Hard Tune")) {
+            _this->hardTune = !_this->hardTune;
+            _this->device->setTxFrequency((int)_this->freq);
+            _this->device->doTuneActive(_this->hardTune);
+            std::cout << "_this->hardTune=" << _this->hardTune << std::endl;
+        }
+        if (drawHardTune) {
+            ImGui::PopStyleColor(3);
+        }
+
+//        float menuWidth = ImGui::GetContentRegionAvailWidth();
+        if (!_this->running) { style::endDisabled(); }
+
     }
 
     static void menuHandler(void* ctx) {
@@ -298,13 +346,18 @@ private:
             config.acquire();
             std::string devSerial = config.conf["device"];
             config.release();
-//            _this->selectByString(devSerial);
             core::setInputSampleRate(_this->sampleRate);
         }
 
         if (_this->running) { style::endDisabled(); }
-//        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        bool overload = _this->device && _this->device->isADCOverload();
+        if (overload) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
+        }
         ImGui::LeftLabel("ADC Gain");
+        if (overload) {
+            ImGui::PopStyleColor(1);
+        }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
         if (ImGui::SliderInt(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->adcGain, -12, +48, "%.3f dB")) {
@@ -313,59 +366,21 @@ private:
             }
         }
 
-//        ImGui::LeftLabel("AGC Mode");
-//        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-//        if (ImGui::Combo(CONCAT("##_hl2_agc_", _this->name), &_this->agcMode, AGG_MODES_STR)) {
-//            if (_this->running) {
-//                airspyhf_set_hf_agc(_this->openDev, (_this->agcMode != 0));
-//                if (_this->agcMode > 0) {
-//                    airspyhf_set_hf_agc_threshold(_this->openDev, _this->agcMode - 1);
-//                }
-//            }
-//            if (_this->selectedSerStr != "") {
-//                config.acquire();
-//                config.conf["devices"][_this->selectedSerStr]["agcMode"] = _this->agcMode;
-//                config.release(true);
-//            }
-//        }
-//
-//        ImGui::LeftLabel("Attenuation");
-//        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-//        if (ImGui::SliderFloatWithSteps(CONCAT("##_hl2_attn_", _this->name), &_this->atten, 0, 48, 6, "%.0f dB")) {
-//            if (_this->running) {
-//                airspyhf_set_hf_att(_this->openDev, _this->atten / 6.0f);
-//            }
-//            if (_this->selectedSerStr != "") {
-//                config.acquire();
-//                config.conf["devices"][_this->selectedSerStr]["attenuation"] = _this->atten;
-//                config.release(true);
-//            }
-//        }
-//
-//        if (ImGui::Checkbox(CONCAT("HF LNA##_hl2_lna_", _this->name), &_this->hfLNA)) {
-//            if (_this->running) {
-//                airspyhf_set_hf_lna(_this->openDev, _this->hfLNA);
-//            }
-//            if (_this->selectedSerStr != "") {
-//                config.acquire();
-//                config.conf["devices"][_this->selectedSerStr]["lna"] = _this->hfLNA;
-//                config.release(true);
-//            }
-//        }
     }
 
     std::string name;
     bool enabled = true;
     dsp::stream<dsp::complex_t> stream;
+    dsp::stream<dsp::complex_t> txstream;
     int sampleRate;
     SourceManager::SourceHandler handler;
+    TransmitterManager::TransmitterHandler txhandler;
     bool running = false;
     double freq;
+    double txfreq;
     std::string selectedIP;
     int devId = 0;
     int srId = 0;
-    int agcMode = AGC_MODE_OFF;
-    bool hfLNA = false;
     float atten = 0.0f;
     std::string selectedSerStr = "";
 
