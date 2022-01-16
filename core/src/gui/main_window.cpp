@@ -360,12 +360,6 @@ void MainWindow::draw() {
         core::configManager.release(true);
     }
 
-    ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-    ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-    int width = vMax.x - vMin.x;
-    int height = vMax.y - vMin.y;
-
     // To Bar
     ImGui::PushID(ImGui::GetID("sdrpp_menu_btn"));
     if (ImGui::ImageButton(icons::MENU, ImVec2(30, 30), ImVec2(0, 0), ImVec2(1, 1), 5) || ImGui::IsKeyPressed(GLFW_KEY_MENU, false)) {
@@ -503,7 +497,7 @@ void MainWindow::draw() {
         if (gui::menu.draw(firstMenuRender)) {
             core::configManager.acquire();
             json arr = json::array();
-            for (int i = 0; i < gui::menu.order.size(); i++) {
+            for (size_t i = 0; i < gui::menu.order.size(); i++) {
                 arr[i]["name"] = gui::menu.order[i].name;
                 arr[i]["open"] = gui::menu.order[i].open;
             }
