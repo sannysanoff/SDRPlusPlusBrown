@@ -316,7 +316,7 @@ namespace net {
                 }
                 entry.handler(std::move(client), entry.ctx);
             }
-            catch (const std::exception& e) {
+            catch (std::exception e) {
                 listening = false;
                 return;
             }
