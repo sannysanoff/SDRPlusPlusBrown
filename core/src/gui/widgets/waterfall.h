@@ -333,5 +333,7 @@ namespace ImGui {
         ImVec2 mouseDownPos;
 
         ImVec2 lastMousePos;
+
+        const int rawFFTIndex(double frequency) const;
     };
 };

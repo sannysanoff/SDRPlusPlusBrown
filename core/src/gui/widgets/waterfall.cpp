@@ -513,41 +513,59 @@ namespace ImGui {
 
         // Calculate FFT index data
         double vfoMinSizeFreq = _vfo->centerOffset - _vfo->bandwidth;
-        double vfoMinFreq = _vfo->centerOffset - (_vfo->bandwidth / 2.0) * 0.85;     // many radios have signals filtered out close to the ends, be fair when comparing.
-        double vfoMaxFreq = _vfo->centerOffset + (_vfo->bandwidth / 2.0) * 0.85;
+        double vfoMinFreq = _vfo->centerOffset - (_vfo->bandwidth / 2.0);
+        double vfoMaxFreq = _vfo->centerOffset + (_vfo->bandwidth / 2.0);
         double vfoMaxSizeFreq = _vfo->centerOffset + _vfo->bandwidth;
-        int vfoMinSideOffset = std::clamp<int>(((vfoMinSizeFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
-        int vfoMinOffset = std::clamp<int>(((vfoMinFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
-        int vfoMaxOffset = std::clamp<int>(((vfoMaxFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
-        int vfoMaxSideOffset = std::clamp<int>(((vfoMaxSizeFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
+        int vfoMinSideOffset = rawFFTIndex(vfoMinSizeFreq);
+        int vfoMinOffset = rawFFTIndex(vfoMinFreq);
+        int vfoMaxOffset = rawFFTIndex(vfoMaxFreq);
+        int vfoMaxSideOffset = rawFFTIndex(vfoMaxSizeFreq);
 
-        double avg = 0;
+        double avg = 0, qavg = 0;
         float max = -INFINITY;
         int avgCount = 0;
 
+        static std::vector<float> fftValues;
+        fftValues.clear();
+
         // Calculate Left average
         for (int i = vfoMinSideOffset; i < vfoMinOffset; i++) {
+            fftValues.emplace_back(fftLine[i]);
             avg += fftLine[i];
             avgCount++;
         }
 
         // Calculate Right average
         for (int i = vfoMaxOffset + 1; i < vfoMaxSideOffset; i++) {
+            fftValues.emplace_back(fftLine[i]);
             avg += fftLine[i];
             avgCount++;
         }
 
-        avg /= (double)(avgCount);
+        std::sort(fftValues.begin(), fftValues.end());      // sorting binds by volume
+        auto lowerPercentile = fftValues.size() / 4;
+        for(int i=0; i<lowerPercentile; i++) {              // taking 25% most silent bins
+            qavg += fftValues[i];
+        }
+        qavg /= (double)lowerPercentile;                  // "true" noise floor
+
+        avg /= (double)avgCount;                          // "base noise floor"
+
+        auto avgdiff = avg-qavg;
 
         // Calculate max
         for (int i = vfoMinOffset; i <= vfoMaxOffset; i++) {
             if (fftLine[i] > max) { max = fftLine[i]; }
         }
 
-        strength = max;
-        snr = max - avg;
+        strength = max - avgdiff;
+        snr = max - avg - avgdiff;
 
         return true;
+    }
+
+    const int WaterFall::rawFFTIndex(double frequency) const {
+        return std::clamp<int>(((frequency / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
     }
 
     void WaterFall::setFastFFT(bool fastFFT) {
