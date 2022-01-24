@@ -84,6 +84,7 @@ public:
         lmmsenr.block.init(NULL);
         nb.block.init(NULL, -100.0f);
 
+        ifChain.add(&lmmsenr);
         ifChain.add(&notch);
         ifChain.add(&ifavg);
         ifChain.add(&squelch);
@@ -123,7 +124,6 @@ public:
 
         afChain.add(&resamp);
         afChain.add(&deemp);
-        afChain.add(&lmmsenr);
 
         // Initialize the sink
         srChangeHandler.ctx = this;
@@ -273,9 +273,11 @@ private:
         if (ImGui::Checkbox(("AF NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
             _this->setLogMMSEEnabled(_this->logmmseNrEnabled);
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("This is LOGMMSE algorithm which is run over the audio frequency.");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 8, 192, "%d KHz")) {
+        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 1, 24, "%d KHz")) {
             _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
         }
 
@@ -559,7 +561,7 @@ private:
     void setLogMMSEEnabled(bool enable) {
         logmmseNrEnabled = enable;
         if (!selectedDemod) { return; }
-        afChain.setState(&lmmsenr, logmmseNrEnabled);
+        ifChain.setState(&lmmsenr, logmmseNrEnabled);
 
         // Save config
         config.acquire();
@@ -730,6 +732,7 @@ private:
     // IF chain
     dsp::Chain<dsp::complex_t> ifChain;
     dsp::ChainLink<dsp::FMIFNoiseReduction, dsp::complex_t> fmnr;
+    dsp::ChainLink<dsp::LogMMSENoiseReduction, dsp::complex_t> lmmsenr;
     dsp::ChainLink<dsp::NotchFilter, dsp::complex_t> notch;
     dsp::ChainLink<dsp::IFAVGFilter, dsp::complex_t> ifavg;
     dsp::ChainLink<dsp::Squelch, dsp::complex_t> squelch;
@@ -741,7 +744,6 @@ private:
     dsp::filter_window::BlackmanWindow win;
     dsp::ChainLink<dsp::PolyphaseResampler<dsp::stereo_t>, dsp::stereo_t> resamp;
     dsp::ChainLink<dsp::BFMDeemp, dsp::stereo_t> deemp;
-    dsp::ChainLink<dsp::LogMMSENoiseReduction, dsp::stereo_t> lmmsenr;
 
     SinkManager::Stream stream;
 

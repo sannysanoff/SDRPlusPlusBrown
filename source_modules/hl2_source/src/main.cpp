@@ -231,12 +231,15 @@ private:
             if (_this->selectedIP == discoveredToIp(discovered[i])) {
                 _this->device = std::make_shared<HL2Device>(discovered[i], [=](double i, double q) {
                     static auto lastCtm = currentTimeMillis();
-                    static auto totalCount = 0;
+                    static auto totalCount = 0LL;
                     totalCount++;
                     if (totalCount % 10000 == 0) {
                         if (lastCtm < currentTimeMillis() - 1000) {
-                            lastCtm = currentTimeMillis();
-                            std::cout << "HL2: Received samples: " << totalCount << std::endl;
+                            static auto lastLastTotalCount = 0LL;
+                            auto nowCtm = currentTimeMillis();
+//                            std::cout << "HL2: Speed: IQ pairs/sec: ~ " << (totalCount - lastLastTotalCount) * 1000 / (nowCtm - lastCtm) << std::endl;
+                            lastLastTotalCount = totalCount;
+                            lastCtm = nowCtm;
                         }
                     }
                     _this->incomingSample(i, q);

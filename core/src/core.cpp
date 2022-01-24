@@ -112,10 +112,10 @@ void test1() {
     auto len = ftell(f);
     WavWriter::WavHeader_t hdr;
     fseek(f, 0, SEEK_SET);
-    fread(&hdr, 1, sizeof(WavWriter::WavHeader_t), f);
+    auto qq1 = fread(&hdr, 1, sizeof(WavWriter::WavHeader_t), f);
     auto datalen = len - sizeof(WavWriter::WavHeader_t);
     int16_t *buf = (int16_t *)volk_malloc(datalen, volk_get_alignment());
-    fread(buf, 1, datalen, f);
+    qq1 = fread(buf, 1, datalen, f);
     fclose(f);
     dsp::stereo_t *floatd = (dsp::stereo_t *)volk_malloc(datalen * 2, volk_get_alignment());
     auto nitems = datalen / 4;
@@ -124,8 +124,8 @@ void test1() {
     for(int i=0; i<nitems; i++) {
         (*inputArray)[i] = floatd[i].l;
     }
-    dsp::logmmseSavedParams params;
-    dsp::LogMMSENoiseReduction::logmmse_sample(inputArray, 48000, 0.15, &params, 6);
+    dsp::LogMMSE::SavedParams params;
+    dsp::LogMMSE::logmmse_sample(inputArray, 48000, 0.15, &params, 6);
     std::string wrfile = "/db/recordings/"+fname+".cout.wav";
     f = fopen(wrfile.c_str(),"wb");
     fwrite(&hdr, 1, sizeof(WavWriter::WavHeader_t), f);
@@ -133,7 +133,7 @@ void test1() {
     for(int scan=0; scan<inputArray->size()-step;) {
         auto part = std::make_shared<std::vector<float>>();
         std::copy(inputArray->data() + scan, inputArray->data() + scan + step, std::back_inserter(*part));
-        auto retv = dsp::LogMMSENoiseReduction::logmmse_all(part, 48000, 0.15, &params);
+        auto retv = dsp::LogMMSE::logmmse_all(part, 48000, 0.15, &params);
         std::cout << "test: in: " << part->size() << " out: " << retv->size() << std::endl;
         int16_t *outb = (int16_t *) volk_malloc(retv->size() * sizeof(int16_t), volk_get_alignment());
         volk_32f_s32f_convert_16i(outb, retv->data(), 32767, retv->size());

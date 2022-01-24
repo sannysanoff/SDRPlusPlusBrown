@@ -513,8 +513,8 @@ namespace ImGui {
 
         // Calculate FFT index data
         double vfoMinSizeFreq = _vfo->centerOffset - _vfo->bandwidth;
-        double vfoMinFreq = _vfo->centerOffset - (_vfo->bandwidth / 2.0);
-        double vfoMaxFreq = _vfo->centerOffset + (_vfo->bandwidth / 2.0);
+        double vfoMinFreq = _vfo->centerOffset - (_vfo->bandwidth / 2.0) * 0.85;     // many radios have signals filtered out close to the ends, be fair when comparing.
+        double vfoMaxFreq = _vfo->centerOffset + (_vfo->bandwidth / 2.0) * 0.85;
         double vfoMaxSizeFreq = _vfo->centerOffset + _vfo->bandwidth;
         int vfoMinSideOffset = std::clamp<int>(((vfoMinSizeFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
         int vfoMinOffset = std::clamp<int>(((vfoMinFreq / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);

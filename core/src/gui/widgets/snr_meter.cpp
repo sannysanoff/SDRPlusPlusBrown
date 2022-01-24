@@ -13,6 +13,8 @@ namespace ImGui {
 
     static ImVec2 postSnrLocation;
 
+    static float ratio;
+
 
     void SNRMeter(float val, const ImVec2& size_arg = ImVec2(0, 0)) {
         ImGuiWindow* window = GetCurrentWindow();
@@ -34,7 +36,7 @@ namespace ImGui {
         }
 
         val = std::clamp<float>(val, 0, 100);
-        float ratio = size.x / 90;
+        ratio = size.x / 90;
         float it = size.x / 9;
         char buf[32];
 
@@ -88,6 +90,36 @@ namespace ImGui {
         return dest;
     }
 
+    float SNRMeterGetMaxInWindow(int nframes) {
+        if (ratio == 0)
+            return -1;
+        if (nframes > lastsnr.size()) {
+            return -1;
+        }
+        float mx = 0;
+        for(int i=0; i<nframes; i++) {
+            float v = lastsnr[i] / ratio;
+            if (v > mx)
+                mx = v;
+        }
+        return mx;
+    }
+
+    float SNRMeterGetMinInWindow(int nframes) {
+        if (ratio == 0)
+            return -1;
+        if (nframes > lastsnr.size()) {
+            return -1;
+        }
+        float mx = 0;
+        for(int i=0; i<nframes; i++) {
+            float v = lastsnr[i] / ratio;
+            if (v < mx)
+                mx = v;
+        }
+        return mx;
+    }
+
     void SNRMeterAverages() {
 
         static std::vector<float> r;
@@ -104,6 +136,5 @@ namespace ImGui {
         for(int q=1; q<r.size(); q++) {
             window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q-1], q-1), postSnrLocation + ImVec2(0 + r[q], q), text);
         }
-
     }
 }
