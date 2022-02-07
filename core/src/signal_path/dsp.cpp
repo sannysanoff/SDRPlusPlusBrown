@@ -15,8 +15,9 @@ void SignalPath::init(uint64_t sampleRate, int fftRate, int fftSize, dsp::stream
 
     inputBuffer.init(input);
     corrector.init(&inputBuffer.out, 50.0f / sampleRate);
-    corrector.setEffectiveSampleRate(sampleRate);
-    split.init(&inputBuffer.out);
+    noiseReduction.init(&inputBuffer.out);
+    noiseReduction.setEffectiveSampleRate(sampleRate);
+    split.init(&noiseReduction.out);
 
     // Allocate the fft taps
     fftTaps = new float[fftSize];
@@ -56,7 +57,7 @@ void SignalPath::setSampleRate(double sampleRate) {
 
     // Update correction rate on the IQ corrector
     corrector.setCorrectionRate(50.0f / sampleRate);
-    corrector.setEffectiveSampleRate(sampleRate);
+    noiseReduction.setEffectiveSampleRate(sampleRate);
 
     // Start the splitter
     split.start();
@@ -73,6 +74,7 @@ void SignalPath::start() {
     }
     inputBuffer.start();
     if (iqCorrection) { corrector.start(); }
+    noiseReduction.start();
     split.start();
     reshape.start();
     fftHandlerSink.start();
@@ -84,6 +86,7 @@ void SignalPath::stop() {
         decimator->stop();
     }
     inputBuffer.stop();
+    noiseReduction.stop();
     if (iqCorrection) { corrector.stop(); }
     split.stop();
     reshape.stop();
@@ -159,7 +162,7 @@ void SignalPath::setBuffering(bool enabled) {
 
 void SignalPath::setDecimation(int dec) {
     decimation = dec;
-    if (running) { split.stop(); }
+    if (running) { noiseReduction.stop(); }
 
     // Stop existing decimators
     if (!decimators.empty()) {
@@ -175,13 +178,13 @@ void SignalPath::setDecimation(int dec) {
     // If no decimation, reconnect
     if (!dec) {
         if (iqCorrection) {
-            split.setInput(&corrector.out);
+            noiseReduction.setInput(&corrector.out);
         }
         else {
-            split.setInput(&inputBuffer.out);
+            noiseReduction.setInput(&inputBuffer.out);
         }
 
-        if (running) { split.start(); }
+        if (running) { noiseReduction.start(); }
         core::setInputSampleRate(sourceSampleRate);
         return;
     }
@@ -202,12 +205,21 @@ void SignalPath::setDecimation(int dec) {
         if (running) { decimator->start(); }
         decimators.push_back(decimator);
     }
-    split.setInput(&decimators[decimators.size() - 1]->out);
-    if (running) { split.start(); }
+    noiseReduction.setInput(&decimators[decimators.size() - 1]->out);
+    if (running) { noiseReduction.start(); }
 
     // Update the DSP sample rate
     core::setInputSampleRate(sourceSampleRate);
 }
+
+void SignalPath::setWidebandNR(bool enabled) {
+    noiseReduction.bypass = !enabled;
+}
+
+void SignalPath::setWidebandNRHold(bool hold) {
+    noiseReduction.setHold(hold);
+}
+
 
 void SignalPath::setIQCorrection(bool enabled) {
     if (iqCorrection == enabled) { return; }
@@ -217,7 +229,7 @@ void SignalPath::setIQCorrection(bool enabled) {
             decimators[0]->setInput(&corrector.out);
         }
         else {
-            split.setInput(&corrector.out);
+            noiseReduction.setInput(&corrector.out);
         }
         if (running) { corrector.start(); }
     }
@@ -227,7 +239,7 @@ void SignalPath::setIQCorrection(bool enabled) {
             decimators[0]->setInput(&inputBuffer.out);
         }
         else {
-            split.setInput(&inputBuffer.out);
+            noiseReduction.setInput(&inputBuffer.out);
         }
     }
 

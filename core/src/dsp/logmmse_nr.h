@@ -41,9 +41,7 @@ namespace dsp {
             _in = in;
             generic_block<LogMMSENoiseReduction>::registerInput(_in);
 
-            params.Xk_prev.reset();
-            params.noise_mu2.reset();
-            params.x_old.reset();
+            params.reset();
             generic_block<LogMMSENoiseReduction>::tempStart();
         }
 
@@ -78,14 +76,14 @@ namespace dsp {
         Arg<LowPassFilter> lpf2;
         Arg<LowPassFilter> lpf3;
 
-        int freq = 24000;
+        int freq = 10000;
 
         std::mutex freqMutex;
 
         void setIF(int freq) {
             freqMutex.lock();
             this->freq = freq;
-            params.Xk_prev.reset();
+            params.reset();
             freqMutex.unlock();
         }
 
@@ -100,6 +98,7 @@ namespace dsp {
             if (count < 0) { return -1; }
             static int switchTrigger = 0;
             static int overlapTrigger = -100000;
+            bool doSwitch = false;
             for (int i = 0; i < count; i++) {
                 worker1c->emplace_back(_in->readBuf[i]);
                 switchTrigger++;
@@ -126,24 +125,28 @@ namespace dsp {
             if (!params.Xk_prev) {
                 LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &params, noiseFrames);
                 paramsUnder = params;
+//                params.hold = true;
                 printf("logmsse: sampled\n");
                 overlapTrigger = -1000000;
                 switchTrigger = 0;
             }
-            if (switchTrigger > switchInterval) {
+            if (switchTrigger > switchInterval && doSwitch) {
                 LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &paramsUnder, noiseFrames);
+//                params.hold = true;
                 overlapTrigger = 0;
                 switchTrigger = 0;
                 printf("sample under\n");
             }
-            if (overlapTrigger > overlapInterval) {
+            if (overlapTrigger > overlapInterval && doSwitch) {
                 params = paramsUnder;
                 switchTrigger = 0;
                 overlapTrigger = -1000000;
                 printf("activating under\n");
             }
             auto rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &params);
-            auto rv2 = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &paramsUnder);
+            if (doSwitch) {
+                rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &paramsUnder);
+            }
             freqMutex.unlock();
             int limit = rv->size();
             auto dta = rv->data();

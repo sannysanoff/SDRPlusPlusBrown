@@ -105,6 +105,7 @@ static void maximized_callback(GLFWwindow* window, int n) {
 
 #include "dsp/logmmse_nr.h"
 void test1() {
+    /*
     std::string fname = "sample_in.wav";
     std::string rdfile = "/db/recordings/"+fname;
     FILE *f = fopen(rdfile.c_str(),"rb");
@@ -146,6 +147,7 @@ void test1() {
         scan += retv->size();
     }
     fclose(f);
+     */
 }
 
 
@@ -293,6 +295,7 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["transmitter"] = "";
     defConfig["decimationPower"] = 0;
     defConfig["iqCorrection"] = false;
+    defConfig["widebandNR"] = false;
 
     defConfig["streams"]["Radio"]["muted"] = false;
     defConfig["streams"]["Radio"]["sink"] = "Audio";

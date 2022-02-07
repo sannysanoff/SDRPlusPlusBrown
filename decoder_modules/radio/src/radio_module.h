@@ -271,6 +271,7 @@ private:
         }
 
         if (ImGui::Checkbox(("AF NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
+            _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
             _this->setLogMMSEEnabled(_this->logmmseNrEnabled);
         }
         if (ImGui::IsItemHovered())
@@ -764,7 +765,7 @@ private:
 
     bool squelchEnabled = false;
     float squelchLevel;
-    int logmmseFreq = 24;
+    int logmmseFreq = 10;
 
     int deempMode = DEEMP_MODE_NONE;
     int deempId = 0;

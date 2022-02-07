@@ -13,6 +13,8 @@ namespace sourecmenu {
     double effectiveOffset = 0.0;
     int decimationPower = 0;
     bool iqCorrection = false;
+    bool widebandNR = false;
+    bool holdWidebandNRProfile = false;
 
     EventHandler<std::string> sourceRegisteredHandler;
     EventHandler<std::string> sourceUnregisterHandler;
@@ -138,7 +140,9 @@ namespace sourecmenu {
         offsetMode = core::configManager.conf["offsetMode"];
         decimationPower = core::configManager.conf["decimationPower"];
         iqCorrection = core::configManager.conf["iqCorrection"];
+        widebandNR = core::configManager.conf["widebandNR"];
         sigpath::signalPath.setIQCorrection(iqCorrection);
+        sigpath::signalPath.setWidebandNR(widebandNR);
         updateOffset();
 
         refreshSources();
@@ -179,6 +183,18 @@ namespace sourecmenu {
             core::configManager.conf["iqCorrection"] = iqCorrection;
             core::configManager.release(true);
         }
+
+        if (ImGui::Checkbox("Wideband NR##_sdrpp_wb_nr", &widebandNR)) {
+            sigpath::signalPath.setWidebandNR(widebandNR);
+            core::configManager.acquire();
+            core::configManager.conf["widebandNR"] = widebandNR;
+            core::configManager.release(true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Hold Profile##_sdrpp_wb_nr_hold", &holdWidebandNRProfile)) {
+            sigpath::signalPath.setWidebandNRHold(holdWidebandNRProfile);
+        }
+
 
         ImGui::LeftLabel("Offset mode");
         ImGui::SetNextItemWidth(itemWidth - ImGui::GetCursorPosX());

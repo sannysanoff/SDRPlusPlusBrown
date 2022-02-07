@@ -5,6 +5,7 @@
 #include <dsp/sink.h>
 #include <dsp/decimation.h>
 #include <dsp/correction.h>
+#include <dsp/wb_nr.h>
 
 enum {
     FFT_WINDOW_RECTANGULAR,
@@ -32,6 +33,8 @@ public:
     void setBuffering(bool enabled);
     void setDecimation(int dec);
     void setIQCorrection(bool enabled);
+    void setWidebandNR(bool enabled);
+    void setWidebandNRHold(bool hold);
     void setFFTWindow(int win);
 
     dsp::SampleFrameBuffer<dsp::complex_t> inputBuffer;
@@ -50,6 +53,7 @@ private:
     };
 
     dsp::Splitter<dsp::complex_t> split;
+    dsp::WidebandNoiseReduction noiseReduction;
     dsp::IQCorrector corrector;
 
     // FFT

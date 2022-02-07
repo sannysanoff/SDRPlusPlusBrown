@@ -266,6 +266,31 @@ namespace dsp {
             return retval;
         }
 
+        // only even window sizes
+        inline FloatArray npmavg(const FloatArray &v, int windowSize) {
+            auto retval = std::make_shared<std::vector<float>>();
+            float sum = 0;
+            float count = 0;
+            auto ws2= windowSize/2;
+            for (int ix=0; ix<v->size()+ws2; ix++) {
+                if (ix < v->size()) {
+                    sum += v->at(ix);
+                    count++;
+                }
+                if (ix > windowSize) {
+                    count--;
+                    sum-=v->at(ix-count);
+                }
+                if (ix >= ws2) {
+                    retval->emplace_back(sum / count);
+                }
+            }
+            if (retval->size() != v->size()) {
+                abort();
+            }
+            return retval;
+        }
+
         inline FloatArray npreal(const ComplexArray &v) {
             auto retval = std::make_shared<std::vector<float>>();
             for (auto d: *v) {
@@ -327,7 +352,7 @@ namespace dsp {
         inline ComplexArray npfftfft(const ComplexArray &in, int buckets, int axis) {
             auto in0 = resize(in, buckets);
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            auto out0 = resize(in, buckets);
+            auto out0 = npzeros_c(buckets);
             auto p = fftwf_plan_dft_1d(buckets, (fftwf_complex *) in0->data(), (fftwf_complex *) out0->data(), FFTW_FORWARD, FFTW_ESTIMATE);
             fftwf_execute(p);
             fftwf_destroy_plan(p);
@@ -337,7 +362,7 @@ namespace dsp {
         inline ComplexArray npfftifft(const ComplexArray &in, int buckets, int axis) {
             auto in0 = resize(in, buckets);
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            auto out0 = resize(in, buckets);
+            auto out0 = npzeros_c(buckets);
             auto p = fftwf_plan_dft_1d(buckets, (fftwf_complex *) in0->data(), (fftwf_complex *) out0->data(), FFTW_BACKWARD, FFTW_ESTIMATE);
             fftwf_execute(p);
             fftwf_destroy_plan(p);
