@@ -84,6 +84,8 @@ namespace dsp {
                 int len2;
                 FloatArray win;
                 int nFFT;
+                Arg<fftwPlan> forwardPlan;
+                Arg<fftwPlan> reversePlan;
                 float aa = 0.98;
                 float mu = 0.98;
                 float ksi_min;
@@ -92,6 +94,7 @@ namespace dsp {
                 int dumpEnabler = 0;
                 long long generation = 0;
                 float mindb = 0;
+                float maxdb = 0;
                 bool stable = false;
 
                 void reset() {
@@ -142,30 +145,34 @@ namespace dsp {
                                 auto tnm = std::make_shared<std::vector<float>>(lower);
                                 auto tnoise_mu2 = npmavg(tnm, 6);
                                 auto tmindb = *std::min_element(tnoise_mu2->begin(), tnoise_mu2->end());
-                                if (tmindb < mindb) {
+                                auto tmaxdb = *std::max_element(tnoise_mu2->begin(), tnoise_mu2->end());
+                                if (tmindb + tmaxdb < mindb + maxdb) {
                                     std::cout << "Updated noise floor..." << mindb << std::endl;
                                     mindb = tmindb;
+                                    maxdb = tmaxdb;
                                     noise_mu2 = tnm;
                                     stable = true;
                                 }
                             }
 
                             if (!stable) {
-                                std::vector<std::vector<float>> hist(nFFT);
-                                for (auto q = 0; q < nframes; q++) {
-                                    auto offs = q * nFFT;
-                                    for (auto w = 0; w < nFFT; w++) {
-                                        hist[w].emplace_back(noise_history->at(offs + w));
-                                    }
-                                }
+//                                std::vector<std::vector<float>> hist(nFFT);
+//                                for (auto q = 0; q < nframes; q++) {
+//                                    auto offs = q * nFFT;
+//                                    for (auto w = 0; w < nFFT; w++) {
+//                                        hist[w].emplace_back(noise_history->at(offs + w));
+//                                    }
+//                                }
 
                                 // scale the noise figure
                                 if (generation == 0) {
-                                    noise_mu2 = npmavg(noise_mu2, 6);
-                                    mindb = *std::min_element(noise_mu2->begin(), noise_mu2->end());
+                                    auto tnoise_mu2 = npmavg(noise_mu2, 6);
+                                    mindb = *std::min_element(tnoise_mu2->begin(), tnoise_mu2->end());
+                                    maxdb = *std::max_element(tnoise_mu2->begin(), tnoise_mu2->end());
                                     std::cout << "Inited noise floor..." << mindb << std::endl;
                                 }
 
+                                /*
                                 int percent = 5;
                                 for (auto w = 0; w < nFFT; w++) {
                                     std::sort(hist[w].begin(), hist[w].end());
@@ -185,14 +192,15 @@ namespace dsp {
                                 for (auto &v: *noise_mu2) {
                                     v *= rescale;
                                 }
+                                 */
                             }
                             if (nframes > noise_history_len() - 10) {
                                 dumpEnabler++;
                             }
                             if (dump) {
-                                for (int ix = 0; ix < noise_mu2->size(); ix++) {
-                                    std::cout << "RNoise\t" << (ix) << "\t" << noise_mu2->at(ix) << std::endl;
-                                }
+//                                for (int ix = 0; ix < noise_mu2->size(); ix++) {
+//                                    std::cout << "RNoise\t" << (ix) << "\t" << noise_mu2->at(ix) << std::endl;
+//                                }
                             }
                             generation++;
                         } else {
@@ -333,8 +341,8 @@ namespace dsp {
                 params->len1 = floor(params->Slen * params->PERC / 100);
                 params->noise_history = npzeros(0);
                 params->len2 = params->Slen - params->len1;         // len1+len2
-                auto audioFrequency = Srate <= 12000;
-                if (audioFrequency && false) {
+                auto audioFrequency = Srate <= 24000;
+                if (audioFrequency) {
                     // probably audio frequency
                     params->win = nphanning(params->Slen);
                     params->win = div(mul(params->win, params->len2), npsum(params->win));
@@ -346,12 +354,14 @@ namespace dsp {
                     }
                 }
                 params->nFFT = 2 * params->Slen;
+                params->forwardPlan = allocateFFTWPlan(false, params->nFFT);
+                params->reversePlan = allocateFFTWPlan(true, params->nFFT);
                 std::cout << "Sampling piece... srate=" << Srate << " Slen=" << params->Slen << " nFFT=" << params->nFFT << std::endl;
                 auto Nframes = floor(x->size() / params->len2) - floor(params->Slen / params->len2);
                 auto xfinal = npzeros(Nframes * params->len2);
                 auto noise_mean = npzeros(params->nFFT);
                 for (int j = 0; j < params->Slen * noise_frames; j += params->Slen) {
-                    auto noise = npabsolute(npfftfft((muleach(params->win, nparange(x, j, j + params->Slen))), params->nFFT, 0));
+                    auto noise = npabsolute(npfftfft((muleach(params->win, nparange(x, j, j + params->Slen))), params->forwardPlan));
                     params->add_noise_history(noise);
                     noise_mean = addeach(noise_mean, noise);
                 }
@@ -397,7 +407,7 @@ namespace dsp {
                 int consumed = 0;
                 params->Xn_prev->insert(params->Xn_prev->end(), x->begin(), x->end());
                 for (int j = 0; j < params->Xn_prev->size() - params->Slen; j += params->Slen) {
-                    auto noise = npabsolute(npfftfft((muleach(params->win, nparange(params->Xn_prev, j, j + params->Slen))), params->nFFT, 0));
+                    auto noise = npabsolute(npfftfft((muleach(params->win, nparange(params->Xn_prev, j, j + params->Slen))), params->forwardPlan));
                     params->add_noise_history(noise);
                     consumed += params->Slen;
                 }
@@ -407,7 +417,7 @@ namespace dsp {
                 auto xfinal = npzeros_c(Nframes * params->len2);
                 for (int k = 0; k < Nframes * params->len2; k += params->len2) {
                     auto insign = muleach(params->win, nparange(x, k, k + params->Slen));
-                    auto spec = npfftfft(insign, params->nFFT, 0);
+                    auto spec = npfftfft(insign, params->forwardPlan);
                     auto sig = npabsolute(spec);
                     for (auto z = 1; z < sig->size(); z++) {
                         if ((*sig)[z] == 0) {
@@ -439,7 +449,7 @@ namespace dsp {
                     sig = muleach(sig, hw);
                     params->Xk_prev = muleach(sig, sig);
                     auto hwmulspec = muleach(hw, spec);
-                    auto xi_w0 = npfftifft(hwmulspec, params->nFFT, 0);
+                    auto xi_w0 = npfftfft(hwmulspec, params->reversePlan);
                     auto xi_w = xi_w0;
                     auto final = addeach(params->x_old, nparange(xi_w, 0, params->len1));
                     nparangeset(xfinal, k, final);

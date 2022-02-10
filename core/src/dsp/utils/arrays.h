@@ -349,19 +349,44 @@ namespace dsp {
             return retval;
         }
 
-        inline ComplexArray npfftfft(const ComplexArray &in, int buckets, int axis) {
-            auto in0 = resize(in, buckets);
-            auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            auto out0 = npzeros_c(buckets);
-            auto p = fftwf_plan_dft_1d(buckets, (fftwf_complex *) in0->data(), (fftwf_complex *) out0->data(), FFTW_FORWARD, FFTW_ESTIMATE);
-            fftwf_execute(p);
-            fftwf_destroy_plan(p);
-            return out0;
+        struct fftwPlan {
+            int nbuckets;
+            bool reverse;
+            fftwf_plan_s *p;
+            Arg<std::vector<dsp::complex_t>> input;
+            Arg<std::vector<dsp::complex_t>> output;
+            virtual ~fftwPlan() {
+                fftwf_destroy_plan(p);
+            }
+        };
+
+        inline Arg<fftwPlan> allocateFFTWPlan(bool backward, int buckets) {
+            auto plan = std::make_shared<fftwPlan>();
+            plan->nbuckets = buckets;
+            plan->reverse = backward;
+            plan->input = std::make_shared<std::vector<dsp::complex_t>>(buckets);
+            plan->output = std::make_shared<std::vector<dsp::complex_t>>(buckets);
+            auto p = fftwf_plan_dft_1d(buckets, (fftwf_complex *) plan->input->data(), (fftwf_complex *) plan->output->data(), backward ? FFTW_BACKWARD : FFTW_FORWARD, FFTW_ESTIMATE);
+            plan->p = p;
+            return plan;
         }
 
-        inline ComplexArray npfftifft(const ComplexArray &in, int buckets, int axis) {
+        inline ComplexArray npfftfft(const ComplexArray &in, const Arg<fftwPlan> &plan) {
+            auto in0 = resize(in, plan->nbuckets);
+            std::copy(in0->begin(), in0->end(), plan->input->begin());
+            auto out0 = npzeros_c(plan->nbuckets);
+            fftwf_execute(plan->p);
+            std::copy(plan->output->begin(), plan->output->end(), out0->begin());
+            if (plan->reverse) {
+                return div(out0, plan->nbuckets);
+            } else {
+                return out0;
+            }
+        }
+
+/*
+        inline ComplexArray npfftifft(const ComplexArray &in, int buckets) {
             auto in0 = resize(in, buckets);
-            auto retval = std::make_shared<std::vector<dsp::complex_t>>();
             auto out0 = npzeros_c(buckets);
             auto p = fftwf_plan_dft_1d(buckets, (fftwf_complex *) in0->data(), (fftwf_complex *) out0->data(), FFTW_BACKWARD, FFTW_ESTIMATE);
             fftwf_execute(p);
@@ -369,6 +394,7 @@ namespace dsp {
             return div(out0, buckets);
         }
 
+*/
         inline std::string ftos(float x) {
             char buf[100];
             sprintf(buf, "%1.5f", x);
