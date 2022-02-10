@@ -1,3 +1,4 @@
+#include <server.h>
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -72,6 +73,9 @@ namespace core {
     GLFWwindow* window;
 
     void setInputSampleRate(double samplerate) {
+        // Forward this to the server
+        if (options::opts.serverMode) { server::setInputSampleRate(samplerate); return; }
+        
         sigpath::signalPath.sourceSampleRate = samplerate;
         double effectiveSr = samplerate / ((double)(1 << sigpath::signalPath.decimation));
         // NOTE: Zoom controls won't work
@@ -358,7 +362,7 @@ int sdrpp_main(int argc, char* argv[]) {
 
     core::configManager.release(true);
 
-    if (options::opts.serverMode) { return server_main(); }
+    if (options::opts.serverMode) { return server::main(); }
 
     core::configManager.acquire();
     int winWidth = core::configManager.conf["windowSize"]["w"];
