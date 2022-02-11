@@ -2809,7 +2809,7 @@ void ImFontAtlasBuildFinish(ImFontAtlas* atlas)
 // Retrieve list of range (2 int per range, values are inclusive)
 const ImWchar*   ImFontAtlas::GetGlyphRangesDefault()
 {
-    static const ImWchar ranges[] =
+    static ImWchar ranges[] =
     {
         0x0020, 0x00FF, // Basic Latin + Latin Supplement
         0,
