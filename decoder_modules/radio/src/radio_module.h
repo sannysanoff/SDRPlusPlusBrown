@@ -105,6 +105,9 @@ public:
             double bw = demod->getDefaultBandwidth();
             if (!config.conf[name].contains(demod->getName())) {
                 config.conf[name][demod->getName()]["bandwidth"] = bw;
+                if (auto hasAgc = dynamic_cast<demod::HasAGC*>(demod); hasAgc) {
+                    config.conf[name][demod->getName()]["agcFallRate"] = hasAgc->getAGC().getFallRate();
+                }
                 config.conf[name][demod->getName()]["snapInterval"] = demod->getDefaultSnapInterval();
                 config.conf[name][demod->getName()]["squelchLevel"] = MIN_SQUELCH;
                 config.conf[name][demod->getName()]["squelchEnabled"] = false;
@@ -251,6 +254,21 @@ private:
                 _this->bandwidth = std::clamp<float>(_this->bandwidth, _this->minBandwidth, _this->maxBandwidth);
                 _this->setBandwidth(_this->bandwidth);
             }
+        }
+
+        if (auto hasAgc = dynamic_cast<demod::HasAGC*>(_this->selectedDemod); hasAgc) {
+            ImGui::LeftLabel("AGC Speed");
+            if (_this->agcFallRate  < 0) {
+                _this->agcFallRate = hasAgc->getAGC().getFallRate();
+                config.acquire();
+                config.conf[_this->name][_this->selectedDemod->getName()]["agcFallRate"] = _this->agcFallRate;
+                config.release(true);
+            }
+            if (ImGui::SliderFloat(("##_radio_agc_fallrate_" + _this->name).c_str(), &_this->agcFallRate, 0, 30, "%.1f")) {
+                hasAgc->getAGC().setFallRate(_this->agcFallRate);
+            }
+        } else {
+            _this->agcFallRate = -1;
         }
 
         // VFO snap interval
@@ -404,6 +422,10 @@ private:
         if (config.conf[name][selectedDemod->getName()].contains("bandwidth")) {
             bandwidth = config.conf[name][selectedDemod->getName()]["bandwidth"];
             bandwidth = std::clamp<double>(bandwidth, minBandwidth, maxBandwidth);
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("agcFallRate")) {
+            agcFallRate = config.conf[name][selectedDemod->getName()]["agcFallRate"];
+            agcFallRate = std::clamp<double>(bandwidth, 0, 30);
         }
         if (config.conf[name][selectedDemod->getName()].contains("snapInterval")) {
             snapInterval = config.conf[name][selectedDemod->getName()]["snapInterval"];
@@ -772,6 +794,7 @@ private:
     float minBandwidth;
     float maxBandwidth;
     float bandwidth;
+    float agcFallRate = -1;
     bool bandwidthLocked;
     int snapInterval;
     int selectedDemodID = 1;

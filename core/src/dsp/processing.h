@@ -117,6 +117,10 @@ namespace dsp {
             _CorrectedFallRate = _fallRate / _sampleRate;
         }
 
+        float getFallRate() {
+            return _fallRate;
+        }
+
         void setFallRate(float fallRate) {
             assert(generic_block<AGC>::_block_init);
             std::lock_guard<std::mutex> lck(generic_block<AGC>::ctrlMtx);

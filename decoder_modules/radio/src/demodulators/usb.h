@@ -4,7 +4,7 @@
 #include <dsp/filter.h>
 
 namespace demod {
-    class USB : public Demodulator {
+    class USB : public Demodulator, public HasAGC {
     public:
         USB() {}
 
@@ -71,6 +71,10 @@ namespace demod {
         bool getFMIFNRAllowed() { return false; }
         bool getNBAllowed() { return true; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &m2s.out; }
+
+        dsp::AGC &getAGC() override {
+            return agc;
+        }
 
     private:
         dsp::SSBDemod demod;

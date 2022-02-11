@@ -21,6 +21,12 @@ enum IFNRPreset {
 };
 
 namespace demod {
+
+    class HasAGC {
+    public:
+        virtual dsp::AGC &getAGC() = 0;
+    };
+
     class Demodulator {
     public:
         virtual ~Demodulator() {}

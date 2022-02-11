@@ -4,7 +4,7 @@
 #include <dsp/filter.h>
 
 namespace demod {
-    class CW : public Demodulator {
+    class CW : public Demodulator, public HasAGC {
     public:
         CW() {}
 
@@ -91,6 +91,11 @@ namespace demod {
         bool getFMIFNRAllowed() { return false; }
         bool getNBAllowed() { return false; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &m2s.out; }
+
+        dsp::AGC &getAGC() override {
+            return agc;
+        }
+
 
     private:
         ConfigManager* _config = NULL;
