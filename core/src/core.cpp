@@ -376,7 +376,7 @@ int sdrpp_main(int argc, char* argv[]) {
     // Assert that the resource directory is absolute and check existance
     resDir = std::filesystem::absolute(resDir).string();
     if (!std::filesystem::is_directory(resDir)) {
-        spdlog::error("Resource directory doesn't exist! Please make sure that you've configured it correctly in config.json (check readme for details)");
+        spdlog::error("Resource directory ("+resDir+") doesn't exist! Please make sure that you've configured it correctly in config.json (check readme for details)");
         return 1;
     }
 

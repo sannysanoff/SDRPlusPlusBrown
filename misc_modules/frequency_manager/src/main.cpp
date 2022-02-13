@@ -13,6 +13,8 @@
 #include <gui/file_dialogs.h>
 #include <utils/freq_formatting.h>
 #include <gui/dialogs/dialog_box.h>
+#include <utils/wstr.h>
+
 
 SDRPP_MOD_INFO{
     /* Name:            */ "frequency_manager",
@@ -754,7 +756,7 @@ private:
     pfd::save_file* exportDialog;
 
     void importBookmarks(std::string path) {
-        std::ifstream fs(path);
+        std::ifstream fs(wstr::str2wstr(path));
         json importBookmarks;
         fs >> importBookmarks;
 
@@ -787,7 +789,7 @@ private:
     }
 
     void exportBookmarks(std::string path) {
-        std::ofstream fs(path);
+        std::ofstream fs(wstr::str2wstr(path));
         exportedBookmarks >> fs;
         fs.close();
     }

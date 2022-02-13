@@ -3,6 +3,7 @@
 #include <options.h>
 #include <filesystem>
 #include <gui/file_dialogs.h>
+#include <utils/wstr.h>
 
 FolderSelect::FolderSelect(std::string defaultPath) {
     setPath(defaultPath);
@@ -21,7 +22,7 @@ bool FolderSelect::render(std::string id) {
     if (ImGui::InputText(id.c_str(), strPath, 2047)) {
         path = std::string(strPath);
         std::string expandedPath = expandString(strPath);
-        if (!std::filesystem::is_directory(expandedPath)) {
+        if (!std::filesystem::is_directory(wstr::str2wstr(expandedPath))) {
             pathValid = false;
         }
         else {
@@ -47,7 +48,7 @@ bool FolderSelect::render(std::string id) {
 void FolderSelect::setPath(std::string path, bool markChanged) {
     this->path = path;
     std::string expandedPath = expandString(path);
-    pathValid = std::filesystem::is_directory(expandedPath);
+    pathValid = std::filesystem::is_directory(wstr::str2wstr(expandedPath));
     if (markChanged) { pathChanged = true; }
     strcpy(strPath, path.c_str());
 }
@@ -71,6 +72,6 @@ void FolderSelect::worker() {
         pathChanged = true;
     }
 
-    pathValid = std::filesystem::is_directory(expandString(path));
+    pathValid = std::filesystem::is_directory(wstr::str2wstr(expandString(path)));
     dialogOpen = false;
 }

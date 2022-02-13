@@ -1,6 +1,12 @@
 #pragma once
 #include <memory>
 #include <iostream>
+
+#ifdef WIN32
+#define _USE_MATH_DEFINES
+#include <math.h>
+#endif
+
 #include <dsp/math.h>
 
 namespace dsp {

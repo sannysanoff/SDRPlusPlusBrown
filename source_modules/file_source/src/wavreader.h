@@ -14,7 +14,7 @@
 class WavReader {
 public:
     WavReader(std::string path) {
-        file = std::ifstream(path.c_str(), std::ios::binary);
+        file = std::ifstream(wstr::str2wstr(path), std::ios::binary);
         file.read((char*)&hdr, sizeof(WavHeader_t));
         valid = false;
         if (memcmp(hdr.signature, "RIFF", 4) != 0) { return; }

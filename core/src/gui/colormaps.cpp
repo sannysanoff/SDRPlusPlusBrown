@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <fstream>
 #include <json.hpp>
+#include <utils/wstr.h>
 
 using nlohmann::json;
 
@@ -10,12 +11,12 @@ namespace colormaps {
     std::map<std::string, Map> maps;
 
     void loadMap(std::string path) {
-        if (!std::filesystem::is_regular_file(path)) {
+        if (!std::filesystem::is_regular_file(wstr::str2wstr(path))) {
             spdlog::error("Could not load {0}, file doesn't exist", path);
             return;
         }
 
-        std::ifstream file(path.c_str());
+        std::ifstream file(wstr::str2wstr(path));
         json data;
         file >> data;
         file.close();

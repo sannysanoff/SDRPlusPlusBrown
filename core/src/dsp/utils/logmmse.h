@@ -370,9 +370,9 @@ namespace dsp {
                     params->noise_mu2 = npmavg(params->noise_mu2, 120);
                 }
                 params->noise_mu2 = muleach(params->noise_mu2, params->noise_mu2);
-                for (int ix = 0; ix < params->noise_mu2->size(); ix++) {
-                    std::cout << "Noise\t" << (ix) << "\t" << params->noise_mu2->at(ix) << std::endl;
-                }
+//                for (int ix = 0; ix < params->noise_mu2->size(); ix++) {
+//                    std::cout << "Noise\t" << (ix) << "\t" << params->noise_mu2->at(ix) << std::endl;
+//                }
                 params->Xk_prev = npzeros(params->len1);
                 params->Xn_prev = npzeros_c(0);
                 params->x_old = npzeros_c(params->len1);

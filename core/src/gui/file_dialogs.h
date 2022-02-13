@@ -51,6 +51,8 @@
 #include <thread>   // std::mutex, std::this_thread
 #include <chrono>   // std::chrono
 
+#include <utils/wstr.h>
+
 namespace pfd
 {
 
@@ -402,22 +404,10 @@ public:
 namespace internal
 {
 
-#if _WIN32
-static inline std::wstring str2wstr(std::string const &str)
-{
-    int len = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), nullptr, 0);
-    std::wstring ret(len, '\0');
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), (LPWSTR)ret.data(), (int)ret.size());
-    return ret;
-}
+    static auto str2wstr = wstr::str2wstr;
+    static auto wstr2str = wstr::wstr2str;
 
-static inline std::string wstr2str(std::wstring const &str)
-{
-    int len = WideCharToMultiByte(CP_UTF8, 0, str.c_str(), (int)str.size(), nullptr, 0, nullptr, nullptr);
-    std::string ret(len, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, str.c_str(), (int)str.size(), (LPSTR)ret.data(), (int)ret.size(), nullptr, nullptr);
-    return ret;
-}
+#if _WIN32
 
 static inline bool is_vista()
 {

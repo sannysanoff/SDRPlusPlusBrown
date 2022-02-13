@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
+#include <utils/wstr.h>
 
 bool ThemeManager::loadThemesFromDir(std::string path) {
     // // TEST JUST TO DUMP THE ORIGINAL THEME
@@ -48,7 +49,7 @@ bool ThemeManager::loadTheme(std::string path) {
     thm.author = "--";
 
     // Load JSON
-    std::ifstream file(path.c_str());
+    std::ifstream file(wstr::str2wstr(path));
     json data;
     file >> data;
     file.close();

@@ -2,6 +2,7 @@
 #include <dsp/block.h>
 #include <dsp/buffer.h>
 #include <fstream>
+#include <utils/wstr.h>
 
 namespace dsp {
     template <class T>
@@ -150,7 +151,7 @@ namespace dsp {
 
         void init(stream<T>* in, std::string path) {
             _in = in;
-            file = std::ofstream(path, std::ios::binary);
+            file = std::ofstream(wstr::str2wstr(path), std::ios::binary);
             generic_block<FileSink<T>>::registerInput(_in);
             generic_block<FileSink<T>>::_block_init = true;
         }

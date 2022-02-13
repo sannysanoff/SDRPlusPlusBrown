@@ -303,9 +303,9 @@ private:
             _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
         }
 
-        if (ImGui::Checkbox(("IF AVG##_radio_if_avg_" + _this->name).c_str(), &_this->ifavgEnabled)) {
-            _this->setIFAVGEnabled(_this->ifavgEnabled);
-        }
+//        if (ImGui::Checkbox(("IF AVG##_radio_if_avg_" + _this->name).c_str(), &_this->ifavgEnabled)) {
+//            _this->setIFAVGEnabled(_this->ifavgEnabled);
+//        }
 //        ImGui::SameLine();
 //        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
 //        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 8, 192, "%d KHz")) {

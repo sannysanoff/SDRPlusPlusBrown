@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <fstream>
+#include <utils/wstr.h>
 
 #define WAV_SIGNATURE       "RIFF"
 #define WAV_TYPE            "WAVE"
@@ -11,7 +12,7 @@
 class WavWriter {
 public:
     WavWriter(std::string path, uint16_t bitDepth, uint16_t channelCount, uint32_t sampleRate) {
-        file = std::ofstream(path.c_str(), std::ios::binary);
+        file = std::ofstream(wstr::str2wstr(path), std::ios::binary);
         memcpy(hdr.signature, WAV_SIGNATURE, 4);
         memcpy(hdr.fileType, WAV_TYPE, 4);
         memcpy(hdr.formatMarker, WAV_FORMAT_MARK, 4);
