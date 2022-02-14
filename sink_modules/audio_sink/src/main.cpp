@@ -9,6 +9,7 @@
 #include <RtAudio.h>
 #include <config.h>
 #include <options.h>
+#include <unordered_set>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -17,14 +18,14 @@ SDRPP_MOD_INFO{
     /* Description:     */ "Audio sink module for SDR++",
     /* Author:          */ "Ryzerth",
     /* Version:         */ 0, 1, 0,
-    /* Max instances    */ 1
+    /* Max instances    */ 2
 };
-
-ConfigManager config;
 
 class AudioSink : SinkManager::Sink {
 public:
-    AudioSink(SinkManager::Stream* stream, std::string streamName) {
+    std::shared_ptr<ConfigManager> config;
+    AudioSink(SinkManager::Stream* stream, std::string streamName, std::shared_ptr<ConfigManager> config) {
+        this->config = config;
         _stream = stream;
         _streamName = streamName;
         s2m.init(_stream->sinkOut);
@@ -33,14 +34,14 @@ public:
 
         bool created = false;
         std::string device = "";
-        config.acquire();
-        if (!config.conf.contains(_streamName)) {
+        config->acquire();
+        if (!config->conf.contains(_streamName)) {
             created = true;
-            config.conf[_streamName]["device"] = "";
-            config.conf[_streamName]["devices"] = json({});
+            config->conf[_streamName]["device"] = "";
+            config->conf[_streamName]["devices"] = json({});
         }
-        device = config.conf[_streamName]["device"];
-        config.release(created);
+        device = config->conf[_streamName]["device"];
+        config->release(created);
 
         int count = audio.getDeviceCount();
         RtAudio::DeviceInfo info;
@@ -94,13 +95,13 @@ public:
     void selectById(int id) {
         devId = id;
         bool created = false;
-        config.acquire();
-        if (!config.conf[_streamName]["devices"].contains(devList[id].name)) {
+        config->acquire();
+        if (!config->conf[_streamName]["devices"].contains(devList[id].name)) {
             created = true;
-            config.conf[_streamName]["devices"][devList[id].name] = devList[id].preferredSampleRate;
+            config->conf[_streamName]["devices"][devList[id].name] = devList[id].preferredSampleRate;
         }
-        sampleRate = config.conf[_streamName]["devices"][devList[id].name];
-        config.release(created);
+        sampleRate = config->conf[_streamName]["devices"][devList[id].name];
+        config->release(created);
 
         sampleRates = devList[id].sampleRates;
         sampleRatesTxt = "";
@@ -137,9 +138,9 @@ public:
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devId, txtDevList.c_str())) {
             selectById(devId);
-            config.acquire();
-            config.conf[_streamName]["device"] = devList[devId].name;
-            config.release(true);
+            config->acquire();
+            config->conf[_streamName]["device"] = devList[devId].name;
+            config->release(true);
         }
 
         ImGui::SetNextItemWidth(menuWidth);
@@ -150,9 +151,9 @@ public:
                 doStop();
                 doStart();
             }
-            config.acquire();
-            config.conf[_streamName]["devices"][devList[devId].name] = sampleRate;
-            config.release(true);
+            config->acquire();
+            config->conf[_streamName]["devices"][devList[devId].name] = sampleRate;
+            config->release(true);
         }
     }
 
@@ -237,18 +238,30 @@ private:
 
 class AudioSinkModule : public ModuleManager::Instance {
 public:
-    AudioSinkModule(std::string name) {
+    int index;
+    std::shared_ptr<ConfigManager> config;
+    AudioSinkModule(std::string name, int index, std::shared_ptr<ConfigManager> config) {
         this->name = name;
+        this->index = index;
+        this->config = config;
         provider.create = create_sink;
         provider.ctx = this;
 
-        sigpath::sinkManager.registerSinkProvider("Audio", provider);
+        sigpath::sinkManager.registerSinkProvider("Audio"+getSuffix(), provider);
     }
 
     ~AudioSinkModule() {
         // Unregister sink, this will automatically stop and delete all instances of the audio sink
-        sigpath::sinkManager.unregisterSinkProvider("Audio");
+        sigpath::sinkManager.unregisterSinkProvider("Audio"+getSuffix());
     }
+
+    std::string getSuffix() {
+        if (this->index > 0) {
+            return std::to_string(this->index);
+        } else {
+            return "";
+        }
+    };
 
     void postInit() {}
 
@@ -266,7 +279,8 @@ public:
 
 private:
     static SinkManager::Sink* create_sink(SinkManager::Stream* stream, std::string streamName, void* ctx) {
-        return (SinkManager::Sink*)(new AudioSink(stream, streamName));
+        auto module = (AudioSinkModule *)ctx;
+        return (SinkManager::Sink*)(new AudioSink(stream, streamName, module->config));
     }
 
     std::string name;
@@ -275,22 +289,40 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    json def = json({});
-    config.setPath(options::opts.root + "/audio_sink_config.json");
-    config.load(def);
-    config.enableAutoSave();
 }
 
+static std::unordered_set<int> countInstances;
+
 MOD_EXPORT void* _CREATE_INSTANCE_(std::string name) {
-    AudioSinkModule* instance = new AudioSinkModule(name);
+    int foundIndex = -1;
+    for(int i=0; i<10; i++) {
+        if (countInstances.find(i) == countInstances.end()) {
+            foundIndex = i;
+            break;
+        }
+    }
+    countInstances.insert(foundIndex);
+
+    auto config = std::make_shared<ConfigManager>();
+    json def = json({});
+    if (foundIndex > 0) {
+        config->setPath(options::opts.root + "/audio_sink_config"+std::to_string(foundIndex)+".json");
+    } else {
+        config->setPath(options::opts.root + "/audio_sink_config.json");
+    }
+    config->load(def);
+    config->enableAutoSave();
+    AudioSinkModule* instance = new AudioSinkModule(name, foundIndex, config);
     return instance;
 }
 
 MOD_EXPORT void _DELETE_INSTANCE_(void* instance) {
-    delete (AudioSinkModule*)instance;
+    auto inst = (AudioSinkModule*)instance;
+    inst->config->disableAutoSave();
+    inst->config->save();
+    countInstances.erase(inst->index);
+    delete inst;
 }
 
 MOD_EXPORT void _END_() {
-    config.disableAutoSave();
-    config.save();
 }

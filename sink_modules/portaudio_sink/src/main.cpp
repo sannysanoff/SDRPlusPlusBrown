@@ -14,8 +14,8 @@ SDRPP_MOD_INFO{
     /* Name:            */ "audio_sink",
     /* Description:     */ "Audio sink module for SDR++",
     /* Author:          */ "Ryzerth",
-    /* Version:         */ 0, 1, 0,
-    /* Max instances    */ 1
+    /* Version:         */ 0, 1, 1,
+    /* Max instances    */ 2
 };
 
 class AudioSink : SinkManager::Sink {
@@ -119,7 +119,7 @@ public:
         float menuWidth = ImGui::GetContentRegionAvailWidth();
 
         ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devListId, txtDevList.c_str())) {
+        if (ImGui::Combo(("##_audio_sink_dev_" + _streamName+).c_str(), &devListId, txtDevList.c_str())) {
             // TODO: Load SR from config
             if (running) {
                 doStop();

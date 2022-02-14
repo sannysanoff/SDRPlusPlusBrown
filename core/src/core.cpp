@@ -156,7 +156,7 @@ void test1() {
 
 // main
 int sdrpp_main(int argc, char* argv[]) {
-    spdlog::info("SDR++ v" VERSION_STR);
+    spdlog::info("SDR++ (brown fork) v" VERSION_STR);
 
     if (argc > 1 && !strcmp(argv[1],"test1")) {
         test1();
@@ -396,7 +396,7 @@ int sdrpp_main(int argc, char* argv[]) {
 
     // Create window with graphics context
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-    core::window = glfwCreateWindow(winWidth, winHeight, "SDR++ v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
+    core::window = glfwCreateWindow(winWidth, winHeight, "SDR++ (brown fork) v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
     if (core::window == NULL)
         return 1;
     glfwMakeContextCurrent(core::window);
@@ -411,7 +411,7 @@ int sdrpp_main(int argc, char* argv[]) {
 
         // Create window with graphics context
         monitor = glfwGetPrimaryMonitor();
-        core::window = glfwCreateWindow(winWidth, winHeight, "SDR++ v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
+        core::window = glfwCreateWindow(winWidth, winHeight, "SDR++ (brown fork) v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
         if (core::window == NULL) {
             spdlog::info("OpenGL {0}.{1} {2}was not supported", OPENGL_VERSIONS_MAJOR[i], OPENGL_VERSIONS_MINOR[i], OPENGL_VERSIONS_IS_ES[i] ? "ES " : "");
             continue;

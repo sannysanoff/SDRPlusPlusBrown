@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 project(audio_sink)
 
-file(GLOB SRC "src/*.cpp")
+file(GLOB SRC "src/main.cpp")
 
 add_library(audio_sink SHARED ${SRC})
 target_link_libraries(audio_sink PRIVATE sdrpp_core)
