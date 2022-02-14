@@ -1,6 +1,7 @@
 #include <module.h>
 #include <filesystem>
 #include <spdlog/spdlog.h>
+#include <utils/wstr.h>
 
 ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
     Module_t mod;
@@ -15,7 +16,11 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
         return mod;
     }
 #ifdef _WIN32
-    mod.handle = LoadLibraryA(path.c_str());
+    auto wide = wstr::str2wstr(path);
+    wchar_t wideBuf[1024];
+    GetShortPathNameW(wide.c_str(), wideBuf, sizeof(wideBuf)/sizeof(TCHAR));
+    mod.handle = LoadLibraryW(wideBuf);
+
     if (mod.handle == NULL) {
         spdlog::error("Couldn't load {0}. Error code: {1}", path, GetLastError());
         mod.handle = NULL;

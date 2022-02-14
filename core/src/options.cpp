@@ -10,6 +10,7 @@ namespace options {
 #if defined(_WIN32)
         opts.root = ".";
         opts.showConsole = false;
+        setlocale(LC_ALL, ".65001");
 #elif defined(IS_MACOS_BUNDLE)
         std::string homedir = getenv("HOME");
         opts.root = homedir + "/Library/Application Support/sdrpp";
