@@ -290,7 +290,6 @@ private:
 
     static void txmenuHandler(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
-        float menuWidth = ImGui::GetContentRegionAvailWidth();
 
         if (!_this->running) { style::beginDisabled(); }
 
