@@ -290,81 +290,86 @@ private:
 
     static void txmenuHandler(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
+        if (GImGui) {
 
-        if (!_this->running) { style::beginDisabled(); }
+            if (!_this->running) { style::beginDisabled(); }
 
-        int drawHardTune = _this->hardTune;
-        if (drawHardTune) {
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0, 0, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0, 0, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0, 0, 1.0f));
-        }
-        if (ImGui::Button("Hard Tune")) {
-            _this->hardTune = !_this->hardTune;
-            _this->device->setTxFrequency((int)_this->freq);
-            _this->device->doTuneActive(_this->hardTune);
-            std::cout << "_this->hardTune=" << _this->hardTune << std::endl;
-        }
-        if (drawHardTune) {
-            ImGui::PopStyleColor(3);
-        }
+            int drawHardTune = _this->hardTune;
+            if (drawHardTune) {
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0, 0, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0, 0, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0, 0, 1.0f));
+            }
+            if (ImGui::Button("Hard Tune")) {
+                _this->hardTune = !_this->hardTune;
+                _this->device->setTxFrequency((int) _this->freq);
+                _this->device->doTuneActive(_this->hardTune);
+                std::cout << "_this->hardTune=" << _this->hardTune << std::endl;
+            }
+            if (drawHardTune) {
+                ImGui::PopStyleColor(3);
+            }
 
 //        float menuWidth = ImGui::GetContentRegionAvailWidth();
-        if (!_this->running) { style::endDisabled(); }
+            if (!_this->running) { style::endDisabled(); }
+        }
 
     }
 
     static void menuHandler(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
-        float menuWidth = ImGui::GetContentRegionAvailWidth();
+        if (GImGui) {
+            float menuWidth = ImGui::GetContentRegionAvailWidth();
 
-        if (_this->running) { style::beginDisabled(); }
+            if (_this->running) { style::beginDisabled(); }
 
-        ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo(CONCAT("##_hl2_dev_sel_", _this->name), &_this->devId, _this->devListTxt.c_str())) {
-            _this->selectByIP(discoveredToIp(discovered[_this->devId]));
-            core::setInputSampleRate(_this->sampleRate);
-            if (_this->selectedSerStr != "") {
-                config.acquire();
-                config.conf["device"] = _this->selectedSerStr;
-                config.release(true);
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::Combo(CONCAT("##_hl2_dev_sel_", _this->name), &_this->devId, _this->devListTxt.c_str())) {
+                _this->selectByIP(discoveredToIp(discovered[_this->devId]));
+                core::setInputSampleRate(_this->sampleRate);
+                if (_this->selectedSerStr != "") {
+                    config.acquire();
+                    config.conf["device"] = _this->selectedSerStr;
+                    config.release(true);
+                }
             }
-        }
 
-        if (ImGui::Combo(CONCAT("##_hl2_sr_sel_", _this->name), &_this->srId, _this->sampleRateListTxt.c_str())) {
-            _this->sampleRate = _this->sampleRateList[_this->srId];
-            core::setInputSampleRate(_this->sampleRate);
-            if (_this->selectedSerStr != "") {
-                config.acquire();
-                config.conf["devices"][_this->selectedSerStr]["sampleRate"] = _this->sampleRate;
-                config.release(true);
+            if (ImGui::Combo(CONCAT("##_hl2_sr_sel_", _this->name), &_this->srId, _this->sampleRateListTxt.c_str())) {
+                _this->sampleRate = _this->sampleRateList[_this->srId];
+                core::setInputSampleRate(_this->sampleRate);
+                if (_this->selectedSerStr != "") {
+                    config.acquire();
+                    config.conf["devices"][_this->selectedSerStr]["sampleRate"] = _this->sampleRate;
+                    config.release(true);
+                }
             }
-        }
 
-        ImGui::SameLine();
-        float refreshBtnWdith = menuWidth - ImGui::GetCursorPosX();
-        if (ImGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name), ImVec2(refreshBtnWdith, 0))) {
-            _this->refresh();
-            config.acquire();
-            std::string devSerial = config.conf["device"];
-            config.release();
-            core::setInputSampleRate(_this->sampleRate);
-        }
+            ImGui::SameLine();
+            float refreshBtnWdith = menuWidth - ImGui::GetCursorPosX();
+            if (ImGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name), ImVec2(refreshBtnWdith, 0))) {
+                _this->refresh();
+                config.acquire();
+                std::string devSerial = config.conf["device"];
+                config.release();
+                core::setInputSampleRate(_this->sampleRate);
+            }
 
-        if (_this->running) { style::endDisabled(); }
-        bool overload = _this->device && _this->device->isADCOverload();
-        if (overload) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
-        }
-        ImGui::LeftLabel("ADC Gain");
-        if (overload) {
-            ImGui::PopStyleColor(1);
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-        if (ImGui::SliderInt(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->adcGain, -12, +48, "%.3f dB")) {
-            if (_this->device) {
-                _this->device->setADCGain(_this->adcGain);
+            if (_this->running) { style::endDisabled(); }
+            bool overload = _this->device && _this->device->isADCOverload();
+            if (overload) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
+            }
+            ImGui::LeftLabel("ADC Gain");
+            if (overload) {
+                ImGui::PopStyleColor(1);
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+            if (ImGui::SliderInt(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->adcGain, -12, +48,
+                                 "%.3f dB")) {
+                if (_this->device) {
+                    _this->device->setADCGain(_this->adcGain);
+                }
             }
         }
 
