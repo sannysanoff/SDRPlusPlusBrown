@@ -291,7 +291,7 @@ private:
 
     static void txmenuHandler(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
-        if (!_this->running) { style::beginDisabled(); }
+        if (!_this->running) { SmGui::BeginDisabled(); }
 
         int drawHardTune = _this->hardTune;
         if (drawHardTune) {
@@ -309,14 +309,14 @@ private:
             SmGui::PopStyleColor(3);
         }
 
-        if (!_this->running) { style::endDisabled(); }
+        if (!_this->running) { SmGui::EndDisabled(); }
 
     }
 
     static void menuHandler(void* ctx) {
         HermesLite2SourceModule* _this = (HermesLite2SourceModule*)ctx;
 
-        if (_this->running) { style::beginDisabled(); }
+        if (_this->running) { SmGui::BeginDisabled(); }
 
         SmGui::SetNextItemWidth(100);
         if (SmGui::Combo(CONCAT("##_hl2_dev_sel_", _this->name), &_this->devId, _this->devListTxt.c_str())) {
@@ -349,7 +349,7 @@ private:
             core::setInputSampleRate(_this->sampleRate);
         }
 
-        if (_this->running) { style::endDisabled(); }
+        if (_this->running) { SmGui::EndDisabled(); }
         bool overload = _this->device && _this->device->isADCOverload();
         if (overload) {
             SmGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
