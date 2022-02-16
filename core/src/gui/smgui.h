@@ -36,7 +36,9 @@ namespace SmGui {
         DRAW_STEP_END_TABLE,
         DRAW_STEP_TABLE_NEXT_ROW,
         DRAW_STEP_TABLE_SET_COLUMN_INDEX,
-        DRAW_STEP_SET_NEXT_ITEM_WIDTH
+        DRAW_STEP_SET_NEXT_ITEM_WIDTH,
+        DRAW_STEP_POP_STYLE_COLOR,
+        DRAW_STEP_PUSH_STYLE_COLOR,
     };
 
     enum DrawListElemType {
@@ -139,6 +141,9 @@ namespace SmGui {
     void TableNextRow(ImGuiTableRowFlags row_flags = 0, float min_row_height = (0.0F));
     void TableSetColumnIndex(int column_n);
     void SetNextItemWidth(float item_width);
+
+    void          PushStyleColor(ImGuiCol idx, const ImVec4& col);
+    void          PopStyleColor(int count = 1);
 
     // Config configs
     void ForceSyncForNext();
