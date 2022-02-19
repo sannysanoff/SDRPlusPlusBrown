@@ -21,6 +21,7 @@ endif ()
 add_library(sdrpp_core SHARED ${SRC})
 
 # Set compiler options
+message("optimize_options: ${OPTIMIZE_OPTIONS}")
 if (MSVC)
     target_compile_options(sdrpp_core PRIVATE ${OPTIMIZE_OPTIONS} /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
