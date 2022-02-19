@@ -23,3 +23,4 @@ endif()
 
 # Install directives
 install(TARGETS spyserver_source DESTINATION lib/sdrpp/plugins)
+
