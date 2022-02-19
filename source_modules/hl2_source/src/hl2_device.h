@@ -13,17 +13,17 @@ struct ControlData {
     unsigned char C4;
 };
 
-#ifndef WIN32
+#ifdef __linux__
 #include <sys/prctl.h>
 #endif
 static void SetThreadName( const char* threadName)
 {
-#ifndef WIN32
+#ifdef __linux__
     prctl(PR_SET_NAME,threadName,0,0,0);
 #endif
 }
 static std::string GetThreadName( ) {
-#ifndef WIN32
+#ifdef __linux__
     char thread_name_buffer[100] = { 0 };
     prctl(PR_GET_NAME,thread_name_buffer,0,0,0);
     return std::string(thread_name_buffer);
