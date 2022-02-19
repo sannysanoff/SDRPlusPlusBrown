@@ -13,11 +13,11 @@ target_include_directories(rigctl_server PRIVATE "../../decoder_modules/meteor_d
 target_include_directories(rigctl_server PRIVATE "../../decoder_modules/radio/src")
 
 if (MSVC)
-    target_compile_options(rigctl_server PRIVATE /std:c++17 /EHsc)
+    target_compile_options(rigctl_server PRIVATE ${OPTIMIZE_OPTIONS} /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(rigctl_server PRIVATE -O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+    target_compile_options(rigctl_server PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
 else ()
-    target_compile_options(rigctl_server PRIVATE -O3 -std=c++17)
+    target_compile_options(rigctl_server PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17)
 endif ()
 
 # Install directives

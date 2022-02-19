@@ -22,17 +22,11 @@ add_library(sdrpp_core SHARED ${SRC})
 
 # Set compiler options
 if (MSVC)
-    target_compile_options(sdrpp_core PRIVATE /std:c++17 /EHsc)
+    target_compile_options(sdrpp_core PRIVATE ${OPTIMIZE_OPTIONS} /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(sdrpp_core PRIVATE -std=c++17)
-    IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
-        target_compile_options(sdrpp_core PRIVATE -O3)
-    ENDIF(CMAKE_BUILD_TYPE MATCHES RELEASE)
+    target_compile_options(sdrpp_core PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17)
 else ()
-    target_compile_options(sdrpp_core PRIVATE -std=c++17)
-    IF(CMAKE_BUILD_TYPE MATCHES RELEASE)
-        target_compile_options(sdrpp_core PRIVATE -O3)
-    ENDIF(CMAKE_BUILD_TYPE MATCHES RELEASE)
+    target_compile_options(sdrpp_core PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17)
 endif ()
 
 # Set the install prefix

@@ -154,7 +154,7 @@ private:
             // GPS Logs
             ImGui::BeginTabItem("GPS");
             if (ImGui::Button("Clear logs##GPSClear")) { _this->gpsLogs.clear(); }
-            ImGui::BeginChild(ImGuiID("GPSChild"));
+            ImGui::BeginChild("GPSChild");
             ImGui::TextUnformatted(_this->gpsLogs.c_str());
             ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();

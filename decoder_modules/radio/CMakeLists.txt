@@ -10,11 +10,11 @@ set_target_properties(radio PROPERTIES PREFIX "")
 target_include_directories(radio PRIVATE "src/")
 
 if (MSVC)
-    target_compile_options(radio PRIVATE /std:c++17 /EHsc)
+    target_compile_options(radio PRIVATE ${OPTIMIZE_OPTIONS} /std:c++17 /EHsc)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(radio PRIVATE -O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+    target_compile_options(radio PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
 else ()
-    target_compile_options(radio PRIVATE -O3 -std=c++17)
+    target_compile_options(radio PRIVATE ${OPTIMIZE_OPTIONS} -std=c++17)
 endif ()
 
 # Install directives
