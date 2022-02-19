@@ -35,3 +35,7 @@ click on it, then go to the bottom of the page and find artifact for your system
 Have an issue? Works worse than original? File an [issue](https://github.com/sannysanoff/SDRPlusPlus/issues).
 
 Good luck.
+
+## Thanks
+
+Thanks and due respect to original author. 
