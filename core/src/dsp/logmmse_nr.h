@@ -62,43 +62,40 @@ namespace dsp {
             }
         }
 
-        int getCurrentBandwidth() {
-            if (gui::waterfall.selectedVFO == "") {
-                return 2700;
-            } else {
-                return sigpath::vfoManager.getBandwidth(gui::waterfall.selectedVFO);
-            }
-        }
 
-        double lastFrequency = 0;
-        int lastBandwidth = 2700;
-        Arg<LowPassFilter> lpf;
-        Arg<LowPassFilter> lpf2;
-        Arg<LowPassFilter> lpf3;
-
-        int freq = 10000;
+        int bandwidthHz = 10000;
 
         std::mutex freqMutex;
 
-        void setIF(int freq) {
+        void setBandwidth(int bandwidthHz) {
             freqMutex.lock();
-            this->freq = freq;
+            this->bandwidthHz = bandwidthHz;
             params.reset();
             freqMutex.unlock();
         }
 
+        bool switchRequested = false;
+
+        void refreshNoiseProfile() {
+            switchRequested = true;
+            paramsUnder.reset();
+        }
+
+
+        double lastFrequency = 0.0;
+        int lastWidebandNR = -1;
+
         int run() override {
-            if (!lpf || lastBandwidth != getCurrentBandwidth()) {
-                lastBandwidth = getCurrentBandwidth();
-                lpf = std::make_shared<LowPassFilter>(1.0 / 48000, lastBandwidth + 200);
-                lpf2 = std::make_shared<LowPassFilter>(1.0 / 48000, lastBandwidth + 200);
-                lpf3 = std::make_shared<LowPassFilter>(1.0 / 48000, lastBandwidth + 200);
+
+            if (getCurrentFrequency() != lastFrequency) {
+                lastFrequency = getCurrentFrequency();
+                refreshNoiseProfile();
             }
+            
             int count = _in->read();
             if (count < 0) { return -1; }
             static int switchTrigger = 0;
             static int overlapTrigger = -100000;
-            bool doSwitch = false;
             for (int i = 0; i < count; i++) {
                 worker1c->emplace_back(_in->readBuf[i]);
                 switchTrigger++;
@@ -113,9 +110,7 @@ namespace dsp {
 //            }
 
             int noiseFrames = 12;
-            int switchInterval = 10000000;
-            int overlapInterval = 2000000;
-            int fram = freq / 100;
+            int fram = bandwidthHz / 100;
             int initialDemand = fram * (noiseFrames + 2) * 2;
             if (worker1c->size() < initialDemand) {
                 return 0;
@@ -123,36 +118,33 @@ namespace dsp {
             int retCount = 0;
             freqMutex.lock();
             if (!params.Xk_prev) {
-                LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &params, noiseFrames);
-                paramsUnder = params;
+                LogMMSE::logmmse_sample(worker1c, bandwidthHz, 0.15f, &params, noiseFrames);
 //                params.hold = true;
                 printf("logmsse: sampled\n");
                 overlapTrigger = -1000000;
                 switchTrigger = 0;
             }
-            if (switchTrigger > switchInterval && doSwitch) {
-                LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &paramsUnder, noiseFrames);
-//                params.hold = true;
+            if (switchRequested && !paramsUnder.Xk_prev) {
+                LogMMSE::logmmse_sample(worker1c, bandwidthHz, 0.15f, &paramsUnder, noiseFrames);
                 overlapTrigger = 0;
                 switchTrigger = 0;
                 printf("sample under\n");
             }
-            if (overlapTrigger > overlapInterval && doSwitch) {
+            if (switchRequested && paramsUnder.stable) {
                 params = paramsUnder;
-                switchTrigger = 0;
-                overlapTrigger = -1000000;
+                switchRequested = false;
+                paramsUnder.reset();
                 printf("activating under\n");
             }
             auto rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &params);
-            if (doSwitch) {
+            if (switchRequested) {
                 rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &paramsUnder);
             }
             freqMutex.unlock();
             int limit = rv->size();
             auto dta = rv->data();
             for (int i = 0; i < limit; i++) {
-                auto lp = dta[i]; // lpf3->update(lpf2->update(lpf->update(dta[i] * 4)));
-//                auto lp = dta[i] * 2;
+                auto lp = dta[i];
                 out.writeBuf[i] = lp;
             }
             memmove(worker1c->data(), ((complex_t *) worker1c->data()) + rv->size(), sizeof(complex_t) * (worker1c->size() - rv->size()));

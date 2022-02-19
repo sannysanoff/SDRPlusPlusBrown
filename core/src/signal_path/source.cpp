@@ -86,6 +86,7 @@ void SourceManager::tune(double freq) {
     }
     selectedHandler->tuneHandler(freq + tuneOffset, selectedHandler->ctx);
     currentFreq = freq;
+    sigpath::signalPath.onCenterFrequencyChanged(freq);
 }
 
 void SourceManager::setTuningOffset(double offset) {

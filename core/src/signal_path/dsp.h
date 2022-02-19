@@ -43,6 +43,8 @@ public:
 
     float* fftTaps = NULL;
 
+    void onCenterFrequencyChanged(double freq);
+
 private:
     void generateFFTWindow(int win, float* taps, int size);
     void updateFFTDSP();

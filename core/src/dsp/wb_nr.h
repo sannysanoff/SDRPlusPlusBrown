@@ -6,7 +6,6 @@
 #include <dsp/utils/logmmse.h>
 #include <gui/widgets/snr_meter.h>
 
-
 namespace dsp {
 
     using namespace ::dsp::arrays;
@@ -23,16 +22,6 @@ namespace dsp {
         }
 
         void freeIt() {
-//            if (forwardPlan) fftwf_destroy_plan(forwardPlan);
-//            if (backwardPlan) fftwf_destroy_plan(backwardPlan);
-//            if (fft_in) fftwf_free(fft_in);
-//            if (fft_cout) fftwf_free(fft_cout);
-//            if (fft_out) fftwf_free(fft_out);
-//            fft_out = nullptr;
-//            fft_cout = nullptr;
-//            fft_in = nullptr;
-//            backwardPlan = nullptr;
-//            forwardPlan = nullptr;
         }
 
         void init(stream<complex_t>* in) {
@@ -54,9 +43,6 @@ namespace dsp {
             generic_block<WidebandNoiseReduction>::tempStart();
         }
 
-//        void setCorrectionRate(float rate) {
-//        }
-
         void setEffectiveSampleRate(int rate) {
             freq = rate;
             params.reset();
@@ -66,7 +52,6 @@ namespace dsp {
         ComplexArray trailForSample;
         int freq = 192000;
         LogMMSE::SavedParamsC params;
-        LogMMSE::SavedParamsC paramsUnder;
         std::mutex freqMutex;
 
         void doStart() override {
@@ -76,40 +61,33 @@ namespace dsp {
 
         void setHold(bool hold) {
             params.hold = hold;
-            paramsUnder.hold = hold;
         }
 
+        double currentCenterFrequency = -1.0;
+
+        bool shouldReset = false;
+        void reset() {
+            shouldReset = true;
+        }
 
         int runMMSE(stream <complex_t> *_in, stream <complex_t> &out) {
-            static int switchTrigger = 0;
-            static int overlapTrigger = -100000;
-            bool enableAutoSwitch = false;
+            if (shouldReset) {
+                shouldReset = false;
+                worker1c.reset();
+            }
             if (!worker1c) {
                 worker1c = npzeros_c(0);
                 trailForSample = npzeros_c(0);
                 params.reset();
-                switchTrigger = 0;
-                overlapTrigger = 0;
             }
             int count = _in->read();
             if (count < 0) { return -1; }
             for (int i = 0; i < count; i++) {
                 worker1c->emplace_back(_in->readBuf[i]);
                 trailForSample->emplace_back(_in->readBuf[i]);
-                switchTrigger++;
-                overlapTrigger++;
             }
             _in->flush();
-//            if (lastFrequency != getCurrentFrequency()) {
-//                worker1c->clear();
-//                params.reset();
-//                lastFrequency = getCurrentFrequency();
-//                return 0;
-//            }
-
             int noiseFrames = 12;
-            int switchInterval = 1000000;
-            int overlapInterval = 40000;
             int fram = freq / 100;
             int initialDemand = fram * 2;
             if (!params.Xk_prev) {
@@ -123,39 +101,8 @@ namespace dsp {
             if (!params.Xk_prev) {
                 std::cout << std::endl << "Sampling initially" << std::endl;
                 LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &params, noiseFrames);
-                paramsUnder = params;
-                overlapTrigger = -100000000;
-                switchTrigger = 0;
-            }
-            if (switchTrigger > switchInterval && enableAutoSwitch) {
-                float maxv = ImGui::SNRMeterGetMaxInWindow(50);     // assuming SNR repaint rate constant 60
-                float minv = ImGui::SNRMeterGetMinInWindow(50);
-                float spread = maxv-minv;
-                if (spread < 12.0f) {
-                    std::cout << std::endl << currentTimeMillis() << " Begin noise transition... silence indicator: " << spread << std::endl;
-                    trailForSample->erase(trailForSample->begin(), trailForSample->begin() + (trailForSample->size() - fram * (noiseFrames + 2) * 2));
-                    LogMMSE::logmmse_sample(trailForSample, freq, 0.15f, &paramsUnder, noiseFrames);
-                    overlapTrigger = 0;
-                    switchTrigger = 0;
-                } else {
-                    static int lastSpread = -1;
-                    if (lastSpread != (int)spread) {
-                        lastSpread = (int)spread;
-                        std::cout << lastSpread <<" ";
-                        std::flush(std::cout);
-                    }
-                }
-            }
-            if (overlapTrigger > overlapInterval && enableAutoSwitch) {
-                std::cout << std::endl << currentTimeMillis() << " Switching params" << std::endl;
-                params = paramsUnder;
-                switchTrigger = 0;
-                overlapTrigger = -0x7FFFFFFF;
             }
             auto rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &params);
-            if (enableAutoSwitch) {
-                rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &paramsUnder);
-            }
             freqMutex.unlock();
 
             int limit = rv->size();

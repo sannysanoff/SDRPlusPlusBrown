@@ -290,3 +290,7 @@ void SignalPath::updateFFTDSP() {
 
     spdlog::info("Updating FFT DSP settings: Keep: {0}, Skip: {1}", fftOutputSampleCount, fftSkip);
 }
+
+void SignalPath::onCenterFrequencyChanged(double freq) {
+    noiseReduction.reset();
+}

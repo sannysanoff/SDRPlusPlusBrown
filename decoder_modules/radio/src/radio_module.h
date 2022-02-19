@@ -292,15 +292,15 @@ private:
         }
 
         if (ImGui::Checkbox(("AF NR##_radio_logmmse_nr_" + _this->name).c_str(), &_this->logmmseNrEnabled)) {
-            _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
+            _this->setLogMMSEBandwidth(_this->logmmseBandwidth * 1000);
             _this->setLogMMSEEnabled(_this->logmmseNrEnabled);
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("This is LOGMMSE algorithm which is run over the audio frequency.");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseFreq, 1, 24, "%d KHz")) {
-            _this->setLogMMSEFrequency(_this->logmmseFreq * 1000);
+        if (ImGui::SliderInt(("##_radio_logmmse_wf" + _this->name).c_str(), &_this->logmmseBandwidth, 1, 24, "%d KHz")) {
+            _this->setLogMMSEBandwidth(_this->logmmseBandwidth * 1000);
         }
 
 //        if (ImGui::Checkbox(("IF AVG##_radio_if_avg_" + _this->name).c_str(), &_this->ifavgEnabled)) {
@@ -595,8 +595,8 @@ private:
         config.release(true);
     }
 
-    void setLogMMSEFrequency(int freq) {
-        lmmsenr.block.setIF(freq);
+    void setLogMMSEBandwidth(int bandwidthHz) {
+        lmmsenr.block.setBandwidth(bandwidthHz);
     }
 
     void setIFAVGEnabled(bool enabled) {
@@ -802,7 +802,7 @@ private:
 
     bool squelchEnabled = false;
     float squelchLevel;
-    int logmmseFreq = 10;
+    int logmmseBandwidth = 10;
 
     int deempMode = DEEMP_MODE_NONE;
     int deempId = 0;
