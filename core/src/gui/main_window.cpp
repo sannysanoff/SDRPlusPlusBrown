@@ -181,10 +181,12 @@ void MainWindow::init() {
     core::configManager.acquire();
     fftMin = core::configManager.conf["min"];
     fftMax = core::configManager.conf["max"];
+    bw = core::configManager.conf["zoomBw"];
     gui::waterfall.setFFTMin(fftMin);
     gui::waterfall.setWaterfallMin(fftMin);
     gui::waterfall.setFFTMax(fftMax);
     gui::waterfall.setWaterfallMax(fftMax);
+
 
     double frequency = core::configManager.conf["frequency"];
 
@@ -195,7 +197,6 @@ void MainWindow::init() {
     gui::freqSelect.frequencyChanged = false;
     sigpath::sourceManager.tune(frequency);
     gui::waterfall.setCenterFrequency(frequency);
-    bw = 1.0;
     gui::waterfall.vfoFreqChanged = false;
     gui::waterfall.centerFreqMoved = false;
     gui::waterfall.selectFirstVFO();
@@ -223,6 +224,8 @@ void MainWindow::init() {
             continue;
         }
     }
+
+    updateWaterfallZoomBandwidth(bw);
 
     initComplete = true;
 
@@ -626,17 +629,11 @@ void MainWindow::draw() {
     ImGui::TextUnformatted("Zoom");
     ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - 10);
     if (ImGui::VSliderFloat("##_7_", ImVec2(20.0, 150.0), &bw, 1.0, 0.0, "")) {
-        double factor = (double)bw * (double)bw;
+        core::configManager.acquire();
+        core::configManager.conf["zoomBw"] = bw;
+        core::configManager.release(true);
+        updateWaterfallZoomBandwidth(bw);
 
-        // Map 0.0 -> 1.0 to 1000.0 -> bandwidth
-        double wfBw = gui::waterfall.getBandwidth();
-        double delta = wfBw - 1000.0;
-        double finalBw = std::min<double>(1000.0 + (factor * delta), wfBw);
-
-        gui::waterfall.setViewBandwidth(finalBw);
-        if (vfo != NULL) {
-            gui::waterfall.setViewOffset(vfo->centerOffset); // center vfo on screen
-        }
     }
     ImGui::SetItemUsingMouseWheel();
 
@@ -731,5 +728,23 @@ void MainWindow::setUiScale(float scale) {
 
 bool MainWindow::isPlaying() {
     return playing;
+}
+
+void MainWindow::updateWaterfallZoomBandwidth(float bw) {
+    ImGui::WaterfallVFO* vfo = NULL;
+    if (gui::waterfall.selectedVFO != "") {
+        vfo = gui::waterfall.vfos[gui::waterfall.selectedVFO];
+    }
+    double factor = (double)bw * (double)bw;
+
+    // Map 0.0 -> 1.0 to 1000.0 -> bandwidth
+    double wfBw = gui::waterfall.getBandwidth();
+    double delta = wfBw - 1000.0;
+    double finalBw = std::min<double>(1000.0 + (factor * delta), wfBw);
+
+    gui::waterfall.setViewBandwidth(finalBw);
+    if (vfo != NULL) {
+        gui::waterfall.setViewOffset(vfo->centerOffset); // center vfo on screen
+    }
 }
 

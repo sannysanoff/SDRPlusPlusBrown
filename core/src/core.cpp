@@ -211,6 +211,7 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["uiScale"] = 1.0f;
     defConfig["frequency"] = 100000000.0;
     defConfig["fullWaterfallUpdate"] = false;
+    defConfig["zoomBw"] = 1.0;
     defConfig["max"] = 0.0;
     defConfig["maximized"] = false;
     defConfig["fullscreen"] = false;

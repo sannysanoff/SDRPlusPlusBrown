@@ -69,4 +69,6 @@ private:
     bool initComplete = false;
 
     EventHandler<VFOManager::VFO*> vfoCreatedHandler;
+
+    void updateWaterfallZoomBandwidth(float bw);
 };

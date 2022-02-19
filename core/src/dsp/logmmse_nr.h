@@ -91,7 +91,7 @@ namespace dsp {
                 lastFrequency = getCurrentFrequency();
                 refreshNoiseProfile();
             }
-            
+
             int count = _in->read();
             if (count < 0) { return -1; }
             static int switchTrigger = 0;
