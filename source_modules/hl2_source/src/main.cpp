@@ -318,7 +318,7 @@ private:
 
         if (_this->running) { SmGui::BeginDisabled(); }
 
-        SmGui::SetNextItemWidth(100);
+//        SmGui::SetNextItemWidth(100);
         if (SmGui::Combo(CONCAT("##_hl2_dev_sel_", _this->name), &_this->devId, _this->devListTxt.c_str())) {
             _this->selectByIP(discoveredToIp(discovered[_this->devId]));
             core::setInputSampleRate(_this->sampleRate);
@@ -340,7 +340,7 @@ private:
         }
 
         SmGui::SameLine();
-        float refreshBtnWdith = 100;
+        float refreshBtnWdith = 65 * gui::mainWindow.getUiScale();
         if (SmGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name), ImVec2(refreshBtnWdith, 0))) {
             _this->refresh();
             config.acquire();
@@ -359,7 +359,7 @@ private:
             SmGui::PopStyleColor(1);
         }
         SmGui::SameLine();
-        SmGui::SetNextItemWidth(100);
+//        SmGui::SetNextItemWidth(100);
         if (SmGui::SliderInt(("##_radio_agc_gain_" + _this->name).c_str(), &_this->adcGain, -12, +48, SmGui::FMT_STR_INT_DB)) {
             if (_this->device) {
                 _this->device->setADCGain(_this->adcGain);

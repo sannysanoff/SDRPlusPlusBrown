@@ -190,6 +190,7 @@ namespace SmGui {
                 SetNextItemWidth(elements[i].f);
                 i++;
             }
+<<<<<<< HEAD
             else if (elem.step == DRAW_STEP_POP_STYLE_COLOR) {
                 PopStyleColor(elements[i].i);
                 i++;
@@ -198,6 +199,8 @@ namespace SmGui {
                 PushStyleColor(elements[i].i, ImVec4(elements[i+1].f, elements[i+2].f, elements[i+3].f, elements[i+4].f));
                 i+=5;
             }
+=======
+>>>>>>> upstream/master
             else {
                 spdlog::error("Invalid widget in Drawlist");
             }

@@ -491,7 +491,6 @@ void MainWindow::draw() {
         ImGui::SetColumnWidth(2, 60);
         ImGui::BeginChild("Left Column");
         ImGui::SetWindowFontScale(uiScale);
-        float menuColumnWidth = ImGui::GetContentRegionAvailWidth();
 
         if (gui::menu.draw(firstMenuRender)) {
             core::configManager.acquire();
