@@ -51,9 +51,21 @@ public:
             if (info.outputChannels == 0) { continue; }
             if (info.isDefaultOutput) { defaultDevId = devList.size(); }
             devList.push_back(info);
-            deviceIds.push_back(i);
             txtDevList += info.name;
             txtDevList += '\0';
+            auto ni = info;
+            ni.name += " -> left";
+            devList.push_back(ni);
+            txtDevList += ni.name;
+            txtDevList += '\0';
+            ni = info;
+            ni.name += " -> right";
+            devList.push_back(ni);
+            txtDevList += ni.name;
+            txtDevList += '\0';
+            deviceIds.push_back(i);
+            deviceIds.push_back(i);
+            deviceIds.push_back(i);
         }
 
         selectByName(device);
@@ -198,6 +210,8 @@ private:
         int count = _this->stereoPacker.out.read();
         if (count < 0) { return 0; }
 
+
+
         // For debug purposes only...
         // if (nBufferFrames != count) { spdlog::warn("Buffer size mismatch, wanted {0}, was asked for {1}", count, nBufferFrames); }
         // for (int i = 0; i < count; i++) {
@@ -207,6 +221,22 @@ private:
         // }
 
         memcpy(outputBuffer, _this->stereoPacker.out.readBuf, nBufferFrames * sizeof(dsp::stereo_t));
+        auto channel = _this->devId % 3; // 0=stereo 1=left 2=right
+        auto stereoOut = (dsp::stereo_t *)outputBuffer;
+        switch(channel) {
+            default:
+                break;
+            case 1:
+                for(int i=0; i<nBufferFrames; i++) {
+                    stereoOut[i].r = 0;
+                }
+                break;
+            case 2:
+                for(int i=0; i<nBufferFrames; i++) {
+                    stereoOut[i].l = 0;
+                }
+                break;
+        }
         _this->stereoPacker.out.flush();
         return 0;
     }

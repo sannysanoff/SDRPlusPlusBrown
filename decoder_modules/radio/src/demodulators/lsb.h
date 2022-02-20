@@ -16,7 +16,7 @@ namespace demod {
             stop();
         }
 
-        void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, EventHandler<dsp::stream<dsp::stereo_t>*> outputChangeHandler, EventHandler<float> afbwChangeHandler, double audioSR) {
+        void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, EventHandler<dsp::stream<dsp::stereo_t>*> outputChangeHandler, EventHandler<float> afbwChangeHandler, double audioSR) override {
             this->name = name;
 
             // Define structure
@@ -25,52 +25,52 @@ namespace demod {
             m2s.init(&agc.out);
         }
 
-        void start() {
+        void start() override {
             demod.start();
             agc.start();
             m2s.start();
         }
 
-        void stop() {
+        void stop() override {
             demod.stop();
             agc.stop();
             m2s.stop();
         }
 
-        void showMenu() {
+        void showMenu() override {
             // TODO: Adjust AGC settings
         }
 
-        void setBandwidth(double bandwidth) {
+        void setBandwidth(double bandwidth) override {
             demod.setBandWidth(bandwidth);
         }
 
-        void setInput(dsp::stream<dsp::complex_t>* input) {
+        void setInput(dsp::stream<dsp::complex_t>* input) override {
             demod.setInput(input);
         }
 
-        void AFSampRateChanged(double newSR) {}
+        void AFSampRateChanged(double newSR) override {}
 
         // ============= INFO =============
 
-        const char* getName() { return "LSB"; }
-        double getIFSampleRate() { return 24000.0; }
-        double getAFSampleRate() { return getIFSampleRate(); }
-        double getDefaultBandwidth() { return 2800.0; }
-        double getMinBandwidth() { return 500.0; }
-        double getMaxBandwidth() { return getIFSampleRate() / 2.0; }
-        bool getBandwidthLocked() { return false; }
-        double getMaxAFBandwidth() { return getIFSampleRate() / 2.0; }
-        double getDefaultSnapInterval() { return 100.0; }
-        int getVFOReference() { return ImGui::WaterfallVFO::REF_UPPER; }
-        bool getDeempAllowed() { return false; }
-        bool getPostProcEnabled() { return true; }
-        int getDefaultDeemphasisMode() { return DEEMP_MODE_NONE; }
-        double getAFBandwidth(double bandwidth) { return bandwidth; }
-        bool getDynamicAFBandwidth() { return true; }
-        bool getFMIFNRAllowed() { return false; }
-        bool getNBAllowed() { return true; }
-        dsp::stream<dsp::stereo_t>* getOutput() { return &m2s.out; }
+        const char* getName() override { return "LSB"; }
+        double getIFSampleRate() override { return 24000.0; }
+        double getAFSampleRate() override { return getIFSampleRate(); }
+        double getDefaultBandwidth() override { return 2800.0; }
+        double getMinBandwidth() override { return 500.0; }
+        double getMaxBandwidth() override { return getIFSampleRate() / 2.0; }
+        bool getBandwidthLocked() override { return false; }
+        double getMaxAFBandwidth() override { return getIFSampleRate() / 2.0; }
+        double getDefaultSnapInterval() override { return 100.0; }
+        int getVFOReference() override  { return ImGui::WaterfallVFO::REF_UPPER; }
+        bool getDeempAllowed() override  { return false; }
+        bool getPostProcEnabled() override  { return true; }
+        int getDefaultDeemphasisMode() override  { return DEEMP_MODE_NONE; }
+        double getAFBandwidth(double bandwidth) override  { return bandwidth; }
+        bool getDynamicAFBandwidth() override { return true; }
+        bool getFMIFNRAllowed() override  { return false; }
+        bool getNBAllowed() override  { return true; }
+        dsp::stream<dsp::stereo_t>* getOutput() override { return &m2s.out; }
 
         dsp::AGC &getAGC() override{
             return agc;

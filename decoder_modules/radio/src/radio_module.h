@@ -115,7 +115,7 @@ public:
             bw = std::clamp<double>(bw, demod->getMinBandwidth(), demod->getMaxBandwidth());
 
             // Initialize
-            demod->init(name, &config, ifChain.getOutput(), bw, _demodOutputChangeHandler, _demodAfbwChangedHandler, stream.getSampleRate());
+            demod->init(name, &config, ifChain.getOutput(), bw, _demodOutputChangeHandler, _demodAfbwChangedHandler, audioSampleRate);
         }
 
         // Initialize audio DSP chain
@@ -134,8 +134,9 @@ public:
         // Initialize the sink
         srChangeHandler.ctx = this;
         srChangeHandler.handler = sampleRateChangeHandler;
-        stream.init(afChain.getOutput(), &srChangeHandler, audioSampleRate);
-        sigpath::sinkManager.registerStream(name, &stream);
+        streams.emplace_back(std::make_shared<SinkManager::Stream>());
+        streams.front()->init(afChain.getOutput(), &srChangeHandler, audioSampleRate);
+        sigpath::sinkManager.registerStream(name, &*streams.front());
 
         // Select the demodulator
         selectDemodByID((DemodID)selectedDemodID);
@@ -147,7 +148,7 @@ public:
         afChain.start();
 
         // Start stream, the rest was started when selecting the demodulator
-        stream.start();
+        streams.front()->start();
 
         // Register the menu
         gui::menu.registerEntry(name, menuHandler, this, this);
@@ -158,7 +159,7 @@ public:
 
     ~RadioModule() {
         gui::menu.removeEntry(name);
-        stream.stop();
+        streams.front()->stop();
         if (enabled) {
             disable();
         }
@@ -709,7 +710,7 @@ private:
 
     static void afChainOutputChangeHandler(dsp::stream<dsp::stereo_t>* output, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
-        _this->stream.setInput(output);
+        _this->streams.front()->setInput(output);
     }
 
     static void moduleInterfaceHandler(int code, void* in, void* out, void* ctx) {
@@ -782,7 +783,7 @@ private:
     dsp::ChainLink<dsp::PolyphaseResampler<dsp::stereo_t>, dsp::stereo_t> resamp;
     dsp::ChainLink<dsp::BFMDeemp, dsp::stereo_t> deemp;
 
-    SinkManager::Stream stream;
+    std::vector<std::shared_ptr<SinkManager::Stream>> streams;
 
     std::array<demod::Demodulator*, _RADIO_DEMOD_COUNT> demods;
     demod::Demodulator* selectedDemod = NULL;

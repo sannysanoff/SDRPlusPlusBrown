@@ -136,6 +136,7 @@ void SinkManager::unregisterSinkProvider(std::string name) {
 }
 
 void SinkManager::registerStream(std::string name, SinkManager::Stream* stream) {
+    auto *name0 = name.c_str();
     if (streams.find(name) != streams.end()) {
         spdlog::error("Cannot register stream '{0}', this name is already taken", name);
         return;

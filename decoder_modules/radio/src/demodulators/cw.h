@@ -16,7 +16,7 @@ namespace demod {
             stop();
         }
 
-        void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, EventHandler<dsp::stream<dsp::stereo_t>*> outputChangeHandler, EventHandler<float> afbwChangeHandler, double audioSR) {
+        void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, EventHandler<dsp::stream<dsp::stereo_t>*> outputChangeHandler, EventHandler<float> afbwChangeHandler, double audioSR) override {
             this->name = name;
             this->_config = config;
             this->_bandwidth = bandwidth;
@@ -36,21 +36,21 @@ namespace demod {
             m2s.init(&agc.out);
         }
 
-        void start() {
+        void start() override  {
             xlator.start();
             c2r.start();
             agc.start();
             m2s.start();
         }
 
-        void stop() {
+        void stop() override {
             xlator.stop();
             c2r.stop();
             agc.stop();
             m2s.stop();
         }
 
-        void showMenu() {
+        void showMenu() override {
             ImGui::LeftLabel("Tone Frequency");
             ImGui::FillWidth();
             if (ImGui::InputInt(("Stereo##_radio_cw_tone_" + name).c_str(), &tone, 10, 100)) {
@@ -63,34 +63,34 @@ namespace demod {
             }
         }
 
-        void setBandwidth(double bandwidth) { _bandwidth = bandwidth; }
+        void setBandwidth(double bandwidth) override { _bandwidth = bandwidth; }
 
-        void setInput(dsp::stream<dsp::complex_t>* input) {
+        void setInput(dsp::stream<dsp::complex_t>* input) override {
             xlator.setInput(input);
         }
 
-        void AFSampRateChanged(double newSR) {}
+        void AFSampRateChanged(double newSR) override {}
 
         // ============= INFO =============
 
-        const char* getName() { return "CW"; }
-        double getIFSampleRate() { return 3000.0; }
-        double getAFSampleRate() { return getIFSampleRate(); }
-        double getDefaultBandwidth() { return 500.0; }
-        double getMinBandwidth() { return 50.0; }
-        double getMaxBandwidth() { return 500.0; }
-        bool getBandwidthLocked() { return false; }
-        double getMaxAFBandwidth() { return getIFSampleRate() / 2.0; }
-        double getDefaultSnapInterval() { return 10.0; }
-        int getVFOReference() { return ImGui::WaterfallVFO::REF_CENTER; }
-        bool getDeempAllowed() { return false; }
-        bool getPostProcEnabled() { return true; }
-        int getDefaultDeemphasisMode() { return DEEMP_MODE_NONE; }
-        double getAFBandwidth(double bandwidth) { return (bandwidth / 2.0) + (float)tone; }
-        bool getDynamicAFBandwidth() { return true; }
-        bool getFMIFNRAllowed() { return false; }
-        bool getNBAllowed() { return false; }
-        dsp::stream<dsp::stereo_t>* getOutput() { return &m2s.out; }
+        const char* getName() override  { return "CW"; }
+        double getIFSampleRate() override  { return 3000.0; }
+        double getAFSampleRate() override  { return getIFSampleRate(); }
+        double getDefaultBandwidth() override  { return 500.0; }
+        double getMinBandwidth() override  { return 50.0; }
+        double getMaxBandwidth() override { return 500.0; }
+        bool getBandwidthLocked() override { return false; }
+        double getMaxAFBandwidth() override { return getIFSampleRate() / 2.0; }
+        double getDefaultSnapInterval() override { return 10.0; }
+        int getVFOReference() override { return ImGui::WaterfallVFO::REF_CENTER; }
+        bool getDeempAllowed() override { return false; }
+        bool getPostProcEnabled() override { return true; }
+        int getDefaultDeemphasisMode() override { return DEEMP_MODE_NONE; }
+        double getAFBandwidth(double bandwidth) override { return (bandwidth / 2.0) + (float)tone; }
+        bool getDynamicAFBandwidth() override { return true; }
+        bool getFMIFNRAllowed() override { return false; }
+        bool getNBAllowed() override { return false; }
+        dsp::stream<dsp::stereo_t>* getOutput() override { return &m2s.out; }
 
         dsp::AGC &getAGC() override {
             return agc;
