@@ -153,8 +153,14 @@ private:
             selectDevice(devList[0]["label"]);
             return;
         }
-
-        SoapySDR::Device* dev = SoapySDR::Device::make(devArgs);
+        SoapySDR::Device* dev;
+        try {
+            dev = SoapySDR::Device::make(devArgs);
+        } catch (std::runtime_error &err) {
+            spdlog::error("soapy_source: {0}", std::string(err.what()));
+            devId = -1;
+            return;
+        }
 
         antennaList = dev->listAntennas(SOAPY_SDR_RX, channelId);
         txtAntennaList = "";

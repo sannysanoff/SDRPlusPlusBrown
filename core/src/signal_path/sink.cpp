@@ -21,9 +21,6 @@ SinkManager::SinkManager() {
 void SinkManager::Stream::init(EventHandler<float>* srChangeHandler, float sampleRate) {
     srChange.bindHandler(srChangeHandler);
     _sampleRate = sampleRate;
-    if (!_in) {
-        _in = &_in0;
-    }
     splitter.init(_in);
     splitter.bindStream(&volumeInput);
     volumeAjust.init(&volumeInput, 1.0f);
@@ -360,8 +357,11 @@ void SinkManager::showMenu() {
         provStr += '\0';
     }
 
-    for (auto const& [name, stream] : streams) {
+    int streamsSize = streams.size();
 
+    std::vector<std::function<void()>> postActions;
+    for (auto const& [name, stream] : streams) {
+        auto thisName = name;
         if (!SinkManager::isSecondaryStream(name)) {
             ImGui::SetCursorPosX((menuWidth / 2.0f) - (ImGui::CalcTextSize(name.c_str()).x / 2.0f));
             ImGui::Text("%s", name.c_str());
@@ -384,13 +384,16 @@ void SinkManager::showMenu() {
 
         if (!SinkManager::isSecondaryStream(name)) {
             if (ImGui::Button(("Add secondary for " + name).c_str(), ImVec2(menuWidth, v1.y-v2.y))) {
-                onAddSubstream.emit(name);
+                auto name0 = name;
+                postActions.emplace_back([=]{onAddSubstream.emit(name0);});
             }
         } else {
             if (ImGui::Button("Remove secondary", ImVec2(menuWidth, v1.y - v2.y))) {
-                onRemoveSubstream.emit(name);
+                auto name0 = name;
+                postActions.emplace_back([=]{onRemoveSubstream.emit(name0);});
             }
         }
+
 
         count++;
         if (count < maxCount) {
@@ -399,6 +402,7 @@ void SinkManager::showMenu() {
         }
         ImGui::Spacing();
     }
+    for(auto &_: postActions) _();
 }
 
 std::vector<std::string> SinkManager::getStreamNames() {
