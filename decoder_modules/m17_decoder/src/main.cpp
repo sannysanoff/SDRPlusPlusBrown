@@ -80,7 +80,10 @@ public:
         // Setup audio stream
         srChangeHandler.ctx = this;
         srChangeHandler.handler = sampleRateChangeHandler;
-        stream.init(&resamp.out, &srChangeHandler, audioSampRate);
+
+
+        stream.setInput(&resamp.out);
+        stream.init(&srChangeHandler, audioSampRate);
         sigpath::sinkManager.registerStream(name, &stream);
 
         stream.start();

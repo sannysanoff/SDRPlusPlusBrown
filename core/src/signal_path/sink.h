@@ -62,8 +62,10 @@ public:
         void setSampleRate(float sampleRate);
         float getSampleRate();
 
+        void setInput(dsp::stream<dsp::stereo_t> *in);
+
         dsp::stream<dsp::stereo_t>*  getInput() {
-            return &_in;
+            return _in;
         }
 
         dsp::stream<dsp::stereo_t>* bindStream();
@@ -77,7 +79,8 @@ public:
         Event<float> srChange;
 
     private:
-        dsp::stream<dsp::stereo_t> _in;
+        dsp::stream<dsp::stereo_t> _in0;
+        dsp::stream<dsp::stereo_t> *_in = nullptr;
         dsp::Splitter<dsp::stereo_t> splitter;
         SinkManager::Sink* sink;
         dsp::stream<dsp::stereo_t> volumeInput;

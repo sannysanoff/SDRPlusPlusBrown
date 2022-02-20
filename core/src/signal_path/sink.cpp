@@ -23,17 +23,21 @@ const char * SinkManager::secondarySuffixSeparator = "__##";
 void SinkManager::Stream::init(EventHandler<float>* srChangeHandler, float sampleRate) {
     srChange.bindHandler(srChangeHandler);
     _sampleRate = sampleRate;
-    splitter.init(&_in);
+    if (!_in) {
+        _in = &_in0;
+    }
+    splitter.init(_in);
     splitter.bindStream(&volumeInput);
     volumeAjust.init(&volumeInput, 1.0f);
     sinkOut = &volumeAjust.out;
 }
 
+
+
 void SinkManager::Stream::start() {
     if (running) {
         return;
     }
-
     splitter.start();
     volumeAjust.start();
     sink->start();
@@ -63,13 +67,11 @@ float SinkManager::Stream::getSampleRate() {
     return _sampleRate;
 }
 
-/*
 void SinkManager::Stream::setInput(dsp::stream<dsp::stereo_t>* in) {
     std::lock_guard<std::mutex> lck(ctrlMtx);
     _in = in;
     splitter.setInput(_in);
 }
-*/
 
 dsp::stream<dsp::stereo_t>* SinkManager::Stream::bindStream() {
     dsp::stream<dsp::stereo_t>* stream = new dsp::stream<dsp::stereo_t>;
