@@ -155,17 +155,19 @@ public:
             config->release(true);
         }
 
-        ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo(("##_audio_sink_sr_" + _streamName).c_str(), &srId, sampleRatesTxt.c_str())) {
-            sampleRate = sampleRates[srId];
-            _stream->setSampleRate(sampleRate);
-            if (running) {
-                doStop();
-                doStart();
+        if (!SinkManager::isSecondaryStream(_streamName)) {
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::Combo(("##_audio_sink_sr_" + _streamName).c_str(), &srId, sampleRatesTxt.c_str())) {
+                sampleRate = sampleRates[srId];
+                _stream->setSampleRate(sampleRate);
+                if (running) {
+                    doStop();
+                    doStart();
+                }
+                config->acquire();
+                config->conf[_streamName]["devices"][devList[devId].name] = sampleRate;
+                config->release(true);
             }
-            config->acquire();
-            config->conf[_streamName]["devices"][devList[devId].name] = sampleRate;
-            config->release(true);
         }
     }
 

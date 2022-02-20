@@ -131,7 +131,8 @@ public:
 #ifdef _WIN32
         send(sock, (char*)&cmd, sizeof(command_t), 0);
 #else
-        (void)write(sockfd, &cmd, sizeof(command_t));
+        auto x = write(sockfd, &cmd, sizeof(command_t));
+        (void)x;
 #endif
     }
 
