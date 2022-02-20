@@ -14,8 +14,6 @@ SinkManager::SinkManager() {
     registerSinkProvider("None", prov);
 }
 
-const char * SinkManager::secondarySuffixSeparator = "__##";
-
 //SinkManager::Stream::Stream(dsp::stream<dsp::stereo_t>* in, EventHandler<float>* srChangeHandler, float sampleRate) {
 //    init(in, srChangeHandler, sampleRate);
 //}

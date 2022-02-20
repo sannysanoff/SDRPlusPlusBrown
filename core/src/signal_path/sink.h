@@ -14,7 +14,9 @@ class SinkManager {
 
 public:
     SinkManager();
-    static const char * secondarySuffixSeparator;
+
+#define secondarySuffixSeparator "__##"
+
 
     static std::string secondaryStreamSuffix(int index) {
         if (index == 0) return "";
@@ -28,16 +30,7 @@ public:
         return name.find(secondarySuffixSeparator) != std::string::npos;
     }
 
-//    static int getSecondaryStreamIndex(const std::string &name) {
-//        auto pos = name.find(secondarySuffixSeparator);
-//        if (pos != name.npos) {
-//            auto number = name.substr(pos + strlen(secondarySuffixSeparator));
-//            return atoi(number.c_str());
-//        } else {
-//            return 0;
-//        }
-//    }
-//
+
     class Sink {
     public:
         virtual ~Sink() {}
