@@ -26,9 +26,16 @@ click on it, then go to the bottom of the page and find artifact for your system
 * Multilanguage support in fonts, filenames and installation path (UTF-8)
 * Saving of zoom parameter between sessions
 * Interface scaling (seems upstream decided to implement it)
-* Audio AGC controllable via slider (default/original is agressive)
+* Audio AGC controllable via slider (note: default/original is aggressive)
 * SNR meter charted below SNR meter - good for comparing antennas
 * noise floor calculation differs from original.
+
+2022.02.20
+
+* for Airspy HF+ Discovery, added Fill-In option which cuts off attenuated far sides of the spectrum.
+* added secondary audio stream, so you can output same radio to multiple audio cards / virtual cables
+* added option to output audio to only left or only right channel.
+
 
 ## Feedback
 
