@@ -34,7 +34,7 @@ click on it, then go to the bottom of the page and find artifact for your system
 
 * for Airspy HF+ Discovery, added Fill-In option which cuts off attenuated far sides of the spectrum.
 * added secondary audio stream, so you can output same radio to multiple audio cards / virtual cables
-* added option to output audio to only left or only right channel.
+* added single-channel (left/right) option for output audio
 
 
 ## Feedback
