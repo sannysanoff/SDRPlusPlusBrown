@@ -308,12 +308,12 @@ private:
             ImGui::LeftLabel("AGC Speed");
             if (_this->agcFallRate  < 0) {
                 _this->agcFallRate = hasAgc->getAGC().getFallRate();
+            }
+            if (ImGui::SliderFloat(("##_radio_agc_fallrate_" + _this->name).c_str(), &_this->agcFallRate, 0.1, 30, "%.1f")) {
+                hasAgc->getAGC().setFallRate(_this->agcFallRate);
                 config.acquire();
                 config.conf[_this->name][_this->selectedDemod->getName()]["agcFallRate"] = _this->agcFallRate;
                 config.release(true);
-            }
-            if (ImGui::SliderFloat(("##_radio_agc_fallrate_" + _this->name).c_str(), &_this->agcFallRate, 0, 30, "%.1f")) {
-                hasAgc->getAGC().setFallRate(_this->agcFallRate);
             }
         } else {
             _this->agcFallRate = -1;
@@ -480,6 +480,9 @@ private:
         }
         if (config.conf[name][selectedDemod->getName()].contains("squelchLevel")) {
             squelchLevel = config.conf[name][selectedDemod->getName()]["squelchLevel"];
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("agcFallRate")) {
+            agcFallRate = config.conf[name][selectedDemod->getName()]["agcFallRate"]; if (agcFallRate == 0) agcFallRate = -1;
         }
         if (config.conf[name][selectedDemod->getName()].contains("squelchEnabled")) {
             squelchEnabled = config.conf[name][selectedDemod->getName()]["squelchEnabled"];
