@@ -8,6 +8,7 @@
 #endif
 
 #include <dsp/math.h>
+#include <fftw3.h>
 
 namespace dsp {
     namespace arrays {
@@ -48,7 +49,7 @@ namespace dsp {
             auto maxx = x->at(0).re;
             for(int q=0; q<x->size(); q++) {
                 s.append(" ");
-                auto v = x->at(q).re;
+                auto v = x->at(q).amplitude();
                 s.append(std::to_string(v));
                 if (v > maxx) {
                     maxx = v;

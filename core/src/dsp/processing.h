@@ -5,8 +5,12 @@
 #include <string.h>
 #include <stdint.h>
 #include <dsp/math.h>
+#include <dsp/utils/arrays.h>
 
 namespace dsp {
+    
+    using namespace arrays;
+    
     template <class T>
     class FrequencyXlator : public generic_block<FrequencyXlator<T>> {
     public:
@@ -676,4 +680,99 @@ namespace dsp {
 
         complex_t* buffer;
     };
+
+
+/** this class is used to resample wider input stream to narrower so that its lower and higher frequencies 
+ * do not apper in the output stream. For example, Airspy HF+ Discovery returns IQ stream with very low and very high frequencies (signed)
+ * attenuated, so both sides of waterfall are always low signal (dark). By applying carving, we exclude those parts at all.
+ * This reduced bandwidth accordingly. (I could probably do it other way, just not display this, but that would require changes
+ * in UI part which I don't want)
+ */
+    template <class T>
+    class FrequencyCarving : public generic_block<FrequencyCarving<T>> {
+
+    public:
+        FrequencyCarving() {}
+
+        void init(stream<complex_t> *in, float inSampleRate, float outSampleRate) {
+            _in = in;
+            generic_block<FrequencyCarving<T>>::registerInput(_in);
+            generic_block<FrequencyCarving<T>>::registerOutput(&out);
+            generic_block<FrequencyCarving<T>>::_block_init = true;
+            setSampleRates(inSampleRate, outSampleRate);
+        }
+
+        void setInput(stream<complex_t> *in) {
+            assert(generic_block<FrequencyCarving<T>>::_block_init);
+            std::lock_guard<std::mutex> lck(generic_block<FrequencyXlator<T>>::ctrlMtx);
+            generic_block<FrequencyCarving<T>>::tempStop();
+            generic_block<FrequencyCarving<T>>::unregisterInput(_in);
+            _in = in;
+            generic_block<FrequencyCarving<T>>::registerInput(_in);
+            generic_block<FrequencyCarving<T>>::tempStart();
+        }
+
+        std::mutex mtx;
+
+        void setSampleRates(float inSampleRate, float outSampleRate) {
+
+            std::lock_guard g(mtx);
+            assert(generic_block<FrequencyCarving<T>>::_block_init);
+            _inSampleRate = (int)(inSampleRate / 100);
+            _outSampleRate = (int)(outSampleRate / 100);
+            forward = allocateFFTWPlan(false, _inSampleRate);
+            backward = allocateFFTWPlan(true, _outSampleRate);
+            inputBuffer.clear();
+            _inArr = dsp::npzeros_c(_inSampleRate);
+        }
+
+        std::vector<dsp::complex_t> inputBuffer;
+
+        int run() {
+            int count = _in->read();
+            if (count < 0) { return -1; }
+            std::lock_guard g(mtx);
+
+            // TODO: Do float xlation
+            if constexpr (std::is_same_v<T, float>) {
+                spdlog::error("NOT IMPLEMENTED FOR FLOAT");
+            }
+            int nwritten = 0;
+            if constexpr (std::is_same_v<T, complex_t>) {
+                auto currentInputSize = inputBuffer.size();
+                inputBuffer.resize(currentInputSize + count);
+                memcpy(inputBuffer.data() + currentInputSize, _in->readBuf, count * sizeof(dsp::complex_t));
+                auto diff = (_inSampleRate - _outSampleRate);
+                int cutPlace =_inSampleRate/2 - diff/2;
+                while (inputBuffer.size() >= _inSampleRate) {
+                    std::copy(inputBuffer.begin(), inputBuffer.begin() + _inSampleRate, _inArr->begin());
+                    ComplexArray buckets = npfftfft(_inArr, forward);
+                    inputBuffer.erase(inputBuffer.begin(), inputBuffer.begin() + _inSampleRate);
+//                dumpArr_(buckets);
+                    buckets->erase(buckets->begin()+cutPlace, buckets->begin()+cutPlace+diff);
+//                dumpArr_(buckets);
+                    auto stream = npfftfft(buckets, backward);
+                    memcpy(out.writeBuf + nwritten, stream->data(), stream->size() * sizeof(dsp::complex_t));
+                    nwritten += stream->size();
+                }
+            }
+
+            _in->flush();
+            if (!out.swap(nwritten)) { return -1; }
+            return count;
+        }
+
+        stream<complex_t> out;
+
+    private:
+        int _inSampleRate;
+        int _outSampleRate;
+        Arg<fftwPlan> forward;
+        Arg<fftwPlan> backward;
+        stream<complex_t> *_in;
+        ComplexArray _inArr;
+        ComplexArray _outArr;
+    };
+
+
 }
