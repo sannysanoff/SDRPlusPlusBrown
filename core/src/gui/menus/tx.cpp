@@ -95,12 +95,12 @@ namespace txmenu {
     }
 
     void draw(void* ctx) {
-        float itemWidth = ImGui::GetContentRegionAvailWidth();
+//        float itemWidth = ImGui::GetContentRegionAvailWidth();
         bool running = gui::mainWindow.sdrIsRunning();
 
         if (running) { style::beginDisabled(); }
 
-        ImGui::SetNextItemWidth(itemWidth);
+//        ImGui::SetNextItemWidth(itemWidth);
         if (ImGui::Combo("##transmitter", &transmitterId, transmitterNamesTxt.c_str())) {
             selectTransmitter(transmitterNames[transmitterId]);
             core::configManager.acquire();

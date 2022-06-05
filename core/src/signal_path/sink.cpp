@@ -254,6 +254,7 @@ void SinkManager::showVolumeSlider(std::string name, std::string prefix, float w
     }
 
     float ypos = ImGui::GetCursorPosY();
+    float sliderOffset = 8.0f * style::uiScale;
 
     if (streams.find(name) == streams.end() || name == "") {
         float dummy = 0.0f;
@@ -262,7 +263,7 @@ void SinkManager::showVolumeSlider(std::string name, std::string prefix, float w
         ImGui::ImageButton(icons::MUTED, ImVec2(height, height), ImVec2(0, 0), ImVec2(1, 1), btwBorder);
         ImGui::PopID();
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(width - height - 8);
+        ImGui::SetNextItemWidth(width - height - sliderOffset);
         ImGui::SetCursorPosY(ypos + ((height - sliderHeight) / 2.0f) + btwBorder);
         ImGui::SliderFloat((prefix + name).c_str(), &dummy, 0.0f, 1.0f, "");
         style::endDisabled();
@@ -295,7 +296,7 @@ void SinkManager::showVolumeSlider(std::string name, std::string prefix, float w
 
     ImGui::SameLine();
 
-    ImGui::SetNextItemWidth(width - height - 8);
+    ImGui::SetNextItemWidth(width - height - sliderOffset);
     ImGui::SetCursorPosY(ypos + ((height - sliderHeight) / 2.0f) + btwBorder);
     if (ImGui::SliderFloat((prefix + name).c_str(), &stream->guiVolume, 0.0f, 1.0f, "")) {
         stream->setVolume(stream->guiVolume);
@@ -347,7 +348,7 @@ void SinkManager::loadSinksFromConfig() {
 }
 
 void SinkManager::showMenu() {
-    float menuWidth = ImGui::GetContentRegionAvailWidth();
+    float menuWidth = ImGui::GetContentRegionAvail().x;
     int count = 0;
     int maxCount = streams.size();
 

@@ -23,6 +23,7 @@ public:
     float getUiScale() {
         return uiScale;
     }
+    void setFirstMenuRender();
 
     // TODO: Replace with it's own class
     void setVFO(double freq);
@@ -67,6 +68,7 @@ private:
     float uiScale = 1.0f;
 
     bool initComplete = false;
+    bool autostart = false;
 
     EventHandler<VFOManager::VFO*> vfoCreatedHandler;
 

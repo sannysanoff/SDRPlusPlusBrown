@@ -23,7 +23,7 @@ click on it, then go to the bottom of the page and find artifact for your system
 * Hermes Lite 2 support (receive only)
 * Noise reduction to benefit SSB/AM - wideband and audio frequency. Wideband is visible on the waterfall. Can turn on both. ***Logmmse*** algorithm is used.
 * Mouse wheel scrolling of sliders
-* Multilanguage support in fonts, filenames and installation path (UTF-8)
+* Unicode support in fonts, filenames and installation path (UTF-8), on Windows, too.
 * Saving of zoom parameter between sessions
 * Interface scaling (seems upstream decided to implement it)
 * Audio AGC controllable via slider (note: default/original is aggressive)
@@ -35,6 +35,10 @@ click on it, then go to the bottom of the page and find artifact for your system
 * for Airspy HF+ Discovery, added Fill-In option which cuts off attenuated far sides of the spectrum.
 * added secondary audio stream, so you can output same radio to multiple audio cards / virtual cables
 * added single-channel (left/right) option for output audio
+
+2022.06.05
+
+* merged from upstream
 
 
 ## Feedback

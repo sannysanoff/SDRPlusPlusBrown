@@ -176,6 +176,9 @@ namespace ImGui {
 
         void setBandPlanPos(int pos);
 
+        void setFFTHold(bool hold);
+        void setFFTHoldSpeed(float speed);
+
         bool centerFreqMoved = false;
         bool vfoFreqChanged = false;
         bool bandplanEnabled = false;
@@ -236,6 +239,13 @@ namespace ImGui {
             _BANDPLAN_POS_COUNT
         };
 
+        ImVec2 fftAreaMin;
+        ImVec2 fftAreaMax;
+        ImVec2 freqAreaMin;
+        ImVec2 freqAreaMax;
+        ImVec2 wfMin;
+        ImVec2 wfMax;
+
     private:
         void drawWaterfall();
         void drawFFT();
@@ -259,13 +269,6 @@ namespace ImGui {
 
         ImVec2 lastWidgetPos;
         ImVec2 lastWidgetSize;
-
-        ImVec2 fftAreaMin;
-        ImVec2 fftAreaMax;
-        ImVec2 freqAreaMin;
-        ImVec2 freqAreaMax;
-        ImVec2 wfMin;
-        ImVec2 wfMax;
 
         ImGuiWindow* window;
 
@@ -307,6 +310,7 @@ namespace ImGui {
         int rawFFTSize;
         float* rawFFTs = NULL;
         float* latestFFT;
+        float* latestFFTHold;
         int currentFFTLine = 0;
         int fftLines = 0;
 
@@ -323,6 +327,9 @@ namespace ImGui {
         bool _fullUpdate = true;
 
         int bandPlanPos = BANDPLAN_POS_BOTTOM;
+
+        bool fftHold = false;
+        float fftHoldSpeed = 0.3f;
 
         // UI Select elements
         bool fftResizeSelect = false;

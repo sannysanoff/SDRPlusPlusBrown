@@ -5,7 +5,6 @@
 #include <gui/gui.h>
 #include <signal_path/signal_path.h>
 #include <module.h>
-#include <options.h>
 #include <filesystem>
 #include <dsp/pll.h>
 #include <dsp/stream.h>
@@ -144,7 +143,7 @@ private:
     static void menuHandler(void* ctx) {
         M17DecoderModule* _this = (M17DecoderModule*)ctx;
 
-        float menuWidth = ImGui::GetContentRegionAvailWidth();
+        float menuWidth = ImGui::GetContentRegionAvail().x;
 
         if (!_this->enabled) { style::beginDisabled(); }
 
@@ -299,7 +298,7 @@ private:
 MOD_EXPORT void _INIT_() {
     // Create default recording directory
     json def = json({});
-    config.setPath(options::opts.root + "/m17_decoder_config.json");
+    config.setPath(core::args["root"].s() + "/m17_decoder_config.json");
     config.load(def);
     config.enableAutoSave();
 }

@@ -8,8 +8,8 @@
 #include <spdlog/spdlog.h>
 #include <RtAudio.h>
 #include <config.h>
-#include <options.h>
 #include <unordered_set>
+#include <core.h>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -145,7 +145,7 @@ public:
     }
 
     void menuHandler() {
-        float menuWidth = ImGui::GetContentRegionAvailWidth();
+        float menuWidth = ImGui::GetContentRegionAvail().x;
 
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devId, txtDevList.c_str())) {
@@ -321,6 +321,10 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
+    json def = json({});
+    config.setPath(core::args["root"].s() + "/audio_sink_config.json");
+    config.load(def);
+    config.enableAutoSave();
 }
 
 static std::unordered_set<int> countInstances;
