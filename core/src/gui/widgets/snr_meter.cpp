@@ -40,7 +40,6 @@ namespace ImGui {
 
         float drawVal = (float) val * ratio;
 
-        postSnrLocation = min + ImVec2(0, 50);
 
         lastsnr.insert(lastsnr.begin(), drawVal);
         if (lastsnr.size() > NLASTSNR)
@@ -50,12 +49,14 @@ namespace ImGui {
         window->DrawList->AddLine(min, min + ImVec2(0, (10.0f * style::uiScale) - 1), text, style::uiScale);
         window->DrawList->AddLine(min + ImVec2(0, (10.0f * style::uiScale) - 1), min + ImVec2(size.x + 1, (10.0f * style::uiScale) - 1), text, style::uiScale);
 
+
         for (int i = 0; i < 10; i++) {
             window->DrawList->AddLine(min + ImVec2(roundf((float)i * it), (10.0f * style::uiScale) - 1), min + ImVec2(roundf((float)i * it), (15.0f * style::uiScale) - 1), text, style::uiScale);
             sprintf(buf, "%d", i * 10);
             ImVec2 sz = ImGui::CalcTextSize(buf);
             window->DrawList->AddText(min + ImVec2(roundf(((float)i * it) - (sz.x / 2.0)) + 1, 16.0f * style::uiScale), text, buf);
         }
+        postSnrLocation = min + ImVec2(0, -min.y);
     }
 
     static std::vector<float> sma(int smawindow, std::vector <float> &src) {
@@ -132,7 +133,7 @@ namespace ImGui {
         ImGuiWindow* window = GetCurrentWindow();
         ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
         for(int q=1; q<r.size(); q++) {
-            window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q-1], q-1), postSnrLocation + ImVec2(0 + r[q], q), text);
+            window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q-1], q-1 + window->Pos.y), postSnrLocation + ImVec2(0 + r[q], q + window->Pos.y), text);
         }
     }
 }

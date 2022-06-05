@@ -18,7 +18,7 @@ namespace displaymenu {
     std::string colorMapNamesTxt = "";
     std::string colorMapAuthor = "";
     int selectedWindow = 0;
-    float uiScale = 1.0;
+//    float uiScale = 1.0;
     int fftRate = 20;
     int uiScaleId = 0;
     bool restartRequired = false;
@@ -98,8 +98,8 @@ namespace displaymenu {
         selectedWindow = std::clamp<int>((int)core::configManager.conf["fftWindow"], 0, _FFT_WINDOW_COUNT - 1);
         gui::mainWindow.setFFTWindow(selectedWindow);
 
-        uiScale = core::configManager.conf["uiScale"];
-        gui::mainWindow.setUiScale(uiScale);
+//        uiScale = core::configManager.conf["uiScale"];
+//        gui::mainWindow.setUiScale(uiScale);
 
         gui::menu.locked = core::configManager.conf["lockMenuOrder"];
 
@@ -110,9 +110,12 @@ namespace displaymenu {
 
         // Define and load UI scales
         uiScales.define(1.0f, "100%", 1.0f);
+        uiScales.define(1.25f, "125%", 1.25f);
+        uiScales.define(1.5f, "150%", 1.5f);
         uiScales.define(2.0f, "200%", 2.0f);
         uiScales.define(3.0f, "300%", 3.0f);
         uiScales.define(4.0f, "400%", 4.0f);
+        if (!uiScales.keyExists(style::uiScale)) style::uiScale = 1.0f;
         uiScaleId = uiScales.valueId(style::uiScale);
 
     }
@@ -202,17 +205,18 @@ namespace displaymenu {
             core::configManager.release(true);
         }
 
+/*
         ImGui::LeftLabel("UI Scale");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
         if (ImGui::SliderFloat("##sdrpp_ui_scale", &uiScale, 0.5f, 4.0f, "x %.1f")) {
-            gui::mainWindow.setFFTWindow(selectedWindow);
             gui::mainWindow.setUiScale(uiScale);
             core::configManager.acquire();
             core::configManager.conf["uiScale"] = uiScale;
             core::configManager.release(true);
         }
 
+*/
         if (!colorMapNames.empty()) {
             ImGui::LeftLabel("Color Map");
             ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());

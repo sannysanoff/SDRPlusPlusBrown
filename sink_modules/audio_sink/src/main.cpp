@@ -21,6 +21,11 @@ SDRPP_MOD_INFO{
     /* Max instances    */ 2
 };
 
+static bool rtacb_error;
+static void rtacb(RtAudioError::Type type, const std::string& errorText) {
+    rtacb_error = true;
+}
+
 class AudioSink : SinkManager::Sink {
 public:
     std::shared_ptr<ConfigManager> config;
@@ -44,10 +49,31 @@ public:
         config->release(created);
 
         int count = audio.getDeviceCount();
+        auto defout = audio.getDefaultOutputDevice();
         RtAudio::DeviceInfo info;
         for (int i = 0; i < count; i++) {
             info = audio.getDeviceInfo(i);
-            if (!info.probed) { continue; }
+            if (!info.probed) {
+                RtAudio::StreamParameters parameters;
+                parameters.deviceId = i;
+                parameters.nChannels = 2;
+                unsigned int bufferFrames = sampleRate / 60;
+                RtAudio::StreamOptions opts;
+                opts.flags = RTAUDIO_MINIMIZE_LATENCY;
+                opts.streamName = _streamName;
+                info.probed = true;
+                rtacb_error = false;
+                try {
+                   audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts, rtacb);
+                } catch (RtAudioError &err) {
+                    rtacb_error = true;
+                }
+                if (rtacb_error) {
+                    continue;
+                }
+                audio.closeStream();
+                info.outputChannels = 2;
+            }
             if (info.outputChannels == 0) { continue; }
             if (info.isDefaultOutput) { defaultDevId = devList.size(); }
             devList.push_back(info);
@@ -145,9 +171,9 @@ public:
     }
 
     void menuHandler() {
-        float menuWidth = ImGui::GetContentRegionAvail().x;
-
-        ImGui::SetNextItemWidth(menuWidth);
+//        float menuWidth = ImGui::GetContentRegionAvailWidth();
+//
+//        ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devId, txtDevList.c_str())) {
             selectById(devId);
             config->acquire();
@@ -156,7 +182,7 @@ public:
         }
 
         if (!SinkManager::isSecondaryStream(_streamName)) {
-            ImGui::SetNextItemWidth(menuWidth);
+//            ImGui::SetNextItemWidth(menuWidth);
             if (ImGui::Combo(("##_audio_sink_sr_" + _streamName).c_str(), &srId, sampleRatesTxt.c_str())) {
                 sampleRate = sampleRates[srId];
                 _stream->setSampleRate(sampleRate);
@@ -321,10 +347,6 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    json def = json({});
-    config.setPath(core::args["root"].s() + "/audio_sink_config.json");
-    config.load(def);
-    config.enableAutoSave();
 }
 
 static std::unordered_set<int> countInstances;
@@ -342,9 +364,9 @@ MOD_EXPORT void* _CREATE_INSTANCE_(std::string name) {
     auto config = std::make_shared<ConfigManager>();
     json def = json({});
     if (foundIndex > 0) {
-        config->setPath(options::opts.root + "/audio_sink_config"+std::to_string(foundIndex)+".json");
+        config->setPath(core::args["root"].s() + "/audio_sink_config"+std::to_string(foundIndex)+".json");
     } else {
-        config->setPath(options::opts.root + "/audio_sink_config.json");
+        config->setPath(core::args["root"].s() + "/audio_sink_config.json");
     }
     config->load(def);
     config->enableAutoSave();

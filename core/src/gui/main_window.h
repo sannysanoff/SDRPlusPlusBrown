@@ -19,10 +19,10 @@ public:
     bool sdrIsRunning();
     void setFFTSize(int size);
     void setFFTWindow(int win);
-    void setUiScale(float scale);
-    float getUiScale() {
-        return uiScale;
-    }
+//    void setUiScale(float scale);
+//    float getUiScale() {
+//        return uiScale;
+//    }
     void setFirstMenuRender();
 
     // TODO: Replace with it's own class

@@ -740,9 +740,9 @@ void MainWindow::setFFTWindow(int win) {
     sigpath::signalPath.setFFTWindow(win);
 }
 
-void MainWindow::setUiScale(float scale) {
-    this->uiScale = scale;
-}
+//void MainWindow::setUiScale(float scale) {
+//    this->uiScale = scale;
+//}
 
 bool MainWindow::isPlaying() {
     return playing;

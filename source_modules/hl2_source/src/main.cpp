@@ -10,7 +10,6 @@
 #include <core.h>
 #include <gui/style.h>
 #include <config.h>
-#include <options.h>
 #include <gui/widgets/stepped_slider.h>
 #include <iostream>
 
@@ -340,7 +339,7 @@ private:
         }
 
         SmGui::SameLine();
-        float refreshBtnWdith = 65 * gui::mainWindow.getUiScale();
+        float refreshBtnWdith = 65 * style::uiScale;
         if (SmGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name), ImVec2(refreshBtnWdith, 0))) {
             _this->refresh();
             config.acquire();
@@ -406,7 +405,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(options::opts.root + "/hl2_config.json");
+    config.setPath(core::args["root"].s() + "/hl2_config.json");
     config.load(def);
     config.enableAutoSave();
 }
