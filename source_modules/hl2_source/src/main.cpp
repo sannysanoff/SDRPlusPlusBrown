@@ -339,8 +339,9 @@ private:
         }
 
         SmGui::SameLine();
-        float refreshBtnWdith = 65 * style::uiScale;
-        if (SmGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name), ImVec2(refreshBtnWdith, 0))) {
+        SmGui::FillWidth();
+        SmGui::ForceSync();
+        if (SmGui::Button(CONCAT("Refresh##_hl2_refr_", _this->name))) {
             _this->refresh();
             config.acquire();
             std::string devSerial = config.conf["device"];
