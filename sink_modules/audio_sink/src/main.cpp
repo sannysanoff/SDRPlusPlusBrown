@@ -48,11 +48,15 @@ public:
         device = config->conf[_streamName]["device"];
         config->release(created);
 
+        spdlog::info("RtAudio: get dev count...");
         int count = audio.getDeviceCount();
+        spdlog::info("RtAudio: got dev count.");
         auto defout = audio.getDefaultOutputDevice();
         RtAudio::DeviceInfo info;
         for (int i = 0; i < count; i++) {
+            spdlog::info("RtAudio: got dev info: "+std::to_string(i)+"...");
             info = audio.getDeviceInfo(i);
+            spdlog::info("RtAudio: got dev info: "+std::to_string(i));
             if (!info.probed) {
                 RtAudio::StreamParameters parameters;
                 parameters.deviceId = i;
@@ -64,14 +68,18 @@ public:
                 info.probed = true;
                 rtacb_error = false;
                 try {
-                   audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts, rtacb);
+                    spdlog::info("RtAudio: try open/probe: "+info.name+"...");
+                    audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts, rtacb);
+                    spdlog::info("RtAudio: ok open/probe: "+info.name);
                 } catch (RtAudioError &err) {
                     rtacb_error = true;
                 }
                 if (rtacb_error) {
                     continue;
                 }
+                spdlog::info("RtAudio: close stream...: "+info.name);
                 audio.closeStream();
+                spdlog::info("RtAudio: did close stream: "+info.name);
                 info.outputChannels = 2;
             }
             if (info.outputChannels == 0) { continue; }
@@ -208,9 +216,13 @@ private:
         opts.streamName = _streamName;
 
         try {
+            spdlog::info("RtAudio: stream begin open.."+ devList[devId].name);
             audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts);
+            spdlog::info("RtAudio: set sample count..");
             stereoPacker.setSampleCount(bufferFrames);
+            spdlog::info("RtAudio: start stream..");
             audio.startStream();
+            spdlog::info("RtAudio: start2..");
             stereoPacker.start();
         }
         catch (RtAudioError& e) {
@@ -222,6 +234,7 @@ private:
     }
 
     void doStop() {
+        spdlog::info("RtAudio: stop..");
         s2m.stop();
         monoPacker.stop();
         stereoPacker.stop();
@@ -231,6 +244,7 @@ private:
         audio.closeStream();
         monoPacker.out.clearReadStop();
         stereoPacker.out.clearReadStop();
+        spdlog::info("RtAudio: stopped");
     }
 
     static int callback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void* userData) {

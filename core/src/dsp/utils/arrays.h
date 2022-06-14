@@ -92,24 +92,42 @@ namespace dsp {
 
         inline FloatArray mul(const Arg<std::vector<float>> &v, float e) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (auto d: *v) {
-                retval->emplace_back(d * e);
+            if (false) {
+                retval->reserve(v->size());
+                for (auto d : *v) {
+                    retval->emplace_back(d * e);
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_s32f_multiply_32f(retval->data(), v->data(), e, v->size());
             }
             return retval;
         }
 
         inline FloatArray add(const Arg<std::vector<float>> &v, float e) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (auto d: *v) {
-                retval->emplace_back(d + e);
+            if (false) {
+                retval->reserve(v->size());
+                for (auto d : *v) {
+                    retval->emplace_back(d + e);
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
             }
             return retval;
         }
 
         inline FloatArray addeach(const Arg<std::vector<float>> &v, const Arg<std::vector<float>> &w) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (int q = 0; q < v->size(); q++) {
-                retval->emplace_back(v->at(q) + w->at(q));
+            if (false) {
+                retval->reserve(v->size());
+                for (int q = 0; q < v->size(); q++) {
+                    retval->emplace_back(v->at(q) + w->at(q));
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_x2_add_32f(retval->data(), v->data(), w->data(), v->size());
             }
             return retval;
         }
@@ -117,90 +135,130 @@ namespace dsp {
 
         inline ComplexArray addeach(const ComplexArray &v, const ComplexArray &w) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            for (int q = 0; q < v->size(); q++) {
-                retval->emplace_back(v->at(q) + w->at(q));
+            if (false) {
+                retval->reserve(v->size());
+                for (int q = 0; q < v->size(); q++) {
+                    retval->emplace_back(v->at(q) + w->at(q));
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32fc_x2_add_32fc((lv_32fc_t *)retval->data(), (lv_32fc_t *)v->data(), (lv_32fc_t *)w->data(), v->size());
             }
             return retval;
         }
 
         inline FloatArray muleach(const Arg<std::vector<float>> &v, const Arg<std::vector<float>> &w) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (int q = 0; q < v->size(); q++) {
-                auto vv = v->at(q);
-                auto ww = w->at(q);
-                auto mul = vv * ww;
-                if (mul == 0 && vv != 0 && ww != 0) {
-                    mul = 1.175494351e-37;
+            if (false) {
+                retval->reserve(v->size());
+                for (int q = 0; q < v->size(); q++) {
+                    auto vv = v->at(q);
+                    auto ww = w->at(q);
+                    auto mul = vv * ww;
+                    if (mul == 0 && vv != 0 && ww != 0) {
+                        mul = 1.175494351e-37;
+                    }
+                    retval->emplace_back(mul);
                 }
-                retval->emplace_back(mul);
+            } else {
+                retval->resize(v->size());
+                volk_32f_x2_multiply_32f(retval->data(), v->data(), w->data(), v->size());
             }
             return retval;
         }
 
-        inline ComplexArray muleach(const FloatArray &v, const ComplexArray &w) {
+        inline ComplexArray muleach(const FloatArray& v, const ComplexArray& w) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
+            retval->reserve(v->size());
             for (int q = 0; q < v->size(); q++) {
-                retval->emplace_back(dsp::complex_t{v->at(q), 0} * w->at(q));
+                retval->emplace_back(dsp::complex_t{ v->at(q), 0 } * w->at(q));
             }
             return retval;
         }
 
         inline FloatArray diveach(const Arg<std::vector<float>> &v, const Arg<std::vector<float>> &w) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (int q = 0; q < v->size(); q++) {
-                retval->emplace_back(v->at(q) / w->at(q));
+            if (false) {
+                retval->reserve(v->size());
+                for (int q = 0; q < v->size(); q++) {
+                    retval->emplace_back(v->at(q) / w->at(q));
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_x2_divide_32f(retval->data(), v->data(), w->data(), v->size());
             }
             return retval;
         }
 
         inline bool npall(const Arg<std::vector<float>> &v) {
             int countZeros = 0;
-            int firstZero = -1;
+//            int firstZero = -1;
             for (auto d: *v) {
                 if (d == 0) {
-                    countZeros++;
+                    return false;
                 }
+/*
                 if (countZeros == 0) {
                     firstZero++;
                 }
+*/
             }
-            if (countZeros) {
-//                std::cout << "npall: " << countZeros << "/" << v->size() << " first at " << firstZero << std::endl;
-                return false;
-            }
+//            if (countZeros) {
+////                std::cout << "npall: " << countZeros << "/" << v->size() << " first at " << firstZero << std::endl;
+//                return false;
+//            }
             return true;
         }
 
         inline FloatArray div(const Arg<std::vector<float>> &v, float e) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (auto d: *v) {
-                retval->emplace_back(d / e);
+            if (false) {
+                retval->reserve(v->size());
+                for (auto d : *v) {
+                    retval->emplace_back(d / e);
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_s32f_multiply_32f(retval->data(), v->data(), 1.0/e, v->size());
             }
             return retval;
         }
 
         inline FloatArray npminimum(const Arg<std::vector<float>> &v, float lim) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(v->size());
+//            int ix = 0;
             for (auto d: *v) {
                 if (d < lim) {
                     retval->emplace_back(d);
                 } else {
                     retval->emplace_back(lim);
                 }
+//                ix++;
+//                if (ix == 1000000) {
+//                    std::cout << "XX";
+//                }
             }
             return retval;
         }
 
         inline ComplexArray div(const ComplexArray &v, float val) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            for (auto d: *v) {
-                retval->emplace_back(d / val);
+            if (false) {
+                retval->reserve(v->size());
+                for (auto d : *v) {
+                    retval->emplace_back(d / val);
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32fc_s32fc_multiply_32fc((lv_32fc_t *)retval->data(), (lv_32fc_t *)v->data(), lv_32fc_t(1.0f/val, 0.0f), v->size());
             }
             return retval;
         }
 
         inline FloatArray npmaximum(const Arg<std::vector<float>> &v, float lim) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(v->size());
             for (auto d: *v) {
                 if (d > lim) {
                     retval->emplace_back(d);
@@ -214,6 +272,7 @@ namespace dsp {
 // array range
         inline FloatArray nparange(const Arg<std::vector<float>> &v, int begin, int end) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(end-begin);
             for (int i = begin; i < end; i++) {
                 retval->emplace_back(v->at(i));
             }
@@ -222,6 +281,7 @@ namespace dsp {
 
         inline ComplexArray nparange(const Arg<std::vector<dsp::complex_t>> &v, int begin, int end) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
+            retval->reserve(end-begin);
             for (int i = begin; i < end; i++) {
                 retval->emplace_back(v->at(i));
             }
@@ -236,13 +296,15 @@ namespace dsp {
         }
 
         inline void nparangeset(const ComplexArray &v, int begin, const ComplexArray &part) {
-            for (int i = 0; i < part->size(); i++) {
-                (*v)[begin + i] = part->at(i);
-            }
+            memmove(v->data() + begin, part->data(), sizeof(part->at(0))*part->size());
+//            for (int i = 0; i < part->size(); i++) {
+//                (*v)[begin + i] = part->at(i);
+//            }
         }
 
         inline FloatArray neg(const Arg<std::vector<float>> &v) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(v->size());
             for (auto d: *v) {
                 retval->emplace_back(-d);
             }
@@ -251,8 +313,14 @@ namespace dsp {
 
         inline FloatArray npexp(const Arg<std::vector<float>> &v) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (auto d: *v) {
-                retval->emplace_back(exp(d));
+            if (false) {
+                retval->reserve(v->size());
+                for (auto d : *v) {
+                    retval->emplace_back(exp(d));
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_expfast_32f(retval->data(), v->data(), v->size());
             }
             return retval;
         }
@@ -267,6 +335,7 @@ namespace dsp {
 
         inline ComplexArray tocomplex(const FloatArray &v) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
+            retval->reserve(v->size());
             for (auto d: *v) {
                 retval->emplace_back(dsp::complex_t{d, 0.0f});
             }
@@ -307,18 +376,12 @@ namespace dsp {
         }
 
         inline FloatArray npzeros(int size) {
-            auto retval = std::make_shared<std::vector<float>>();
-            for (int i = 0; i < size; i++) {
-                retval->emplace_back(0.0f);
-            }
+            auto retval = std::make_shared<std::vector<float>>(size, 0.0);
             return retval;
         }
 
         inline ComplexArray npzeros_c(int size) {
-            auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            for (int i = 0; i < size; i++) {
-                retval->emplace_back(dsp::complex_t{0.0f, 0.0f});
-            }
+            auto retval = std::make_shared<std::vector<dsp::complex_t>>(size, dsp::complex_t{0.0f, 0.0f});
             return retval;
         }
 
@@ -331,10 +394,11 @@ namespace dsp {
             if (nsize < in->size()) {
                 limit = nsize;
             }
-            for (int i = 0; i < limit; i++) {
+            retval->reserve(nsize);
+            for (auto i = 0; i < limit; i++) {
                 retval->emplace_back(in->at(i));
             }
-            for (int i = limit; i < nsize; i++) {
+            for (auto i = limit; i < nsize; i++) {
                 retval->emplace_back(dsp::complex_t{0, 0});
             }
             return retval;
@@ -350,8 +414,14 @@ namespace dsp {
 
         inline FloatArray npabsolute(const ComplexArray &in) {
             auto retval = std::make_shared<std::vector<float>>();
-            for (auto &v: *in) {
-                retval->emplace_back(v.amplitude());
+            if (false) {
+                retval->reserve(in->size());
+                for (auto& v : *in) {
+                    retval->emplace_back(v.amplitude());
+                }
+            } else {
+                retval->resize(in->size());
+                volk_32fc_magnitude_32f(retval->data(), (const lv_32fc_t*)in->data(), in->size());
             }
             return retval;
         }

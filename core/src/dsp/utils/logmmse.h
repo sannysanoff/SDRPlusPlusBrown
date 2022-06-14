@@ -12,6 +12,19 @@ namespace dsp {
             return msec;
         }
 
+        inline long long currentTimeNanos() {
+#ifdef __linux__
+            timespec time1;
+            clock_gettime(CLOCK_MONOTONIC_COARSE, &time1);
+            return time1.tv_nsec + time1.tv_sec * 1000000000L;
+#else
+            std::chrono::system_clock::time_point t1 = std::chrono::system_clock::now();
+            long long msec = std::chrono::time_point_cast<std::chrono::nanoseconds>(t1).time_since_epoch().count();
+            return msec;
+#endif
+        }
+
+
 
         // courtesy of https://github.com/jimmyberg/LowPassFilter
         class LowPassFilter {
@@ -117,15 +130,18 @@ namespace dsp {
                     }
                 }
 
+#define ADD_STEP_STATS()          ctm2 = currentTimeNanos(); muSum[statIndex++] += ctm2-ctm; ctm = ctm2
                 void update_noise_mu2() {
-                    int nframes = noise_history->size() / nFFT;
+                    static long long muSum[30] = {0,}, muCount = 0; auto ctm = currentTimeNanos();long long ctm2; auto statIndex = 0;
+                    auto nframes = noise_history->size() / nFFT;
                     bool audioFrequency = nFFT < 1200;
-                    auto dump = dumpEnabler == 10;
+//                    auto dump = dumpEnabler == 10;
+
                     if (nframes > 100 && !hold) {
 
-                        if (dump) {
-                            std::cout << "Mu2 history" << std::endl;
-                        }
+//                        if (dump) {
+//                            std::cout << "Mu2 history" << std::endl;
+//                        }
                         if (audioFrequency) {
 
                             // recalculate noise floor
@@ -194,73 +210,101 @@ namespace dsp {
                                 }
                                  */
                             }
-                            if (nframes > noise_history_len() - 10) {
-                                dumpEnabler++;
-                            }
-                            if (dump) {
-//                                for (int ix = 0; ix < noise_mu2->size(); ix++) {
-//                                    std::cout << "RNoise\t" << (ix) << "\t" << noise_mu2->at(ix) << std::endl;
-//                                }
-                            }
+//                            if (nframes > noise_history_len() - 10) {
+//                                dumpEnabler++;
+//                            }
+//                            if (dump) {
+////                                for (int ix = 0; ix < noise_mu2->size(); ix++) {
+////                                    std::cout << "RNoise\t" << (ix) << "\t" << noise_mu2->at(ix) << std::endl;
+////                                }
+//                            }
                             generation++;
                         } else {
                             // finding minimum value of the noise inside the history array
-                            std::vector<float> sums(nFFT, 0);
+
+
+                            auto noise_mu2_copy = *noise_mu2;
+
+                            auto sumsD = (float *)volk_malloc(nFFT * sizeof(float), 32);
+                            memset(sumsD, 0, nFFT * sizeof(float));
+
                             for (int q = 0; q < nframes; q++) {
                                 int off = q * nFFT;
-                                for (int z = 0; z < nFFT; z++) {
-                                    auto v = noise_history->at(off + z);
-//                                if (noise_history->at(off + z) < noise_history->at(z)) {
-//                                    noise_history->at(z) = noise_history->at(off + z);
-//                                }
-                                    sums[z] += v;
-                                    if (dump) {
-                                        std::cout << noise_history->at(off + z) << "\t";
+                                if (false) {
+                                    for (int z = 0; z < nFFT; z++) {
+                                        auto v = noise_history->at(off + z);
+                                        sumsD[z] += v;
                                     }
-                                }
-                                if (dump) {
-                                    std::cout << std::endl;
+                                } else {
+                                    auto nhD = noise_history->data() + off;
+                                    volk_32f_x2_add_32f(sumsD, nhD, sumsD, nFFT); // sums+=noise_history[frame]
                                 }
                             }
+                            ADD_STEP_STATS();
                             for (int z = 0; z < nFFT; z++) {
-                                sums[z] /= nframes;
+                                sumsD[z] /= nframes;
                             }
-                            std::vector<float> hi(nFFT, 0);
+                            ADD_STEP_STATS();
+                            auto hiD = (float *)volk_malloc(nFFT * sizeof(float), 32);
+                            memset(hiD, 0, sizeof(nFFT * sizeof(float)));
+                            auto diffD = (float *)volk_malloc(nFFT*sizeof(float ), 32);
                             for (int q = 0; q < nframes; q++) {
                                 int off = q * nFFT;
-                                for (int z = 0; z < nFFT; z++) {
-                                    auto v = noise_history->at(off + z);
-                                    auto diff = v - sums[z];
-                                    hi[z] += diff * diff;
+                                if (false) {
+                                    for (int z = 0; z < nFFT; z++) {
+                                        auto v = noise_history->at(off + z);
+                                        auto diff = v - sumsD[z];
+                                        hiD[z] += diff * diff;
+                                    }
+                                } else {
+                                    auto nhD = noise_history->data() + off;
+                                    volk_32f_x2_subtract_32f(diffD, nhD, sumsD, nFFT); // diff=noise_history-sums
+                                    volk_32f_x2_multiply_32f(diffD, diffD, diffD, nFFT);  // diff *= diff;
+                                    volk_32f_x2_add_32f(hiD, hiD, diffD, nFFT);        // hi += diff
                                 }
+                                // hi += nh[frame] - sums
                             }
+                            volk_free(diffD);
+                            ADD_STEP_STATS();
                             std::vector<float> devs(nFFT, 0);
                             std::vector<int> devsort(nFFT, 0);
+                            if (false) {
+                                for (int z = 0; z < nFFT; z++) {
+                                    devs[z] = sqrt(hiD[z] / nframes);
+                                }
+                            } else {
+                                auto devsD = devs.data();
+                                volk_32f_s32f_multiply_32f(hiD, hiD, 1 / (float)nframes, nFFT); // hi /= nFrames
+                                volk_32f_sqrt_32f(devsD, hiD, nFFT);                            // devs = sqrt(hi)
+                            }
+                            ADD_STEP_STATS();
                             for (int z = 0; z < nFFT; z++) {
-                                devs[z] = sqrt(hi[z] / nframes);
                                 if ((!audioFrequency) && abs(z - nFFT/2) < nFFT * 15 / 100) {
                                     // after fft, rightmost and leftmost sides of real frequencies range are at the center of the resulting table.
                                     // We exclude middle of the table from lookup
                                     devs[z] = 1000000;
                                 }
                                 devsort[z] = z;
-                                noise_mu2->at(z) = 0;
                             }
+                            memset(noise_mu2->data(), 0, nFFT*sizeof(noise_mu2->at(0)));
+                            ADD_STEP_STATS();
                             std::sort(devsort.begin(), devsort.begin() + devsort.size(), [&](int a, int b) {
                                 return devs[a] < devs[b];
                             });
+                            ADD_STEP_STATS();
                             // take 90% percentile
                             auto acceptible_stdev = devs[devsort.size()/10];
-                            if (audioFrequency) {
-                                acceptible_stdev = devs[devsort.size() - devsort.size()/10];
-                            }
+//                            if (audioFrequency) {
+//                                acceptible_stdev = devs[devsort.size() - devsort.size()/10];
+//                            }
                             acceptible_stdev *= 1.2;    // surplus 20%
                             // now devsort[0] is most stable noise
                             for(int q=0; q < nFFT && devs[devsort[q]] < acceptible_stdev; q++) {
-                                noise_mu2->at(devsort[q]) = sums[devsort[q]] * sums[devsort[q]];
+                                noise_mu2->at(devsort[q]) = sumsD[devsort[q]] * sumsD[devsort[q]];
                             }
                             int firstV = -1;
                             int lastV = -1;
+                            int countZeros = 0;
                             for(int q=0; q<nFFT; q++) {
                                 float val = noise_mu2->at(q);
                                 if(firstV < 0 && val != 0) {
@@ -279,28 +323,43 @@ namespace dsp {
                                         }
                                     }
                                     lastV = q;
+                                } else {
+                                    countZeros++;
                                 }
                             }
-                            for(int q=firstV-1; q>=0; q--) {
-                                noise_mu2->at(q) = noise_mu2->at(firstV);
-                            }
-                            for(int q=lastV+1; q<noise_mu2->size(); q++) {
-                                noise_mu2->at(q) = noise_mu2->at(lastV);
-                            }
-                            if (dump) {
-                                for (int ix = 0; ix < noise_mu2->size(); ix++) {
-                                    std::cout << "RNoise\t" << (ix) << "\t" << noise_mu2->at(ix) << std::endl;
+                            if (firstV < 0 || lastV < 0) {
+//                                std::cerr << "Bad noise_mu2 figure. countZeros="+std::to_string(countZeros)+"\n";
+                                *noise_mu2 = noise_mu2_copy;
+//                                abort();
+                            } else {
+                                for (int q = firstV - 1; q >= 0; q--) {
+                                    noise_mu2->at(q) = noise_mu2->at(firstV);
                                 }
+                                for (int q = lastV + 1; q < noise_mu2->size(); q++) {
+                                    noise_mu2->at(q) = noise_mu2->at(lastV);
+                                }
+                            }
 
-                                for (int ix = 0; ix < sums.size(); ix++) {
-                                    std::cout << "Sums^2\t" << (ix) << "\t" << sums.at(ix) * sums.at(ix) << std::endl;
-                                }
-                            }
-
+                            volk_free(sumsD);
+                            volk_free(hiD);
                         }
 
 
 
+                    }
+                    //  non-volk: 984000 0    888000 32000 8000 316000
+                    // volk:      136000 4000 340000 12000 8000 260000
+                    // volk:      130000 4000 300000 12000 8000 260000  // after volk_alloc
+                    // mu2:       146625 2250 377750 3125  4250 333875  averages after np** conv
+                    muCount++;
+                    if (muCount == 1000) {
+                        std::cout << "mu2: ";
+                        for(int z=0; z<statIndex; z++) {
+                            std::cout << " " << std::to_string(muSum[z] / 1000);
+                            muSum[z] = 0;
+                        }
+                        std::cout << std::endl;
+                        muCount = 0;
                     }
                 }
             };
@@ -404,6 +463,8 @@ namespace dsp {
 //            }
 
             static ComplexArray logmmse_all(const ComplexArray &x, int Srate, float eta, SavedParamsC *params) {
+                static long long muSum[30] = {0,}, muCount = 0; auto ctm = currentTimeNanos();long long ctm2; auto statIndex = 0;
+
                 int consumed = 0;
                 params->Xn_prev->insert(params->Xn_prev->end(), x->begin(), x->end());
                 for (int j = 0; j < params->Xn_prev->size() - params->Slen; j += params->Slen) {
@@ -411,9 +472,11 @@ namespace dsp {
                     params->add_noise_history(noise);
                     consumed += params->Slen;
                 }
-                params->Xn_prev = nparange(params->Xn_prev, consumed, params->Xn_prev->size() - consumed);
+                params->Xn_prev = nparange(params->Xn_prev, consumed, params->Xn_prev->size());
                 auto Nframes = floor(x->size() / params->len2) - floor(params->Slen / params->len2);
+                ADD_STEP_STATS();
                 params->update_noise_mu2();
+                ADD_STEP_STATS();
                 auto xfinal = npzeros_c(Nframes * params->len2);
                 for (int k = 0; k < Nframes * params->len2; k += params->len2) {
                     auto insign = muleach(params->win, nparange(x, k, k + params->Slen));
@@ -454,6 +517,21 @@ namespace dsp {
                     auto final = addeach(params->x_old, nparange(xi_w, 0, params->len1));
                     nparangeset(xfinal, k, final);
                     params->x_old = nparange(xi_w, params->len1, params->Slen);
+                }
+                ADD_STEP_STATS();
+                muCount++;
+
+                if (muCount == 1000) {
+                    // logmmse_all:  371000 684000 806000 (avgs)
+                    // logmmse_all:  307000 892000 286000 (avgs) - some np moved to volk
+                    // logmmse_all:  332000 886000 247000 (avgs) - all np moved to volk
+                    std::cout << "logmmse_all: ";
+                    for(int z=0; z<statIndex; z++) {
+                        std::cout << " " << std::to_string(muSum[z] / 1000);
+                        muSum[z] = 0;
+                    }
+                    std::cout << std::endl;
+                    muCount = 0;
                 }
                 return xfinal;
             }
