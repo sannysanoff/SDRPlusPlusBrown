@@ -38,7 +38,7 @@ click on it, then go to the bottom of the page and find artifact for your system
 
 2022.06.05
 
-* merged from upstream
+* merged from upstream. Project is still on hold because war in my village (grid locator KO80ce).
 
 
 ## Feedback
