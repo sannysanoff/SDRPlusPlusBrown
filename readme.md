@@ -4,8 +4,9 @@ Please see [upstream project page](https://github.com/AlexandreRouma/SDRPlusPlus
 
 This brown fork has several goals:
 
+* to add Hermes Lite 2 support
+* to experiment with various NOISE REDUCTION 
 * to maintain compatibility with upstream project (regular merges from upstream)
-* to add Hermes Lite 2 support 
 * to add various features that are not in the upstream and have hard time being merged there due to various reasons.
 
 ## Installing the fork
