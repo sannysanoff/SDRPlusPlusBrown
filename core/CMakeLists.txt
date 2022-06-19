@@ -10,7 +10,7 @@ add_definitions(-DIS_MACOS_BUNDLE)
 endif (USE_BUNDLE_DEFAULTS)
 
 # Main code
-file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c")
+file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c" "highway/hwy/*.cc")
 
 add_definitions(-DSDRPP_IS_CORE)
 if (MSVC)
@@ -45,6 +45,7 @@ target_compile_definitions(sdrpp_core PUBLIC INSTALL_PREFIX="${CMAKE_INSTALL_PRE
 # Include core headers
 target_include_directories(sdrpp_core PUBLIC "src/")
 target_include_directories(sdrpp_core PUBLIC "src/imgui")
+target_include_directories(sdrpp_core PUBLIC "highway")
 
 # Configure backend includes and libraries
 if (OPT_BACKEND_GLFW)

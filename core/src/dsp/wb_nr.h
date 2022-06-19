@@ -79,6 +79,11 @@ namespace dsp {
                 worker1c = npzeros_c(0);
                 trailForSample = npzeros_c(0);
                 params.reset();
+#ifdef __linux__
+                pid_t x = syscall(__NR_gettid);
+                std::cout << "Wideband NR: thread id=" << x << std::endl;
+#endif
+
             }
             int count = _in->read();
             if (count < 0) { return -1; }

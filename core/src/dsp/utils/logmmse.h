@@ -2,6 +2,8 @@
 
 #include <dsp/utils/arrays.h>
 #include <dsp/utils/math.h>
+#include <array>
+#include <hwy/contrib/sort/vqsort.h>
 
 namespace dsp {
     namespace logmmse {
@@ -57,11 +59,11 @@ namespace dsp {
                     if (nFFT < 1000) {
                         return 2000;
                     } else {
-                        return 200;
+                        return 50;
                     }
                 }
 
-                FloatArray noise_history;
+                std::vector<FloatArray> noise_history;      // chunks of nFFT*float
                 ComplexArray Xn_prev; // remaining noise
 
                 FloatArray noise_mu2;
@@ -117,18 +119,37 @@ namespace dsp {
                 void add_noise_history(const FloatArray &noise) {
                     auto noiseD = noise->data();
                     unsigned long limit = noise->size();
-                    for (int q = 0; q < limit; q++) {
-                        noise_history->emplace_back(noiseD[q]);
+                    int iter = 0;
+                    while(limit > 0) {
+                        if (noise_history.empty() || noise_history.back()->size() == nFFT) {
+                            if (noise->size() == nFFT && iter == 0) {
+                                // fast path
+                                noise_history.emplace_back(noise);
+                                break;
+                            }
+                            noise_history.emplace_back(npzeros(0));
+                            noise_history.back()->reserve(nFFT);
+                        }
+                        // have a space on top of noise_history now.
+                        auto available = nFFT - noise_history.back()->size();
+                        auto moveSize = std::min(available, limit);
+                        auto preSize = noise_history.back()->size();
+                        noise_history.back()->resize(preSize + moveSize);
+                        auto dest = noise_history.back()->data() + preSize;
+                        memmove(dest, noiseD, moveSize * sizeof(noise_history.at(0)));
+                        noiseD += moveSize;
+                        limit -= moveSize;
+                        iter++;
                     }
-                    if (noise_history->size() > nFFT * noise_history_len()) {
-                        noise_history->erase(noise_history->begin(), noise_history->begin() + nFFT);
+                    if (noise_history.size() > noise_history_len()) {
+                        noise_history.erase(noise_history.begin(), noise_history.begin()+(noise_history.size() > noise_history_len()));
                     }
                 }
 
 #define ADD_STEP_STATS()          ctm2 = currentTimeNanos(); muSum[statIndex++] += ctm2-ctm; ctm = ctm2
                 void update_noise_mu2() {
                     static long long muSum[30] = {0,}, muCount = 0; auto ctm = currentTimeNanos();long long ctm2; auto statIndex = 0;
-                    auto nframes = noise_history->size() / nFFT;
+                    auto nframes = noise_history.size();
                     bool audioFrequency = nFFT < 1200;
 //                    auto dump = dumpEnabler == 10;
 
@@ -144,9 +165,9 @@ namespace dsp {
                                 std::vector<float> lower(nFFT, 0);
                                 const int nlower = 12;
                                 for (auto q = nframes - nlower; q < nframes; q++) {
-                                    auto offs = q * nFFT;
+                                    auto nhFrame = noise_history[q]->data();
                                     for (auto w = 0; w < nFFT; w++) {
-                                        lower[w] += noise_history->at(offs + w);
+                                        lower[w] += nhFrame[w];
                                     }
                                 }
                                 for (auto w = 0; w < nFFT; w++) {
@@ -187,8 +208,7 @@ namespace dsp {
                             memset(sumsD, 0, nFFT * sizeof(float));
 
                             for (int q = 0; q < nframes; q++) {
-                                int off = q * nFFT;
-                                auto nhD = noise_history->data() + off;
+                                auto nhD = noise_history[q]->data();
                                 volk_32f_x2_add_32f(sumsD, nhD, sumsD, nFFT); // sums+=noise_history[frame]
                             }
                             ADD_STEP_STATS();
@@ -198,15 +218,14 @@ namespace dsp {
                             ADD_STEP_STATS();
                             memset(hiD, 0, sizeof(nFFT * sizeof(float)));
                             for (int q = 0; q < nframes; q++) {
-                                int off = q * nFFT;
-                                auto nhD = noise_history->data() + off;
+                                auto nhD = noise_history[q]->data();
                                 volk_32f_x2_subtract_32f(diffD, nhD, sumsD, nFFT); // diff=noise_history-sums
                                 volk_32f_x2_multiply_32f(diffD, diffD, diffD, nFFT);  // diff *= diff;
                                 volk_32f_x2_add_32f(hiD, hiD, diffD, nFFT);        // hi += diff
                                 // hi += nh[frame] - sums
                             }
                             ADD_STEP_STATS();
-                            std::vector<int> devsort(nFFT, 0);
+//                            std::vector<int> devsort(nFFT, 0);
                             memset(devsD, 0, sizeof(devsD[0])*nFFT);
                             volk_32f_s32f_multiply_32f(hiD, hiD, 1 / (float)nframes, nFFT); // hi /= nFrames
                             volk_32f_sqrt_32f(devsD, hiD, nFFT);                            // devs = sqrt(hi)
@@ -217,23 +236,30 @@ namespace dsp {
                                     // We exclude middle of the table from lookup
                                     devsD[z] = 1000000;
                                 }
-                                devsort[z] = z;
+//                                devsort[z] = z;
                             }
                             memset(noise_mu2->data(), 0, nFFT*sizeof(noise_mu2->at(0)));
                             ADD_STEP_STATS();
-                            std::sort(devsort.begin(), devsort.begin() + devsort.size(), [&](int a, int b) {
-                                return devsD[a] < devsD[b];
-                            });
+//                            std::sort(devsort.begin(), devsort.begin() + devsort.size(), [&](int a, int b) {
+//                                return devsD[a] < devsD[b];
+//                            });
+
+                            hwy::Sorter s;
+                            hwy::SortAscending asc1;
+                            s(devsD, nFFT, asc1);
+//                            std::sort(devsD, devsD+nFFT);
                             ADD_STEP_STATS();
                             // take 90% percentile
-                            auto acceptible_stdev = devsD[devsort.size()/10];
+                            auto acceptible_stdev = devsD[nFFT/10];
 //                            if (audioFrequency) {
 //                                acceptible_stdev = devs[devsort.size() - devsort.size()/10];
 //                            }
                             acceptible_stdev *= 1.2;    // surplus 20%
                             // now devsort[0] is most stable noise
-                            for(int q=0; q < nFFT && devsD[devsort[q]] < acceptible_stdev; q++) {
-                                noise_mu2->at(devsort[q]) = sumsD[devsort[q]] * sumsD[devsort[q]];
+                            for(int q=0; q < nFFT; q++) {
+                                if (devsD[q] < acceptible_stdev) {
+                                    noise_mu2->at(q) = sumsD[q] * sumsD[q];
+                                }
                             }
                             int firstV = -1;
                             int lastV = -1;
@@ -286,6 +312,8 @@ namespace dsp {
                     // 192 mu2:       146625 2250 377750 3125  4250 333875  averages after np** conv
                     // 384             211	3	534	5	7	494             // avg
                     //                 274	3	684	8	6	618	41          // ? fixed alloc
+                    //                 604	4	718	5	9	248	37
+
                     muCount++;
                     if (muCount == 1000) {
                         std::cout << "mu2: ";
@@ -304,7 +332,7 @@ namespace dsp {
                 if (params->Slen % 2 == 1) params->Slen++;
                 params->PERC = 50;
                 params->len1 = floor(params->Slen * params->PERC / 100);
-                params->noise_history = npzeros(0);
+                params->noise_history.clear();
                 params->len2 = params->Slen - params->len1;         // len1+len2
                 auto audioFrequency = Srate <= 24000;
                 if (audioFrequency) {
