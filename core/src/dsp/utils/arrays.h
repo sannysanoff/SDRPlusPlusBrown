@@ -9,6 +9,7 @@
 
 #include <dsp/math.h>
 #include <fftw3.h>
+#include <volk/volk.h>
 
 namespace dsp {
     namespace arrays {
