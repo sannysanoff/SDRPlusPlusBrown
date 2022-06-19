@@ -59,7 +59,7 @@ namespace dsp {
                     if (nFFT < 1000) {
                         return 2000;
                     } else {
-                        return 50;
+                        return 200;
                     }
                 }
 
@@ -246,6 +246,7 @@ namespace dsp {
 
                             hwy::Sorter s;
                             hwy::SortAscending asc1;
+                            std::vector<float> devs(devsD, devsD+nFFT);
                             s(devsD, nFFT, asc1);
 //                            std::sort(devsD, devsD+nFFT);
                             ADD_STEP_STATS();
@@ -257,7 +258,7 @@ namespace dsp {
                             acceptible_stdev *= 1.2;    // surplus 20%
                             // now devsort[0] is most stable noise
                             for(int q=0; q < nFFT; q++) {
-                                if (devsD[q] < acceptible_stdev) {
+                                if (devs[q] < acceptible_stdev) {
                                     noise_mu2->at(q) = sumsD[q] * sumsD[q];
                                 }
                             }
