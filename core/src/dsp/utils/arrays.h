@@ -132,6 +132,20 @@ namespace dsp {
             return retval;
         }
 
+        inline FloatArray subeach(const Arg<std::vector<float>> &v, const Arg<std::vector<float>> &w) {
+            auto retval = std::make_shared<std::vector<float>>();
+            if (false) {
+                retval->reserve(v->size());
+                for (int q = 0; q < v->size(); q++) {
+                    retval->emplace_back(v->at(q) + w->at(q));
+                }
+            } else {
+                retval->resize(v->size());
+                volk_32f_x2_subtract_32f(retval->data(), v->data(), w->data(), v->size());
+            }
+            return retval;
+        }
+
 
         inline ComplexArray addeach(const ComplexArray &v, const ComplexArray &w) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
@@ -169,9 +183,12 @@ namespace dsp {
 
         inline ComplexArray muleach(const FloatArray& v, const ComplexArray& w) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            retval->reserve(v->size());
+            retval->resize(v->size());
+            auto rD = retval->data();
+            auto wD = w->data();
+            auto vD = v->data();
             for (int q = 0; q < v->size(); q++) {
-                retval->emplace_back(dsp::complex_t{ v->at(q), 0 } * w->at(q));
+                rD[q] = dsp::complex_t{ vD[q], 0 } * wD[q];
             }
             return retval;
         }
@@ -242,6 +259,19 @@ namespace dsp {
             return retval;
         }
 
+        inline FloatArray npminimum_(const Arg<std::vector<float>> &v, float lim) {
+            auto retval = std::make_shared<std::vector<float>>(v->data(), v->data() + v->size());
+            auto rvD = retval->data();
+            for(int q=0; q<retval->size(); q++) {
+                if (rvD[q] > lim) {
+                    rvD[q] = lim;
+                }
+            }
+            return retval;
+        }
+
+
+
         inline ComplexArray div(const ComplexArray &v, float val) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
             if (false) {
@@ -257,16 +287,24 @@ namespace dsp {
         }
 
         inline FloatArray npmaximum(const Arg<std::vector<float>> &v, float lim) {
-            auto retval = std::make_shared<std::vector<float>>();
-            retval->reserve(v->size());
-            for (auto d: *v) {
-                if (d > lim) {
-                    retval->emplace_back(d);
-                } else {
-                    retval->emplace_back(lim);
+            auto retval = std::make_shared<std::vector<float>>(v->data(), v->data() + v->size());
+            auto rvD = retval->data();
+            for(int q=0; q<retval->size(); q++) {
+                if (rvD[q] < lim) {
+                    rvD[q] = lim;
                 }
             }
             return retval;
+        }
+
+        inline FloatArray npmaximum_(const Arg<std::vector<float>> &v, float lim) {
+            auto rvD = v->data();
+            for(int q=0; q<v->size(); q++) {
+                if (rvD[q] < lim) {
+                    rvD[q] = lim;
+                }
+            }
+            return v;
         }
 
 // array range
@@ -280,11 +318,7 @@ namespace dsp {
         }
 
         inline ComplexArray nparange(const Arg<std::vector<dsp::complex_t>> &v, int begin, int end) {
-            auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            retval->reserve(end-begin);
-            for (int i = begin; i < end; i++) {
-                retval->emplace_back(v->at(i));
-            }
+            auto retval = std::make_shared<std::vector<dsp::complex_t>>(v->begin() + begin, v->begin() + end);
             return retval;
         }
 
@@ -405,9 +439,11 @@ namespace dsp {
         }
 
         inline FloatArray scipyspecialexpn(const FloatArray &in) {
-            auto retval = std::make_shared<std::vector<float>>();
-            for (auto &v: *in) {
-                retval->emplace_back(dsp::math::expn(v));
+            auto retval = std::make_shared<std::vector<float>>(in->size());
+            auto rvD = retval->data();
+            auto inD = in->data();
+            for(auto q=0; q<in->size(); q++) {
+                rvD[q] =  dsp::math::expn(inD[q]);
             }
             return retval;
         }

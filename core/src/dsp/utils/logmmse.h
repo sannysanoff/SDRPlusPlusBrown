@@ -64,6 +64,9 @@ namespace dsp {
                 }
 
                 std::vector<FloatArray> noise_history;      // chunks of nFFT*float
+                std::vector<FloatArray> dev_history;
+                FloatArray sums;      // sliding sum of last N noise_history
+                FloatArray devs;      // sliding sum of dev_history
                 ComplexArray Xn_prev; // remaining noise
 
                 FloatArray noise_mu2;
@@ -87,10 +90,9 @@ namespace dsp {
                 float maxdb = 0;
                 bool stable = false;
 
-                float *devsD = nullptr;
-                float *sumsD = nullptr;
-                float *hiD = nullptr;
-                float *diffD = nullptr;
+//                float *devsD = nullptr;
+//                float *hiD = nullptr;
+//                float *diffD = nullptr;
 
                 void reset() {
                     Xk_prev.reset();
@@ -103,47 +105,42 @@ namespace dsp {
                 }
 
                 void allocVolk() {
-                    sumsD = (float *)volk_malloc(nFFT * sizeof(float), 32);
-                    devsD = (float *)volk_malloc(nFFT * sizeof(float), 32);
-                    hiD = (float *)volk_malloc(nFFT * sizeof(float), 32);
-                    diffD = (float *)volk_malloc(nFFT * sizeof(float), 32);
+//                    devsD = (float *)volk_malloc(nFFT * sizeof(float), 32);
+//                    hiD = (float *)volk_malloc(nFFT * sizeof(float), 32);
+//                    diffD = (float *)volk_malloc(nFFT * sizeof(float), 32);
                 }
 
                 void freeVolk() {
-                    if (sumsD) { volk_free(sumsD); sumsD = nullptr; }
-                    if (devsD) { volk_free(devsD); devsD = nullptr; }
-                    if (hiD) { volk_free(hiD); hiD = nullptr; }
-                    if (diffD) { volk_free(diffD); diffD = nullptr; }
+//                    if (devsD) { volk_free(devsD); devsD = nullptr; }
+//                    if (hiD) { volk_free(hiD); hiD = nullptr; }
+//                    if (diffD) { volk_free(diffD); diffD = nullptr; }
                 }
 
                 void add_noise_history(const FloatArray &noise) {
-                    auto noiseD = noise->data();
-                    unsigned long limit = noise->size();
-                    int iter = 0;
-                    while(limit > 0) {
-                        if (noise_history.empty() || noise_history.back()->size() == nFFT) {
-                            if (noise->size() == nFFT && iter == 0) {
-                                // fast path
-                                noise_history.emplace_back(noise);
-                                break;
-                            }
-                            noise_history.emplace_back(npzeros(0));
-                            noise_history.back()->reserve(nFFT);
-                        }
-                        // have a space on top of noise_history now.
-                        auto available = nFFT - noise_history.back()->size();
-                        auto moveSize = std::min(available, limit);
-                        auto preSize = noise_history.back()->size();
-                        noise_history.back()->resize(preSize + moveSize);
-                        auto dest = noise_history.back()->data() + preSize;
-                        memmove(dest, noiseD, moveSize * sizeof(noise_history.at(0)));
-                        noiseD += moveSize;
-                        limit -= moveSize;
-                        iter++;
+                    if (noise->size() != nFFT) {
+                        abort(); // because
+
                     }
-                    if (noise_history.size() > noise_history_len()) {
-                        noise_history.erase(noise_history.begin(), noise_history.begin()+(noise_history.size() > noise_history_len()));
+                    noise_history.emplace_back(noise);
+                    volk_32f_x2_add_32f(sums->data(), sums->data(), noise->data(), nFFT);
+                    while (noise_history.size() > noise_history_len()) {
+                        volk_32f_x2_subtract_32f(sums->data(), sums->data(), noise_history.front()->data(), nFFT);
+                        noise_history.erase(noise_history.begin());
                     }
+
+                    auto noiseAvg = div(sums, noise_history.size());
+
+                    auto diff = subeach(noise, noiseAvg);
+                    diff = muleach(diff, diff);
+                    dev_history.emplace_back(diff);
+
+                    devs = addeach(devs, diff);
+
+                    while (dev_history.size() > noise_history_len()) {
+                        devs = subeach(devs, dev_history[0]);
+                        dev_history.erase(dev_history.begin());
+                    }
+
                 }
 
 #define ADD_STEP_STATS()          ctm2 = currentTimeNanos(); muSum[statIndex++] += ctm2-ctm; ctm = ctm2
@@ -205,61 +202,34 @@ namespace dsp {
 
                             auto noise_mu2_copy = *noise_mu2;
 
-                            memset(sumsD, 0, nFFT * sizeof(float));
+                            auto noiseAvg = mul(sums, 1 / (float)nframes);
 
-                            for (int q = 0; q < nframes; q++) {
-                                auto nhD = noise_history[q]->data();
-                                volk_32f_x2_add_32f(sumsD, nhD, sumsD, nFFT); // sums+=noise_history[frame]
-                            }
+                            ADD_STEP_STATS();
+
+                            auto hi = mul(devs, 1 / (float)nframes);
+                            auto devSquare = muleach(hi, hi);
+                            auto devSquareD = devSquare->data();
                             ADD_STEP_STATS();
                             for (int z = 0; z < nFFT; z++) {
-                                sumsD[z] /= nframes;
-                            }
-                            ADD_STEP_STATS();
-                            memset(hiD, 0, sizeof(nFFT * sizeof(float)));
-                            for (int q = 0; q < nframes; q++) {
-                                auto nhD = noise_history[q]->data();
-                                volk_32f_x2_subtract_32f(diffD, nhD, sumsD, nFFT); // diff=noise_history-sums
-                                volk_32f_x2_multiply_32f(diffD, diffD, diffD, nFFT);  // diff *= diff;
-                                volk_32f_x2_add_32f(hiD, hiD, diffD, nFFT);        // hi += diff
-                                // hi += nh[frame] - sums
-                            }
-                            ADD_STEP_STATS();
-//                            std::vector<int> devsort(nFFT, 0);
-                            memset(devsD, 0, sizeof(devsD[0])*nFFT);
-                            volk_32f_s32f_multiply_32f(hiD, hiD, 1 / (float)nframes, nFFT); // hi /= nFrames
-                            volk_32f_sqrt_32f(devsD, hiD, nFFT);                            // devs = sqrt(hi)
-                            ADD_STEP_STATS();
-                            for (int z = 0; z < nFFT; z++) {
-                                if ((!audioFrequency) && abs(z - nFFT/2) < nFFT * 15 / 100) {
+                                if (abs(z - nFFT/2) < nFFT * 15 / 100) {
                                     // after fft, rightmost and leftmost sides of real frequencies range are at the center of the resulting table.
                                     // We exclude middle of the table from lookup
-                                    devsD[z] = 1000000;
+                                    devSquareD[z] = 1000000;
                                 }
-//                                devsort[z] = z;
                             }
                             memset(noise_mu2->data(), 0, nFFT*sizeof(noise_mu2->at(0)));
                             ADD_STEP_STATS();
-//                            std::sort(devsort.begin(), devsort.begin() + devsort.size(), [&](int a, int b) {
-//                                return devsD[a] < devsD[b];
-//                            });
-
                             hwy::Sorter s;
                             hwy::SortAscending asc1;
-                            std::vector<float> devs(devsD, devsD+nFFT);
-                            s(devsD, nFFT, asc1);
-//                            std::sort(devsD, devsD+nFFT);
+                            std::vector<float> devs(devSquareD, devSquareD +nFFT);
+                            s(devSquareD, nFFT, asc1);
                             ADD_STEP_STATS();
                             // take 90% percentile
-                            auto acceptible_stdev = devsD[nFFT/10];
-//                            if (audioFrequency) {
-//                                acceptible_stdev = devs[devsort.size() - devsort.size()/10];
-//                            }
-                            acceptible_stdev *= 1.2;    // surplus 20%
-                            // now devsort[0] is most stable noise
+                            auto acceptible_stdev = devSquareD[nFFT/10];
+                            acceptible_stdev *= 1.2;    // surplus
                             for(int q=0; q < nFFT; q++) {
                                 if (devs[q] < acceptible_stdev) {
-                                    noise_mu2->at(q) = sumsD[q] * sumsD[q];
+                                    noise_mu2->at(q) = (*noiseAvg)[q] * (*noiseAvg)[q];
                                 }
                             }
                             int firstV = -1;
@@ -334,6 +304,7 @@ namespace dsp {
                 params->PERC = 50;
                 params->len1 = floor(params->Slen * params->PERC / 100);
                 params->noise_history.clear();
+                params->dev_history.clear();
                 params->len2 = params->Slen - params->len1;         // len1+len2
                 auto audioFrequency = Srate <= 24000;
                 if (audioFrequency) {
@@ -350,6 +321,8 @@ namespace dsp {
                 params->nFFT = 2 * params->Slen;
                 params->forwardPlan = allocateFFTWPlan(false, params->nFFT);
                 params->reversePlan = allocateFFTWPlan(true, params->nFFT);
+                params->sums = npzeros(params->nFFT);
+                params->devs = npzeros(params->nFFT);
 
                 std::cout << "Sampling piece... srate=" << Srate << " Slen=" << params->Slen << " nFFT=" << params->nFFT << std::endl;
                 auto Nframes = floor(x->size() / params->len2) - floor(params->Slen / params->len2);
@@ -417,23 +390,24 @@ namespace dsp {
                     auto insign = muleach(params->win, nparange(x, k, k + params->Slen));
                     auto spec = npfftfft(insign, params->forwardPlan);
                     auto sig = npabsolute(spec);
+                    auto sigD = sig->data();
                     for (auto z = 1; z < sig->size(); z++) {
-                        if ((*sig)[z] == 0) {
-                            (*sig)[z] = (*sig)[z - 1];      // for some reason fft returns 0 instead if small value
+                        if (sigD[z] == 0) {
+                            sigD[z] = sigD[z - 1];      // for some reason fft returns 0 instead if small value
                         }
                     }
                     params->add_noise_history(sig);
                     auto sig2 = muleach(sig, sig);
 
-                    auto gammak = npminimum(diveach(sig2, params->noise_mu2), 40);
+                    auto gammak = npminimum_(diveach(sig2, params->noise_mu2), 40);
                     FloatArray ksi;
                     if (!npall(params->Xk_prev)) {
-                        ksi = add(mul(npmaximum(add(gammak, -1), 0), 1 - params->aa), params->aa);
+                        ksi = add(mul(npmaximum_(add(gammak, -1), 0), 1 - params->aa), params->aa);
                     } else {
                         const FloatArray d1 = diveach(mul(params->Xk_prev, params->aa), params->noise_mu2);
-                        const FloatArray m1 = mul(npmaximum(add(gammak, -1), 0), (1 - params->aa));
+                        const FloatArray m1 = mul(npmaximum_(add(gammak, -1), 0), (1 - params->aa));
                         ksi = addeach(d1, m1);
-                        ksi = npmaximum(ksi, params->ksi_min);
+                        ksi = npmaximum_(ksi, params->ksi_min);
                     }
                     auto A = diveach(ksi, add(ksi, 1));
                     auto vk = muleach(A, gammak);
@@ -443,21 +417,13 @@ namespace dsp {
                     params->Xk_prev = muleach(sig, sig);
                     auto hwmulspec = muleach(hw, spec);
                     auto xi_w0 = npfftfft(hwmulspec, params->reversePlan);
-                    auto xi_w = xi_w0;
-                    auto final = addeach(params->x_old, nparange(xi_w, 0, params->len1));
+                    auto final = addeach(params->x_old, nparange(xi_w0, 0, params->len1));
                     nparangeset(xfinal, k, final);
-                    params->x_old = nparange(xi_w, params->len1, params->Slen);
+                    params->x_old = nparange(xi_w0, params->len1, params->Slen);
                 }
                 ADD_STEP_STATS();
                 muCount++;
 
-//                auto totalTimeMilli = (double)(currentTimeNanos() -t1)/1000000.0;
-//                auto realTimeMilli = (1000.0*x->size())/192000.0;
-//                auto procTimePercent = totalTimeMilli/realTimeMilli * 100;
-//
-//                if (muCount % 50 == 0) {
-//                    std::cout << "Proc Percent = " << procTimePercent << " ttm=" << totalTimeMilli << " rtm=" << realTimeMilli << std::endl;
-//                }
                 if (muCount == 1000) {
                     // 192 logmmse_all:  371000 684000 806000 (avgs)
                     // 192 logmmse_all:  307000 892000 286000 (avgs) - some np moved to volk
