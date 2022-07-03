@@ -3,6 +3,7 @@
 #include <dsp/utils/arrays.h>
 #include <dsp/utils/math.h>
 #include <array>
+#include <list>
 #include <hwy/contrib/sort/vqsort.h>
 
 namespace dsp {
@@ -63,8 +64,8 @@ namespace dsp {
                     }
                 }
 
-                std::vector<FloatArray> noise_history;      // chunks of nFFT*float
-                std::vector<FloatArray> dev_history;
+                std::list<FloatArray> noise_history;      // chunks of nFFT*float
+                std::list<FloatArray> dev_history;
                 FloatArray sums;      // sliding sum of last N noise_history
                 FloatArray devs;      // sliding sum of dev_history
                 ComplexArray Xn_prev; // remaining noise
@@ -125,10 +126,10 @@ namespace dsp {
                     volk_32f_x2_add_32f(sums->data(), sums->data(), noise->data(), nFFT);
                     while (noise_history.size() > noise_history_len()) {
                         volk_32f_x2_subtract_32f(sums->data(), sums->data(), noise_history.front()->data(), nFFT);
-                        noise_history.erase(noise_history.begin());
+                        noise_history.pop_front();
                     }
 
-                    auto noiseAvg = div(sums, noise_history.size());
+                    auto noiseAvg = div(sums, (float)noise_history.size());
 
                     auto diff = subeach(noise, noiseAvg);
                     diff = muleach(diff, diff);
@@ -137,8 +138,8 @@ namespace dsp {
                     devs = addeach(devs, diff);
 
                     while (dev_history.size() > noise_history_len()) {
-                        devs = subeach(devs, dev_history[0]);
-                        dev_history.erase(dev_history.begin());
+                        devs = subeach(devs, dev_history.front());
+                        dev_history.pop_front();
                     }
 
                 }
@@ -161,11 +162,15 @@ namespace dsp {
                             if (generation > 0) {
                                 std::vector<float> lower(nFFT, 0);
                                 const int nlower = 12;
-                                for (auto q = nframes - nlower; q < nframes; q++) {
-                                    auto nhFrame = noise_history[q]->data();
-                                    for (auto w = 0; w < nFFT; w++) {
-                                        lower[w] += nhFrame[w];
+                                int ix = 0;
+                                for(auto &it: noise_history) {
+                                    if (ix >= nframes - nlower) {
+                                        auto nhFrame = it->data();
+                                        for (auto w = 0; w < nFFT; w++) {
+                                            lower[w] += nhFrame[w];
+                                        }
                                     }
+                                    ix++;
                                 }
                                 for (auto w = 0; w < nFFT; w++) {
                                     lower[w] /= nlower;
@@ -303,8 +308,10 @@ namespace dsp {
                 if (params->Slen % 2 == 1) params->Slen++;
                 params->PERC = 50;
                 params->len1 = floor(params->Slen * params->PERC / 100);
-                params->noise_history.clear();
-                params->dev_history.clear();
+                while (!params->noise_history.empty())
+                    params->noise_history.pop_front();
+                while (!params->dev_history.empty())
+                    params->dev_history.pop_front();
                 params->len2 = params->Slen - params->len1;         // len1+len2
                 auto audioFrequency = Srate <= 24000;
                 if (audioFrequency) {
