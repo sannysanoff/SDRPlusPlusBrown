@@ -96,6 +96,8 @@ namespace dsp {
 //                float *diffD = nullptr;
 
                 void reset() {
+                    noise_history.clear();
+                    dev_history.clear();
                     Xk_prev.reset();
                     Xn_prev.reset();
                     noise_mu2.reset();
@@ -308,10 +310,8 @@ namespace dsp {
                 if (params->Slen % 2 == 1) params->Slen++;
                 params->PERC = 50;
                 params->len1 = floor(params->Slen * params->PERC / 100);
-                while (!params->noise_history.empty())
-                    params->noise_history.pop_front();
-                while (!params->dev_history.empty())
-                    params->dev_history.pop_front();
+                params->noise_history.clear();
+                params->dev_history.clear();
                 params->len2 = params->Slen - params->len1;         // len1+len2
                 auto audioFrequency = Srate <= 24000;
                 if (audioFrequency) {
