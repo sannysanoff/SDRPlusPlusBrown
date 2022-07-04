@@ -289,7 +289,7 @@ namespace dsp {
                     // 384             211	3	534	5	7	494             // avg
                     //                 274	3	684	8	6	618	41          // ? fixed alloc
                     //                 604	4	718	5	9	248	37
-
+                    // 768 mu2:        8 8 16 753 133
                     muCount++;
                     if (muCount == 1000) {
                         std::cout << "mu2: ";
@@ -440,6 +440,7 @@ namespace dsp {
                     //                   819	1620	580
                     //                   874	1612	534         // file source, local allocs (!)
                     //                   0	    1738	790         // radio src
+                    // 768 logmmse_all:  0      920     786
                     std::cout << "logmmse_all: ";
                     for(int z=0; z<statIndex; z++) {
                         std::cout << " " << std::to_string(muSum[z] / 1000);
