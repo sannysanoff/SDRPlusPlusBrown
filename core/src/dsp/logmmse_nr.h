@@ -137,7 +137,7 @@ namespace dsp {
                 printf("activating under\n");
             }
             auto rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &params);
-            if (switchRequested) {
+            if (switchRequested && paramsUnder.stable) {
                 rv = LogMMSE::logmmse_all(worker1c, 48000, 0.15f, &paramsUnder);
             }
             freqMutex.unlock();
