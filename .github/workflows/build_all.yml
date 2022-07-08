@@ -29,4 +29,22 @@ jobs:
               name: sdrpp_ubuntu_jammy_amd64
               path: ${{runner.workspace}}/sdrpp_debian_amd64.deb
 
+    create_full_archive:
+        needs: ['build_ubuntu_jammy']
+        runs-on: ubuntu-latest
+
+        steps:
+        - name: Download All Builds
+          uses: actions/download-artifact@v2
+
+        - name: Create Archive
+          run: >
+            mkdir sdrpp_all && 
+            mv sdrpp_ubuntu_jammy_amd64/sdrpp_debian_amd64.deb sdrpp_all/sdrpp_ubuntu_jammy_amd64.deb
+
+        - uses: actions/upload-artifact@v2
+          with:
+            name: sdrpp_all
+            path: sdrpp_all/
+
 
