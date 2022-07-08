@@ -107,14 +107,14 @@ namespace dsp {
 
         inline FloatArray add(const Arg<std::vector<float>> &v, float e) {
             auto retval = std::make_shared<std::vector<float>>();
-            if (false) {
+            if (true) {
                 retval->reserve(v->size());
                 for (auto d : *v) {
                     retval->emplace_back(d + e);
                 }
             } else {
-                retval->resize(v->size());
-                volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
+//                retval->resize(v->size());
+//                volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
             }
             return retval;
         }
