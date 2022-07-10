@@ -2,6 +2,7 @@
 
 #include <dsp/utils/arrays.h>
 #include <dsp/utils/math.h>
+#include <utils/dsputils.h>
 #include <array>
 #include <list>
 #include <hwy/contrib/sort/vqsort.h>
@@ -221,7 +222,7 @@ namespace dsp {
                                 if (abs(z - nFFT/2) < nFFT * 15 / 100) {
                                     // after fft, rightmost and leftmost sides of real frequencies range are at the center of the resulting table.
                                     // We exclude middle of the table from lookup
-                                    devSquareD[z] = 1000000;
+                                    devSquareD[z] = BackgroundNoiseCaltulator::ERASED_SAMPLE;
                                 }
                             }
                             memset(noise_mu2->data(), 0, nFFT*sizeof(noise_mu2->at(0)));
@@ -229,10 +230,14 @@ namespace dsp {
                             hwy::Sorter s;
                             hwy::SortAscending asc1;
                             std::vector<float> devs(devSquareD, devSquareD +nFFT);
+                            for(auto qq: devs) {
+                                std::cout << qq << std::endl;
+                            }
                             s(devSquareD, nFFT, asc1);
                             ADD_STEP_STATS();
                             // take 90% percentile
                             auto acceptible_stdev = devSquareD[nFFT/10];
+                            std::cout << "acceptible_stdev=" << acceptible_stdev << std::endl;
                             acceptible_stdev *= 1.2;    // surplus
                             for(int q=0; q < nFFT; q++) {
                                 if (devs[q] < acceptible_stdev) {

@@ -23,7 +23,7 @@ if (OPT_BACKEND_GLFW)
 endif (OPT_BACKEND_GLFW)
 if (OPT_BACKEND_ANDROID)
     file(GLOB_RECURSE BACKEND_SRC "backends/android/*.cpp" "backends/android/*.c")
-    set(BACKEND_SRC ${BACKEND_SRC} ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
+    set(BACKEND_SRC ${BACKEND_SRC} ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c src/utils/dsputils.cpp)
 endif (OPT_BACKEND_ANDROID)
 
 # Add code to dyn lib
