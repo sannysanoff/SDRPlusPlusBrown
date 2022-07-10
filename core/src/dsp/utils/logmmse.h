@@ -247,16 +247,18 @@ namespace dsp {
 //                            acceptible_stdev *= 1.2;    // surplus
 //                            std::cout << detectedNoise << " " << acceptible_stdev << " " << fabs(acceptible_stdev-detectedNoise) << std::endl;
                             auto acceptible_stdev = detectedNoise;
+                            auto nmu2 = noise_mu2->data();
+                            auto navg =  noiseAvg->data();
                             for(int q=0; q < nFFT; q++) {
                                 if (devs[q] < acceptible_stdev) {
-                                    noise_mu2->at(q) = (*noiseAvg)[q] * (*noiseAvg)[q];
+                                    nmu2[q] = navg[q] * navg[q];
                                 }
                             }
                             int firstV = -1;
                             int lastV = -1;
                             int countZeros = 0;
                             for(int q=0; q<nFFT; q++) {
-                                float val = noise_mu2->at(q);
+                                float val = nmu2[q];
                                 if(firstV < 0 && val != 0) {
                                     firstV = q;
                                 }
@@ -264,11 +266,11 @@ namespace dsp {
                                     if (lastV != -1) {
                                         if (q - lastV > 1) {
                                             // fill the gap
-                                            auto d = (val - noise_mu2->at(lastV)) / (q - lastV);
-                                            auto running = noise_mu2->at(lastV);
+                                            auto d = (val - nmu2[lastV]) / (q - lastV);
+                                            auto running = nmu2[lastV];
                                             for(int w=lastV+1; w<q; w++) {
                                                 running += d;
-                                                noise_mu2->at(w) = running;
+                                                nmu2[w] = running;
                                             }
                                         }
                                     }
@@ -283,10 +285,10 @@ namespace dsp {
 //                                abort();
                             } else {
                                 for (int q = firstV - 1; q >= 0; q--) {
-                                    noise_mu2->at(q) = noise_mu2->at(firstV);
+                                    nmu2[q] = nmu2[firstV];
                                 }
                                 for (int q = lastV + 1; q < noise_mu2->size(); q++) {
-                                    noise_mu2->at(q) = noise_mu2->at(lastV);
+                                    nmu2[q] = nmu2[lastV];
                                 }
                             }
                             ADD_STEP_STATS();
@@ -307,7 +309,8 @@ namespace dsp {
                     // 768 mu2:        8 8 16 753 133
                     // 768 mu2:        8 9 10 557 176
                     // 768 mu2:        16 18 23 347 225         // after sample count instead of sort
-                    // 768 mu2:        13 8 12 23 128         // after dropping each 10th frame for noise dev calculation
+                    // 768 mu2:        13 8 12 52 195         // after dropping each 10th frame for noise dev calculation
+                    // 768 mu2:        13 8 12 52 115         // replaced at() with direct data access.
                     muCount++;
                     if (muCount == 1000) {
                         std::cout << "mu2: ";
