@@ -44,7 +44,32 @@ click on it, then go to the bottom of the page and find artifact for your system
 
 ## Feedback
 
+<<<<<<< HEAD
 Have an issue? Works worse than original? File an [issue](https://github.com/sannysanoff/SDRPlusPlus/issues).
+=======
+* [Aang23](https://github.com/Aang23)
+* [Alexsey Shestacov](https://github.com/wingrime)
+* [Aosync](https://github.com/aosync)
+* [Benjamin Kyd](https://github.com/benkyd)
+* [Benjamin Vernoux](https://github.com/bvernoux)
+* [Cropinghigh](https://github.com/cropinghigh)
+* [Fred F4EED](http://f4eed.wordpress.com/)
+* [Howard0su](https://github.com/howard0su)
+* John Donkersley
+* [Joshua Kimsey](https://github.com/JoshuaKimsey)
+* [Martin Hauke](https://github.com/mnhauke)
+* [Marvin Sinister](https://github.com/marvin-sinister)
+* [Maxime Biette](https://github.com/mbiette)
+* [Paulo Matias](https://github.com/thotypous)
+* [Raov](https://twitter.com/raov_birbtog)
+* [Cam K.](https://github.com/Starman0620)
+* [Shuyuan Liu](https://github.com/shuyuan-liu)
+* [Syne Ardwin (WI9SYN)](https://esaille.me/)
+* [Szymon Zakrent](https://github.com/zakrent)
+* [Tobias Mädel](https://github.com/Manawyrm)
+* Youssef Touil
+* [Zimm](https://github.com/invader-zimm)
+>>>>>>> master
 
 Good luck.
 

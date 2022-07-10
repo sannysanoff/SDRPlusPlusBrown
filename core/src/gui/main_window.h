@@ -17,13 +17,19 @@ public:
     void draw();
     void setViewBandwidthSlider(float bandwidth);
     bool sdrIsRunning();
+<<<<<<< HEAD
     void setFFTSize(int size);
     void setFFTWindow(int win);
 //    void setUiScale(float scale);
 //    float getUiScale() {
 //        return uiScale;
 //    }
+=======
+>>>>>>> master
     void setFirstMenuRender();
+
+    static float* acquireFFTBuffer(void* ctx);
+    static void releaseFFTBuffer(void* ctx);
 
     // TODO: Replace with it's own class
     void setVFO(double freq);
@@ -37,7 +43,6 @@ public:
     Event<bool> onPlayStateChange;
 
 private:
-    static void fftHandler(dsp::complex_t* samples, int count, void* ctx);
     static void vfoAddedHandler(VFOManager::VFO* vfo, void* ctx);
 
     // FFT Variables

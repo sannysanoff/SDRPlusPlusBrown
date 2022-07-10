@@ -12,8 +12,12 @@
 #include <gui/file_dialogs.h>
 #include <utils/freq_formatting.h>
 #include <gui/dialogs/dialog_box.h>
+<<<<<<< HEAD
 #include <utils/wstr.h>
 
+=======
+#include <fstream>
+>>>>>>> master
 
 SDRPP_MOD_INFO{
     /* Name:            */ "frequency_manager",
