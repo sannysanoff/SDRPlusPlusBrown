@@ -105,6 +105,7 @@ namespace dsp {
                     x_old.reset();
                     generation = 0;
                     stable = false;
+                    backgroundNoiseCaltulator.reset();
 
                 }
 
@@ -146,6 +147,9 @@ namespace dsp {
                     }
 
                 }
+
+                BackgroundNoiseCaltulator backgroundNoiseCaltulator;
+
 
 #define ADD_STEP_STATS()          ctm2 = currentTimeNanos(); muSum[statIndex++] += ctm2-ctm; ctm = ctm2
                 void update_noise_mu2() {
@@ -227,18 +231,22 @@ namespace dsp {
                             }
                             memset(noise_mu2->data(), 0, nFFT*sizeof(noise_mu2->at(0)));
                             ADD_STEP_STATS();
-                            hwy::Sorter s;
-                            hwy::SortAscending asc1;
+//                            hwy::Sorter s;
+//                            hwy::SortAscending asc1;
                             std::vector<float> devs(devSquareD, devSquareD +nFFT);
-                            for(auto qq: devs) {
-                                std::cout << qq << std::endl;
-                            }
-                            s(devSquareD, nFFT, asc1);
+                            float detectedNoise = backgroundNoiseCaltulator.addFrame(devs);
+                            // found the deviation of typical background noise
+                            // deviation of signal is smaller.
+
+
+//                            s(devSquareD, nFFT, asc1);
                             ADD_STEP_STATS();
                             // take 90% percentile
-                            auto acceptible_stdev = devSquareD[nFFT/10];
-                            std::cout << "acceptible_stdev=" << acceptible_stdev << std::endl;
-                            acceptible_stdev *= 1.2;    // surplus
+//                            auto acceptible_stdev = devSquareD[nFFT/10];
+//                            std::cout << "acceptible_stdev=" << acceptible_stdev << std::endl;
+//                            acceptible_stdev *= 1.2;    // surplus
+//                            std::cout << detectedNoise << " " << acceptible_stdev << " " << fabs(acceptible_stdev-detectedNoise) << std::endl;
+                            auto acceptible_stdev = detectedNoise;
                             for(int q=0; q < nFFT; q++) {
                                 if (devs[q] < acceptible_stdev) {
                                     noise_mu2->at(q) = (*noiseAvg)[q] * (*noiseAvg)[q];
@@ -297,6 +305,9 @@ namespace dsp {
                     //                 274	3	684	8	6	618	41          // ? fixed alloc
                     //                 604	4	718	5	9	248	37
                     // 768 mu2:        8 8 16 753 133
+                    // 768 mu2:        8 9 10 557 176
+                    // 768 mu2:        16 18 23 347 225         // after sample count instead of sort
+                    // 768 mu2:        13 8 12 23 128         // after dropping each 10th frame for noise dev calculation
                     muCount++;
                     if (muCount == 1000) {
                         std::cout << "mu2: ";
@@ -446,6 +457,7 @@ namespace dsp {
                     //                   874	1612	534         // file source, local allocs (!)
                     //                   0	    1738	790         // radio src
                     // 768 logmmse_all:  0      920     786
+                    // 768 logmmse_all:  0      762     841         //
                     std::cout << "logmmse_all: ";
                     for(int z=0; z<statIndex; z++) {
                         std::cout << " " << std::to_string(muSum[z] / 1000);
