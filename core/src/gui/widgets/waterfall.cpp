@@ -79,6 +79,7 @@ namespace ImGui {
         latestFFT = new float[dataWidth];
         latestFFTHold = new float[dataWidth];
         waterfallFb = new uint32_t[1];
+        tempDataForUpdateWaterfallFb = new float[1];
 
         viewBandwidth = 1.0;
         wholeBandwidth = 1.0;
@@ -87,7 +88,13 @@ namespace ImGui {
     }
 
     void WaterFall::init() {
-        glGenTextures(1, &textureId);
+        waterfallTexturesIds = new GLuint[WATERFALL_NUMBER_OF_SECTIONS];
+        glGenTextures(WATERFALL_NUMBER_OF_SECTIONS, waterfallTexturesIds);
+
+        waterfallTexturesStatuses = new int[WATERFALL_NUMBER_OF_SECTIONS];
+        for (int i = 0; i < WATERFALL_NUMBER_OF_SECTIONS; ++i) {
+            setTextureStatus(i, TEXTURE_SPECIFY_REQUIRED);
+        }
     }
 
     void WaterFall::drawFFT() {
@@ -180,9 +187,9 @@ namespace ImGui {
     void WaterFall::drawWaterfall() {
         if (waterfallUpdate) {
             waterfallUpdate = false;
-            updateWaterfallTexture();
+            updateWaterfallTexturesIfNeeded();
         }
-        window->DrawList->AddImage((void*)(intptr_t)textureId, wfMin, wfMax);
+        drawWaterfallImages();
         ImVec2 mPos = ImGui::GetMousePos();
 
         if (IS_IN_AREA(mPos, wfMin, wfMax) && !gui::mainWindow.lockWaterfallControls && !inputHandled) {
@@ -191,6 +198,29 @@ namespace ImGui {
                 if (!vfo->lineVisible) { continue; }
                 window->DrawList->AddLine(vfo->wfLineMin, vfo->wfLineMax, (name == selectedVFO) ? IM_COL32(255, 0, 0, 255) : IM_COL32(255, 255, 0, 255), style::uiScale);
             }
+        }
+    }
+    void WaterFall::drawWaterfallImages() {
+        int sectionIndex = waterfallHeadSectionIndex;
+        int imageHeight = waterfallHeadSectionHeight;
+
+        const int minX = wfMin.x;
+        int minY = wfMin.y;
+        const int maxX = minX + dataWidth;
+        int maxY = minY + imageHeight;
+
+        int rowsToGo = waterfallHeight;
+        while (imageHeight > 0) {
+            window->DrawList->AddImage((void*)(intptr_t)waterfallTexturesIds[sectionIndex],
+                                       ImVec2(minX, minY),
+                                       ImVec2(maxX, maxY),
+                                       ImVec2(0, 0),
+                                       ImVec2(1, (float) imageHeight / WATERFALL_MAX_SECTION_HEIGHT));
+            rowsToGo -= imageHeight;
+            sectionIndex = (sectionIndex + 1) % WATERFALL_NUMBER_OF_SECTIONS;
+            imageHeight = std::min(rowsToGo, WATERFALL_MAX_SECTION_HEIGHT);
+            minY = maxY;
+            maxY = minY + imageHeight;
         }
     }
 
@@ -595,30 +625,37 @@ namespace ImGui {
         double offsetRatio = viewOffset / (wholeBandwidth / 2.0);
         int drawDataSize;
         int drawDataStart;
-        // TODO: Maybe put on the stack for faster alloc?
-        float* tempData = new float[dataWidth];
+        float* tempData = tempDataForUpdateWaterfallFb;
         float pixel;
         float dataRange = waterfallMax - waterfallMin;
         int count = std::min<float>(waterfallHeight, fftLines);
         if (rawFFTs != NULL && fftLines >= 0) {
+            const int totalNumberOfPixels = dataWidth * waterfallHeight;
+            int waterfallFbIndex = waterfallFbHeadRowIndex * dataWidth;
             for (int i = 0; i < count; i++) {
                 drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
                 drawDataStart = (((double)rawFFTSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
                 doZoom(drawDataStart, drawDataSize, dataWidth, &rawFFTs[((i + currentFFTLine) % waterfallHeight) * rawFFTSize], tempData, _fastFFT);
                 for (int j = 0; j < dataWidth; j++) {
                     pixel = (std::clamp<float>(tempData[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
-                    waterfallFb[(i * dataWidth) + j] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
+                    waterfallFb[waterfallFbIndex++] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
                 }
+                waterfallFbIndex %= totalNumberOfPixels;
             }
 
             for (int i = count; i < waterfallHeight; i++) {
                 for (int j = 0; j < dataWidth; j++) {
-                    waterfallFb[(i * dataWidth) + j] = (uint32_t)255 << 24;
+                    waterfallFb[waterfallFbIndex++] = (uint32_t)255 << 24;
                 }
+                waterfallFbIndex %= totalNumberOfPixels;
             }
         }
-        delete[] tempData;
+
         waterfallUpdate = true;
+
+        for (int i = 0; i < WATERFALL_NUMBER_OF_SECTIONS; ++i) {
+            setTextureStatus(i, TEXTURE_SPECIFY_REQUIRED);
+        }
     }
 
     void WaterFall::drawBandPlan() {
@@ -692,13 +729,85 @@ namespace ImGui {
         }
     }
 
-    void WaterFall::updateWaterfallTexture() {
-        glBindTexture(GL_TEXTURE_2D, textureId);
+    void WaterFall::updateWaterfallTexturesIfNeeded() {
+        int startRowIndex = waterfallFbHeadRowIndex;
+        int sectionIndex = waterfallHeadSectionIndex;
+        int sectionHeight = waterfallHeadSectionHeight;
+
+        int rowsToGo = waterfallHeight;
+        while (rowsToGo > 0) {
+            updateWaterfallTextureIfNeeded(sectionIndex, startRowIndex);
+            rowsToGo -= sectionHeight;
+            startRowIndex = (startRowIndex + sectionHeight) % waterfallHeight;
+            sectionIndex = (sectionIndex + 1) % WATERFALL_NUMBER_OF_SECTIONS;
+            sectionHeight = WATERFALL_MAX_SECTION_HEIGHT;
+        }
+    }
+
+    void WaterFall::updateWaterfallTextureIfNeeded(int textureIndex, int startRowIndex) {
+        const int status = waterfallTexturesStatuses[textureIndex];
+        if (status != TEXTURE_OK) {
+            uint8_t* pixels;
+            uint8_t* buffer = nullptr;
+            const int firstPixelIndex = startRowIndex * dataWidth;
+            if (startRowIndex + WATERFALL_MAX_SECTION_HEIGHT <= waterfallHeight) {
+                // no need to copy, can use a continuous chunk of waterfallFb
+                pixels = reinterpret_cast<uint8_t*>(&waterfallFb[firstPixelIndex]);
+            } else {
+                buffer = new uint8_t[dataWidth * WATERFALL_MAX_SECTION_HEIGHT * sizeof(uint32_t)];
+
+                int bytesPerRow = dataWidth * sizeof(uint32_t);
+
+                int firstChunkHeight = waterfallHeight - startRowIndex;
+                int secondChunkHeight = WATERFALL_MAX_SECTION_HEIGHT - firstChunkHeight;
+
+                int firstChunkSizeInBytes = firstChunkHeight * bytesPerRow;
+                int secondChunkSizeInBytes = secondChunkHeight * bytesPerRow;
+
+                memcpy(&buffer[0], &waterfallFb[firstPixelIndex], firstChunkSizeInBytes);
+                memcpy(&buffer[firstChunkSizeInBytes], &waterfallFb[0], secondChunkSizeInBytes);
+
+                pixels = buffer;
+            }
+
+            switch (status) {
+            case TEXTURE_SPECIFY_REQUIRED:
+                specifyTexture(textureIndex, pixels);
+                break;
+            case TEXTURE_PIXELS_CHANGE_REQUIRED:
+                changeTexturePixels(textureIndex, pixels);
+                break;
+            }
+            setTextureStatus(textureIndex, TEXTURE_OK);
+
+            if (buffer != nullptr) {
+                delete[] buffer;
+            }
+        }
+    }
+
+    void WaterFall::specifyTexture(int textureIndex, const uint8_t* pixels) const {
+        std::cout << "specifyTexture" << " "  << textureIndex << std::endl;
+        glBindTexture(GL_TEXTURE_2D, waterfallTexturesIds[textureIndex]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dataWidth, waterfallHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, (uint8_t*)waterfallFb);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dataWidth, WATERFALL_MAX_SECTION_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     }
+
+    void WaterFall::changeTexturePixels(int textureIndex, const uint8_t* pixels) const {
+        glBindTexture(GL_TEXTURE_2D, waterfallTexturesIds[textureIndex]); //A texture you have already created storage for
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dataWidth, WATERFALL_MAX_SECTION_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    }
+
+    //    void WaterFall::clearTexture(int textureIndex) const {
+    //        if (waterfallTexturesInvalid[textureIndex] > 1 || waterfallTexturesHeights[textureIndex] > 1) {
+    //            const uint32_t pixel = 0;
+    //            specifyTexture(textureIndex, 1, reinterpret_cast<const uint8_t*>(&pixel));
+    //            waterfallTexturesInvalid[textureIndex] = 1;
+    //            waterfallTexturesHeights[textureIndex] = 1;
+    //        }
+    //    }
 
     void WaterFall::onPositionChange() {
         // Nothing to see here...
@@ -717,6 +826,9 @@ namespace ImGui {
             newFFTAreaHeight = FFTAreaHeight;
             fftHeight = FFTAreaHeight - (50.0f * style::uiScale);
             waterfallHeight = widgetSize.y - fftHeight - (50.0f * style::uiScale) - 2;
+
+            waterfallHeadSectionIndex = 0;
+            waterfallHeadSectionHeight = 0;
         }
         else {
             fftHeight = widgetSize.y - (50.0f * style::uiScale);
@@ -760,6 +872,9 @@ namespace ImGui {
             delete[] waterfallFb;
             waterfallFb = new uint32_t[dataWidth * waterfallHeight];
             memset(waterfallFb, 0, dataWidth * waterfallHeight * sizeof(uint32_t));
+
+            delete[] tempDataForUpdateWaterfallFb;
+            tempDataForUpdateWaterfallFb = new float[dataWidth];
         }
         for (int i = 0; i < dataWidth; i++) {
             latestFFT[i] = -1000.0; // Hide everything
@@ -883,13 +998,31 @@ namespace ImGui {
 
         if (waterfallVisible) {
             doZoom(drawDataStart, drawDataSize, dataWidth, &rawFFTs[currentFFTLine * rawFFTSize], latestFFT, _fastFFT);
-            memmove(&waterfallFb[dataWidth], waterfallFb, dataWidth * (waterfallHeight - 1) * sizeof(uint32_t));
+
+            waterfallHeadSectionHeight++;
+            if (waterfallHeadSectionHeight > WATERFALL_MAX_SECTION_HEIGHT) {
+                waterfallHeadSectionIndex--;
+                if (waterfallHeadSectionIndex < 0) {
+                    waterfallHeadSectionIndex = WATERFALL_NUMBER_OF_SECTIONS - 1;
+                }
+                waterfallHeadSectionHeight = 1;
+            }
+
+            waterfallFbHeadRowIndex--;
+            if (waterfallFbHeadRowIndex < 0) {
+                waterfallFbHeadRowIndex = waterfallHeight - 1;
+            }
+
             float pixel;
             float dataRange = waterfallMax - waterfallMin;
+            int waterfallFbIndex = waterfallFbHeadRowIndex * dataWidth;
             for (int j = 0; j < dataWidth; j++) {
                 pixel = (std::clamp<float>(latestFFT[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
                 int id = (int)(pixel * (WATERFALL_RESOLUTION - 1));
-                waterfallFb[j] = waterfallPallet[id];
+                waterfallFb[waterfallFbIndex++] = waterfallPallet[id];
+            }
+            if (waterfallTexturesStatuses[waterfallHeadSectionIndex] == TEXTURE_OK) {
+                setTextureStatus(waterfallHeadSectionIndex, TEXTURE_PIXELS_CHANGE_REQUIRED);
             }
             waterfallUpdate = true;
         }
@@ -911,6 +1044,10 @@ namespace ImGui {
         }
 
         buf_mtx.unlock();
+    }
+
+    inline void WaterFall::setTextureStatus(int index, int value) {
+        waterfallTexturesStatuses[index] = value;
     }
 
     void WaterFall::updatePallette(float colors[][3], int colorCount) {

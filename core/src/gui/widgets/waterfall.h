@@ -255,7 +255,20 @@ namespace ImGui {
         void onPositionChange();
         void onResize();
         void updateWaterfallFb();
-        void updateWaterfallTexture();
+
+        enum {
+            TEXTURE_SPECIFY_REQUIRED,
+            TEXTURE_PIXELS_CHANGE_REQUIRED,
+            TEXTURE_OK
+        };
+
+        void setTextureStatus(int index, int value);
+        void updateWaterfallTexturesIfNeeded();
+        void updateWaterfallTextureIfNeeded(int textureIndex, int startRowIndex);
+        void specifyTexture(int textureIndex, const uint8_t* pixels) const;
+        void changeTexturePixels(int textureIndex, const uint8_t* pixels) const;
+        void drawWaterfallImages();
+
         void updateAllVFOs(bool checkRedrawRequired = false);
         bool calculateVFOSignalInfo(float* fftLine, WaterfallVFO* vfo, float& strength, float& snr);
 
@@ -271,8 +284,6 @@ namespace ImGui {
         ImVec2 lastWidgetSize;
 
         ImGuiWindow* window;
-
-        GLuint textureId;
 
         std::recursive_mutex buf_mtx;
 
@@ -315,6 +326,19 @@ namespace ImGui {
         int fftLines = 0;
 
         uint32_t* waterfallFb;
+        float* tempDataForUpdateWaterfallFb;
+
+        int waterfallFbHeadRowIndex = 0;
+
+        const int WATERFALL_MAX_SECTION_HEIGHT = 64;
+        const int WATERFALL_MAX_SUPPORTED_HEIGHT = 4320;
+        const int WATERFALL_NUMBER_OF_SECTIONS = (WATERFALL_MAX_SUPPORTED_HEIGHT / WATERFALL_MAX_SECTION_HEIGHT) + 2;
+
+        int waterfallHeadSectionIndex = 0;
+        int waterfallHeadSectionHeight = 0;
+
+        GLuint* waterfallTexturesIds;
+        int* waterfallTexturesStatuses;
 
         bool draggingFW = false;
         int FFTAreaHeight;
