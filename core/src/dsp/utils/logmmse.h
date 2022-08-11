@@ -188,7 +188,7 @@ namespace dsp {
                                 auto tmindb = *std::min_element(tnoise_mu2->begin(), tnoise_mu2->end());
                                 auto tmaxdb = *std::max_element(tnoise_mu2->begin(), tnoise_mu2->end());
                                 if (tmindb + tmaxdb < mindb + maxdb) {
-                                    std::cout << "Updated noise floor..." << (tmindb + tmaxdb)/2 << std::endl;
+                                    spdlog::info("Updated noise floor...{0} ( {1}, {2} )", (tmindb + tmaxdb)/2, tmindb, tmaxdb);
                                     mindb = tmindb;
                                     maxdb = tmaxdb;
                                     noise_mu2 = tnm;
