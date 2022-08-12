@@ -1,5 +1,7 @@
 #include "radio_module.h"
 
+ConfigManager config;
+
 SDRPP_MOD_INFO{
     /* Name:            */ "radio",
     /* Description:     */ "Analog radio decoder",

@@ -86,6 +86,8 @@ void SourceManager::tune(double freq) {
     }
     selectedHandler->tuneHandler(freq + tuneOffset, selectedHandler->ctx);
     currentFreq = freq;
+    onTuneChanged.emit(freq);
+
 }
 
 void SourceManager::setTuningOffset(double offset) {

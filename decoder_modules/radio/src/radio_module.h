@@ -6,6 +6,7 @@
 #include <signal_path/signal_path.h>
 #include <config.h>
 #include <dsp/chain.h>
+#include <dsp/types.h>
 #include <dsp/noise_reduction/noise_blanker.h>
 #include <dsp/noise_reduction/fm_if.h>
 #include <dsp/noise_reduction/squelch.h>
@@ -16,7 +17,7 @@
 #include "radio_interface.h"
 #include "demod.h"
 
-ConfigManager config;
+extern ConfigManager config;
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -231,6 +232,10 @@ public:
 
     bool isEnabled() {
         return enabled;
+    }
+
+    dsp::chain<dsp::complex_t> *getIfChain() {
+        return &ifChain;
     }
 
     std::string name;
@@ -716,6 +721,22 @@ private:
         else if (code == RADIO_IFACE_CMD_SET_SQUELCH_LEVEL && in) {
             float* _in = (float*)in;
             _this->setSquelchLevel(*_in);
+        }
+        else if (code == RADIO_IFACE_CMD_ADD_TO_IFCHAIN && in) {
+            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
+            _this->ifChain.addBlock(proc, false);
+        }
+        else if (code == RADIO_IFACE_CMD_REMOVE_FROM_IFCHAIN && in) {
+            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
+            _this->ifChain.removeBlock(proc, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
+        }
+        else if (code == RADIO_IFACE_CMD_ENABLE_IN_IFCHAIN && in) {
+            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
+            _this->ifChain.setBlockEnabled(proc, true, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
+        }
+        else if (code == RADIO_IFACE_CMD_DISABLE_IN_IFCHAIN && in) {
+            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
+            _this->ifChain.setBlockEnabled(proc, false, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
         }
         else {
             return;

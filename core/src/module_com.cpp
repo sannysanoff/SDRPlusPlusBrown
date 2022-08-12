@@ -49,3 +49,14 @@ bool ModuleComManager::callInterface(std::string name, int code, void* in, void*
     iface.handler(code, in, out, iface.ctx);
     return true;
 }
+
+std::vector<std::string> ModuleComManager::findInterfaces(std::string moduleName) {
+    std::lock_guard<std::mutex> lck(mtx);
+    std::vector<std::string> result;
+    for(auto [f, s] : interfaces) {
+        if (s.moduleName == moduleName) {
+            result.push_back(f);
+        }
+    }
+    return result;
+}

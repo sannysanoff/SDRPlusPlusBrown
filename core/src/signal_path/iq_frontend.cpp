@@ -301,3 +301,20 @@ void IQFrontEnd::updateFFTPath(bool updateWaterfall) {
     reshape.tempStart();
     fftSink.tempStart();
 }
+
+void IQFrontEnd::addPreprocessor(dsp::Processor<dsp::complex_t, dsp::complex_t>* processor, bool enabled) {
+    preproc.addBlock(processor, enabled);
+    split.setInput(preproc.out);
+}
+
+void IQFrontEnd::removePreprocessor(dsp::Processor<dsp::complex_t, dsp::complex_t>* processor) {
+    preproc.removeBlock(processor, [=](dsp::stream<dsp::complex_t>* out) { split.setInput(out); });
+}
+
+void IQFrontEnd::togglePreprocessor(dsp::Processor<dsp::complex_t, dsp::complex_t>* processor, bool enabled) {
+    if (enabled) {
+        preproc.enableBlock(processor, [=](dsp::stream<dsp::complex_t>* out) { split.setInput(out); });
+    } else {
+        preproc.disableBlock(processor, [=](dsp::stream<dsp::complex_t>* out) { split.setInput(out); });
+    }
+}

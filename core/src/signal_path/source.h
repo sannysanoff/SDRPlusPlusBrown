@@ -35,6 +35,7 @@ public:
     Event<std::string> onSourceRegistered;
     Event<std::string> onSourceUnregister;
     Event<std::string> onSourceUnregistered;
+    Event<double> onTuneChanged;
 
 private:
     std::map<std::string, SourceHandler*> sources;

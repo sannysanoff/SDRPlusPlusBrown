@@ -33,6 +33,7 @@ public:
     bool playButtonLocked = false;
 
     Event<bool> onPlayStateChange;
+    Event<void *> onWaterfallDrawn;
 
 private:
     static void vfoAddedHandler(VFOManager::VFO* vfo, void* ctx);

@@ -6,9 +6,13 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
 #include <imgui/imgui_internal.h>
+#include "snr_meter.h"
 
 namespace ImGui {
-    void SNRMeter(float val, const ImVec2& size_arg = ImVec2(0, 0)) {
+
+    Event<SNRMeterExtPoint> onSNRMeterExtPoint;
+
+    void SNRMeter(float val, const ImVec2& size_arg) {
         ImGuiWindow* window = GetCurrentWindow();
         ImGuiStyle& style = GImGui->Style;
 
@@ -27,8 +31,9 @@ namespace ImGui {
         float ratio = size.x / 90;
         float it = size.x / 9;
         char buf[32];
+        float drawVal = (float) val * ratio;
 
-        window->DrawList->AddRectFilled(min + ImVec2(0, 1), min + ImVec2(roundf((float)val * ratio), 10 * style::uiScale), IM_COL32(0, 136, 255, 255));
+        window->DrawList->AddRectFilled(min + ImVec2(0, 1), min + ImVec2(roundf(drawVal), 10 * style::uiScale), IM_COL32(0, 136, 255, 255));
         window->DrawList->AddLine(min, min + ImVec2(0, (10.0f * style::uiScale) - 1), text, style::uiScale);
         window->DrawList->AddLine(min + ImVec2(0, (10.0f * style::uiScale) - 1), min + ImVec2(size.x + 1, (10.0f * style::uiScale) - 1), text, style::uiScale);
 
@@ -36,7 +41,9 @@ namespace ImGui {
             window->DrawList->AddLine(min + ImVec2(roundf((float)i * it), (10.0f * style::uiScale) - 1), min + ImVec2(roundf((float)i * it), (15.0f * style::uiScale) - 1), text, style::uiScale);
             sprintf(buf, "%d", i * 10);
             ImVec2 sz = ImGui::CalcTextSize(buf);
-            window->DrawList->AddText(min + ImVec2(roundf(((float)i * it) - (sz.x / 2.0)) + 1, 16.0f * style::uiScale), text, buf);
+            window->DrawList->AddText(min + ImVec2(roundf(((float)i * it) - (sz.x / 2.0f)) + 1, 16.0f * style::uiScale), text, buf);
         }
+
+        onSNRMeterExtPoint.emit({.postSnrLocation =  min + ImVec2(0, -min.y), .lastDrawnValue =  drawVal});
     }
 }
