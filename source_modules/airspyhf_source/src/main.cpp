@@ -1,13 +1,11 @@
 #include <spdlog/spdlog.h>
 #include <module.h>
-#include <gui/gui.h>
 #include <signal_path/signal_path.h>
 #include <core.h>
-#include <gui/style.h>
 #include <config.h>
 #include <gui/smgui.h>
 #include <airspyhf.h>
-#include <gui/widgets/stepped_slider.h>
+#include "carving.h"
 
 #ifdef __ANDROID__
 #include <android_backend.h>
@@ -27,7 +25,15 @@ ConfigManager config;
 
 const char* AGG_MODES_STR = "Off\0Low\0High\0";
 
+
+using namespace dsp;
+
+
 class AirspyHFSourceModule : public ModuleManager::Instance {
+
+    dsp::FrequencyCarving<dsp::complex_t> xlator;
+    dsp::stream<dsp::complex_t> xlatorInput;
+
 public:
     AirspyHFSourceModule(std::string name) {
         this->name = name;
@@ -50,6 +56,8 @@ public:
         config.release();
         selectByString(devSerial);
 
+        xlator.init(&xlatorInput, sampleRate, sampleRate * narrowSamplerate());
+        xlator.start();
         sigpath::sourceManager.registerSource("Airspy HF+", &handler);
     }
 
@@ -67,11 +75,16 @@ public:
     };
 
     void enable() {
-        enabled = true;
+        if (!enabled) {
+            enabled = true;
+        }
     }
 
     void disable() {
-        enabled = false;
+        if (enabled) {
+            enabled = false;
+            xlator.stop();
+        }
     }
 
     bool isEnabled() {
@@ -174,6 +187,7 @@ public:
             config.conf["devices"][selectedSerStr]["sampleRate"] = 768000;
             config.conf["devices"][selectedSerStr]["agcMode"] = 0;
             config.conf["devices"][selectedSerStr]["lna"] = false;
+            config.conf["devices"][selectedSerStr]["narrow"] = false;
             config.conf["devices"][selectedSerStr]["attenuation"] = 0;
         }
 
@@ -197,6 +211,9 @@ public:
         }
         if (config.conf["devices"][selectedSerStr].contains("lna")) {
             hfLNA = config.conf["devices"][selectedSerStr]["lna"];
+        }
+        if (config.conf["devices"][selectedSerStr].contains("narrow")) {
+            narrow = config.conf["devices"][selectedSerStr]["narrow"];
         }
         if (config.conf["devices"][selectedSerStr].contains("attenuation")) {
             atten = config.conf["devices"][selectedSerStr]["attenuation"];
@@ -224,7 +241,7 @@ private:
 
     static void menuSelected(void* ctx) {
         AirspyHFSourceModule* _this = (AirspyHFSourceModule*)ctx;
-        core::setInputSampleRate(_this->sampleRate);
+        core::setInputSampleRate(_this->sampleRate * _this->narrowSamplerate());
         spdlog::info("AirspyHFSourceModule '{0}': Menu Select!", _this->name);
     }
 
@@ -296,7 +313,7 @@ private:
         SmGui::ForceSync();
         if (SmGui::Combo(CONCAT("##_airspyhf_dev_sel_", _this->name), &_this->devId, _this->devListTxt.c_str())) {
             _this->selectBySerial(_this->devList[_this->devId]);
-            core::setInputSampleRate(_this->sampleRate);
+            updateSampleRate(_this);
             if (_this->selectedSerStr != "") {
                 config.acquire();
                 config.conf["device"] = _this->selectedSerStr;
@@ -306,7 +323,7 @@ private:
 
         if (SmGui::Combo(CONCAT("##_airspyhf_sr_sel_", _this->name), &_this->srId, _this->sampleRateListTxt.c_str())) {
             _this->sampleRate = _this->sampleRateList[_this->srId];
-            core::setInputSampleRate(_this->sampleRate);
+            updateSampleRate(_this);
             if (_this->selectedSerStr != "") {
                 config.acquire();
                 config.conf["devices"][_this->selectedSerStr]["sampleRate"] = _this->sampleRate;
@@ -323,7 +340,7 @@ private:
             std::string devSerial = config.conf["device"];
             config.release();
             _this->selectByString(devSerial);
-            core::setInputSampleRate(_this->sampleRate);
+            updateSampleRate(_this);
         }
 
         if (_this->running) { SmGui::EndDisabled(); }
@@ -357,7 +374,7 @@ private:
             }
         }
 
-        if (SmGui::Checkbox(CONCAT("HF LNA##_airspyhf_lna_", _this->name), &_this->hfLNA)) {
+        if (SmGui::Checkbox(CONCAT("HF LNA  ##_airspyhf_lna_", _this->name), &_this->hfLNA)) {
             if (_this->running) {
                 airspyhf_set_hf_lna(_this->openDev, _this->hfLNA);
             }
@@ -367,12 +384,46 @@ private:
                 config.release(true);
             }
         }
+        SmGui::SameLine();
+        if (SmGui::Checkbox(CONCAT("Fill-In bandwidth ##_airspyhf_narrow_", _this->name), &_this->narrow)) {
+            updateSampleRate(_this);
+            if (_this->selectedSerStr != "") {
+                config.acquire();
+                config.conf["devices"][_this->selectedSerStr]["narrow"] = _this->narrow;
+                config.release(true);
+            }
+        }
+    }
+
+    static void updateSampleRate(AirspyHFSourceModule *_this) {
+        core::setInputSampleRate(_this->sampleRate * _this->narrowSamplerate());
+        _this->xlator.setSampleRates(_this->sampleRate, _this->sampleRate * _this->narrowSamplerate());
+    }
+
+    double narrowSamplerate() {
+        int cutoff = 40;        // in khz
+        if (narrow) {
+            if (sampleRate <= 192001) cutoff = 30;      // these are experimental values
+            else if (sampleRate <= 256001) cutoff = 40;
+            else if (sampleRate <= 384001) cutoff = 50;
+            else if (sampleRate <= 768001) cutoff = 60;
+            else cutoff = 70;
+            int reduced = sampleRate - 2*cutoff*1000; // cut 40 khz from both sides
+            return reduced / sampleRate;
+        } else {
+            return 1.0;
+        }
     }
 
     static int callback(airspyhf_transfer_t* transfer) {
         AirspyHFSourceModule* _this = (AirspyHFSourceModule*)transfer->ctx;
-        memcpy(_this->stream.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
-        if (!_this->stream.swap(transfer->sample_count)) { return -1; }
+        if (_this->narrow) {
+            memcpy(_this->xlatorInput.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
+            if (!_this->xlatorInput.swap(transfer->sample_count)) { return -1; }
+        } else {
+            memcpy(_this->stream.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
+            if (!_this->stream.swap(transfer->sample_count)) { return -1; }
+        }
         return 0;
     }
 
@@ -389,6 +440,7 @@ private:
     int srId = 0;
     int agcMode = AGC_MODE_OFF;
     bool hfLNA = false;
+    bool narrow = false;
     float atten = 0.0f;
     std::string selectedSerStr = "";
 

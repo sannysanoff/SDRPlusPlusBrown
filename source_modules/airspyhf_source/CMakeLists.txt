@@ -3,11 +3,12 @@ project(airspyhf_source)
 
 file(GLOB SRC "src/*.cpp")
 
-add_library(airspyhf_source SHARED ${SRC})
+add_library(airspyhf_source SHARED ${SRC} src/carving.h)
 target_link_libraries(airspyhf_source PRIVATE sdrpp_core)
 set_target_properties(airspyhf_source PROPERTIES PREFIX "")
 
 target_include_directories(airspyhf_source PRIVATE "src/")
+target_include_directories(airspyhf_source PRIVATE "../../misc_modules/noise_reduction_logmmse/src")
 
 if (MSVC)
     target_compile_options(airspyhf_source PRIVATE /O2 /Ob2 /std:c++17 /EHsc)
