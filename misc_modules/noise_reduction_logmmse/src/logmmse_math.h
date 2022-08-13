@@ -30,7 +30,7 @@ namespace dsp {
             float running = 0;
             std::vector<float> dest;
             for(int q=0; q<src.size(); q++) {
-                running = std::max(src[q], running);
+                running = std::max<float>(src[q], running);
                 if (q % maxwindow == maxwindow - 1 || q == src.size() - 1) {
                     dest.emplace_back(running);
                     running = 0;

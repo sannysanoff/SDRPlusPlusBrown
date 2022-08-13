@@ -24,8 +24,8 @@ float BackgroundNoiseCaltulator::addFrame(const std::vector<float>& fftFrame) {
     for(float q : fftFrame) {
         if(q != ERASED_SAMPLE) {
             q = log10(q);
-            minn = std::min(minn, q);
-            maxx = std::max(maxx, q);
+            minn = std::min<float>(minn, q);
+            maxx = std::max<float>(maxx, q);
             logFrame.push_back(q);
         }
     }
