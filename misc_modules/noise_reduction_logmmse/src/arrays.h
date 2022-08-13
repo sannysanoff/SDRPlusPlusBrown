@@ -161,16 +161,15 @@ namespace dsp {
 
         inline ComplexArray addeach(const ComplexArray& v, const ComplexArray& w) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>();
-            if (false) {
-                retval->reserve(v->size());
-                for (int q = 0; q < v->size(); q++) {
-                    retval->emplace_back(v->at(q) + w->at(q));
-                }
+#ifndef  VOLK_VERSION
+            retval->reserve(v->size());
+            for (int q = 0; q < v->size(); q++) {
+                retval->emplace_back(v->at(q) + w->at(q));
             }
-            else {
-                retval->resize(v->size());
-                volk_32fc_x2_add_32fc((lv_32fc_t*)retval->data(), (lv_32fc_t*)v->data(), (lv_32fc_t*)w->data(), v->size());
-            }
+#else
+            retval->resize(v->size());
+            volk_32fc_x2_add_32fc((lv_32fc_t*)retval->data(), (lv_32fc_t*)v->data(), (lv_32fc_t*)w->data(), v->size());
+#endif
             return retval;
         }
 
