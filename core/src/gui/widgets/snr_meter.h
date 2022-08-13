@@ -4,6 +4,7 @@
 namespace ImGui {
 
     struct SNRMeterExtPoint {
+        SNRMeterExtPoint(ImVec2 postSnrLocation, float lastDrawnValue) : postSnrLocation(postSnrLocation), lastDrawnValue(lastDrawnValue) {}
         ImVec2 postSnrLocation; // where it ended drawing
         float lastDrawnValue;   // what it drew last time
     };

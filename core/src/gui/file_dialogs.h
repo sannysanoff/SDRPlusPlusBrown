@@ -50,6 +50,7 @@
 #include <regex>    // std::regex
 #include <thread>   // std::mutex, std::this_thread
 #include <chrono>   // std::chrono
+#include <utils/wstr.h>
 
 namespace pfd
 {

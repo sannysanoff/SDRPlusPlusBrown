@@ -245,7 +245,7 @@ namespace ImGui {
                                        ImVec2(1, (float) imageHeight / WATERFALL_MAX_SECTION_HEIGHT));
             rowsToGo -= imageHeight;
             sectionIndex = (sectionIndex + 1) % WATERFALL_NUMBER_OF_SECTIONS;
-            imageHeight = std::min(rowsToGo, WATERFALL_MAX_SECTION_HEIGHT);
+            imageHeight = std::min<int>(rowsToGo, WATERFALL_MAX_SECTION_HEIGHT);
             minY = maxY;
             maxY = minY + imageHeight;
         }
