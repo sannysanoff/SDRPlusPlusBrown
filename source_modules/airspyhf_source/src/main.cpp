@@ -31,8 +31,8 @@ using namespace dsp;
 
 class AirspyHFSourceModule : public ModuleManager::Instance {
 
-    dsp::FrequencyCarving<dsp::complex_t> xlator;
-    dsp::stream<dsp::complex_t> xlatorInput;
+    dsp::FrequencyCarving<dsp::complex_t> carving;
+    dsp::stream<dsp::complex_t> carvingInput;
 
 public:
     AirspyHFSourceModule(std::string name) {
@@ -56,9 +56,10 @@ public:
         config.release();
         selectByString(devSerial);
 
-        xlator.init(&xlatorInput, sampleRate, sampleRate * narrowSamplerate());
-        xlator.start();
+        carving.init(&carvingInput, sampleRate, sampleRate * narrowSamplerate());
         sigpath::sourceManager.registerSource("Airspy HF+", &handler);
+
+
     }
 
     ~AirspyHFSourceModule() {
@@ -83,7 +84,6 @@ public:
     void disable() {
         if (enabled) {
             enabled = false;
-            xlator.stop();
         }
     }
 
@@ -386,18 +386,18 @@ private:
         }
         SmGui::SameLine();
         if (SmGui::Checkbox(CONCAT("Fill-In bandwidth ##_airspyhf_narrow_", _this->name), &_this->narrow)) {
-            updateSampleRate(_this);
             if (_this->selectedSerStr != "") {
                 config.acquire();
                 config.conf["devices"][_this->selectedSerStr]["narrow"] = _this->narrow;
                 config.release(true);
             }
+            updateSampleRate(_this);
         }
     }
 
     static void updateSampleRate(AirspyHFSourceModule *_this) {
         core::setInputSampleRate(_this->sampleRate * _this->narrowSamplerate());
-        _this->xlator.setSampleRates(_this->sampleRate, _this->sampleRate * _this->narrowSamplerate());
+        _this->carving.setSampleRates(_this->sampleRate, _this->sampleRate * _this->narrowSamplerate());
     }
 
     double narrowSamplerate() {
@@ -418,8 +418,11 @@ private:
     static int callback(airspyhf_transfer_t* transfer) {
         AirspyHFSourceModule* _this = (AirspyHFSourceModule*)transfer->ctx;
         if (_this->narrow) {
-            memcpy(_this->xlatorInput.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
-            if (!_this->xlatorInput.swap(transfer->sample_count)) { return -1; }
+            std::lock_guard lck(_this->carving.mtx);
+            int nwritten = _this->carving.process((dsp::complex_t *)transfer->samples, transfer->sample_count, _this->stream.writeBuf);
+            if (nwritten > 0) {
+                if (!_this->stream.swap(nwritten)) { return -1; }
+            }
         } else {
             memcpy(_this->stream.writeBuf, transfer->samples, transfer->sample_count * sizeof(dsp::complex_t));
             if (!_this->stream.swap(transfer->sample_count)) { return -1; }
