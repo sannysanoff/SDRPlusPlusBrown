@@ -9,7 +9,7 @@ namespace ImGui {
         float lastDrawnValue;   // what it drew last time
     };
 
-    extern Event<SNRMeterExtPoint> onSNRMeterExtPoint;
+    SDRPP_EXPORT Event<SNRMeterExtPoint> onSNRMeterExtPoint;
 
     void SNRMeter(float val, const ImVec2& size_arg = ImVec2(0, 0));
 }

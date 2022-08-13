@@ -9,7 +9,6 @@
 #include "snr_meter.h"
 
 namespace ImGui {
-
     Event<SNRMeterExtPoint> onSNRMeterExtPoint;
 
     void SNRMeter(float val, const ImVec2& size_arg) {

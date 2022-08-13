@@ -115,9 +115,9 @@ private:
             spdlog::info("Enabling noise reduction things");
             gui::mainWindow.onWaterfallDrawn.bindHandler(&waterfallDrawnHandler);
             waterfallDrawnHandler.ctx = this;
-            waterfallDrawnHandler.handler = [](void*, void* ctx) {
+            waterfallDrawnHandler.handler = [](ImGuiContext *gctx, void* ctx) {
                 NRModule* _this = (NRModule*)ctx;
-                _this->drawSNRMeterAverages();
+                _this->drawSNRMeterAverages(gctx);
             };
             ImGui::onSNRMeterExtPoint.bindHandler(&snrMeterExtPointHandler);
             snrMeterExtPointHandler.ctx = this;
@@ -264,7 +264,7 @@ private:
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "UnreachableCode"
-    void drawSNRMeterAverages() {
+    void drawSNRMeterAverages(ImGuiContext *gctx) {
 
         if (!snrChartWidget || !enabled) {
             return;
@@ -276,7 +276,7 @@ private:
         if (counter % winsize == winsize - 1) {
             r = dsp::math::maxeach(winsize, lastsnr);
         }
-        ImGuiWindow* window = GetCurrentWindow();
+        ImGuiWindow* window = gctx->CurrentWindow;
         ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
         for (int q = 1; q < r.size(); q++) {
             window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q - 1], q - 1 + window->Pos.y), postSnrLocation + ImVec2(0 + r[q], q + window->Pos.y), text);
@@ -287,7 +287,7 @@ private:
 
     std::string name;
     bool enabled = true;
-    EventHandler<void*> waterfallDrawnHandler;
+    EventHandler<ImGuiContext *> waterfallDrawnHandler;
     EventHandler<ImGui::SNRMeterExtPoint> snrMeterExtPointHandler;
     EventHandler<double> currentFrequencyChangedHandler;
     EventHandler<std::string> instanceCreatedHandler;
