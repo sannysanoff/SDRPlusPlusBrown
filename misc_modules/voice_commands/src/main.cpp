@@ -44,6 +44,9 @@ static pv_status_t (*pv_picovoice_process_func)(pv_picovoice_t *, const int16_t 
 static const char *(*pv_picovoice_version_func)();
 static void (*pv_inference_delete_func)(pv_inference_t *);
 
+static int pvSampleRate;
+static int pvFrameLength;
+
 
 
 class VoiceCommands : public ModuleManager::Instance {
@@ -67,6 +70,8 @@ public:
 
 //        updateBindings();
 //        actuateIFNR();
+
+        enable();
     }
 
     ~VoiceCommands() {
@@ -193,6 +198,8 @@ public:
             INITSYMBOL(pv_picovoice_process_func);
             INITSYMBOL(pv_picovoice_version_func);
             INITSYMBOL(pv_inference_delete_func);
+            pvSampleRate = pv_sample_rate_func();
+            pvFrameLength = pv_picovoice_frame_length_func();
         }
 
 
@@ -227,14 +234,45 @@ public:
             audioIn.clearReadStop();
             sigpath::sinkManager.defaultInputAudio.bindStream(&audioIn);
             std::thread inputProcessor([this] {
+                std::vector<int16_t> queue;
+
+                dsp::multirate::RationalResampler<dsp::stereo_t> res;
+                bool initialized = false;
+
                 while(enabled) {
                     int rd = audioIn.read();
                     if (rd < 0 || !enabled) {
                         break;
                     }
+                    if (picoVoiceMainHandle && !initialized) {
+                        initialized = true;
+                        res.init(nullptr, 48000, pvSampleRate);
+                        picoVoiceStatus = "processing";
+                    }
+                    if (initialized) {
+                        for(int q=0; q<rd; q++) {
+                            auto sample = audioIn.readBuf[q].l;
+                            if (sample > 1) {
+                                sample = 0;
+                            } else if (sample < -1) {
+                                sample = -1;
+                            }
+                            queue.insert(queue.end(), (int)(32767 * sample));
+                        }
+                    }
                     audioIn.flush();
+                    if (initialized) {
+                        while (queue.size() > pvFrameLength) {
+                            auto status = pv_picovoice_process_func(picoVoiceMainHandle, queue.data());
+                            if (status != PV_STATUS_SUCCESS) {
+                                fprintf(stderr, "'pv_picovoice_process' failed with '%s'\n", pv_status_to_string_func(status));
+                            }
+                            queue.erase(queue.begin(), queue.begin() + pvFrameLength);
+                        }
+                    }
                 }
             });
+            inputProcessor.detach();
         }
     }
 
@@ -279,7 +317,7 @@ private:
     }
 
     std::string name;
-    bool enabled = true;
+    bool enabled = false;
 
 };
 
