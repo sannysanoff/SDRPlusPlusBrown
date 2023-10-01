@@ -576,6 +576,7 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.conf["modules"][modCount++] = "noise_reduction_logmmse.so";
     core::configManager.conf["modules"][modCount++] = "ft8_decoder.so";
     core::configManager.conf["modules"][modCount++] = "reports_monitor.so";
+    core::configManager.conf["modules"][modCount++] = "voice_commands.so";
 #endif
 
     // Fix missing elements in config

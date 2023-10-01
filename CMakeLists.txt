@@ -82,6 +82,7 @@ option(OPT_BUILD_TCI_SERVER "TCI backend for controlling SDR++ with sunsdr and s
 option(OPT_BUILD_SCANNER "Frequency scanner" ON)
 option(OPT_BUILD_SCHEDULER "Build the scheduler" OFF)
 option(OPT_BUILD_NOISE_REDUCTION_LOGMMSE "Build LOGMMSE noise reduction" ON)
+option(OPT_BUILD_VOICE_COMMANDS "Build voice commands" ON)
 
 # Other options
 option(USE_INTERNAL_LIBCORRECT "Use an internal version of libcorrect" ON)
@@ -339,6 +340,10 @@ endif (OPT_BUILD_SCHEDULER)
 if (OPT_BUILD_NOISE_REDUCTION_LOGMMSE)
 add_subdirectory("misc_modules/noise_reduction_logmmse")
 endif (OPT_BUILD_NOISE_REDUCTION_LOGMMSE)
+
+if (OPT_BUILD_VOICE_COMMANDS)
+add_subdirectory("misc_modules/voice_commands")
+endif (OPT_BUILD_VOICE_COMMANDS)
 
 add_executable(sdrpp "src/main.cpp" "win32/resources.rc")
 target_link_libraries(sdrpp PRIVATE sdrpp_core)
