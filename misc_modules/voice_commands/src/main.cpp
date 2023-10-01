@@ -232,10 +232,9 @@ public:
                     if (rd < 0 || !enabled) {
                         break;
                     }
-
                     audioIn.flush();
                 }
-            }
+            });
         }
     }
 

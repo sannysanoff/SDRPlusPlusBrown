@@ -679,15 +679,18 @@ private:
                     ImGui::Text("%s", report.reporterCallsign.c_str());
                     ImGui::TableSetColumnIndex(col++);
                     char buf[100];
+                    static int distanceMaxWidth = -1;
+                    static int dbMaxWidth = -1;
+                    if (distanceMaxWidth < 0) {
+                        sprintf(buf, "88888 km");
+                        distanceMaxWidth = ImGui::CalcTextSize(buf).x;
+                        sprintf(buf, "-88");
+                        dbMaxWidth = ImGui::CalcTextSize(buf).x;
+                    }
                     if (report.distance > 0) {
-                        static int charMaxWidth = -1;
-                        if (charMaxWidth < 0) {
-                            sprintf(buf, "88888 km");
-                            charMaxWidth = ImGui::CalcTextSize(buf).x;
-                        }
                         sprintf(buf, "%d km", report.distance);
                         float textWidth = ImGui::CalcTextSize(buf).x;
-                        ImGui::Dummy(ImVec2(charMaxWidth - textWidth, 0));
+                        ImGui::Dummy(ImVec2(distanceMaxWidth - textWidth, 0));
                         ImGui::SameLine();
                         ImGui::Text("%s", buf);
                     } else {
@@ -697,10 +700,11 @@ private:
                     ImGui::Text("%s", report.reportedCallsign.c_str());
                     ImGui::TableSetColumnIndex(col++);
 
-                    if (report.decibel > 0) {
+                    if (report.decibel > (-35) && report.decibel < 35) {
                         sprintf(buf, "%d", (int)report.decibel);
                         float textWidth = ImGui::CalcTextSize(buf).x;
-                        ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x - textWidth, 0));
+                        float dummyWidth = dbMaxWidth - textWidth;
+                        ImGui::Dummy(ImVec2(dummyWidth, 0));
                         ImGui::SameLine();
                         ImGui::Text("%s", buf);
                     } else {

@@ -214,6 +214,7 @@ bundle_create_plist() {
     echo '        <key>CFBundleSignature</key><string>'$5'</string>' >> $8
     echo '        <key>CFBundleExecutable</key><string>'$6'</string>' >> $8
     echo '        <key>CFBundleIconFile</key><string>'$7'</string>' >> $8
+    echo '        <key>NSMicrophoneUsageDescription</key> <string>Microphone is needed for TX/QSO</string>' >> $8
     echo '    </dict>' >> $8
     echo '</plist>' >> $8
 }

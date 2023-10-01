@@ -340,7 +340,7 @@ private:
             }
 #endif
             // Create device name and save to list
-            sprintf(buffer, "[%s] %s", apiName.c_str(), dev.deviceInfo->name);
+            sprintf(buffer, "%d. [%s] %s", i, apiName.c_str(), dev.deviceInfo->name);
             devices[buffer] = dev;
             deviceNames.push_back(buffer);
             deviceNamesTxt += buffer;
