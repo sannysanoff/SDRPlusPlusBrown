@@ -61,7 +61,6 @@ elseif (ANDROID)
             ${SDR_KIT_ROOT}/${ANDROID_ABI}/include
             )
     target_link_libraries(sdrpp_ft8_mshv PUBLIC
-            ${SDR_KIT_ROOT}/${ANDROID_ABI}/lib/libcpu_features.a
             ${SDR_KIT_ROOT}/${ANDROID_ABI}/lib/libvolk.so
             ${SDR_KIT_ROOT}/${ANDROID_ABI}/lib/libfftw3f.so
             android log

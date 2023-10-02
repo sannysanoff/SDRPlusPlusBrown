@@ -56,7 +56,7 @@ option(OPT_BUILD_KIWISDR_SOURCE "Build KiwiSDR (web) Source Module" ON)
 
 # Sinks
 option(OPT_BUILD_ANDROID_AUDIO_SINK "Build Android Audio Sink Module (Dependencies: AAudio, only for android)" OFF)
-option(OPT_BUILD_AUDIO_SINK "Build Audio Sink Module (Dependencies: rtaudio)" OFF)
+option(OPT_BUILD_AUDIO_SINK "Build Audio Sink Module (Dependencies: rtaudio)" ON)
 option(OPT_BUILD_NETWORK_SINK "Build Audio Sink Module (no dependencies required)" ON)
 option(OPT_BUILD_NEW_PORTAUDIO_SINK "Build the new PortAudio Sink Module (Dependencies: portaudio)" ON)
 option(OPT_BUILD_PORTAUDIO_SINK "Build PortAudio Sink Module (Dependencies: portaudio)" OFF)
@@ -248,11 +248,11 @@ if (OPT_BUILD_NETWORK_SINK)
 add_subdirectory("sink_modules/network_sink")
 endif (OPT_BUILD_NETWORK_SINK)
 
-message("ZLO?")
-if (OPT_BUILD_NEW_PORTAUDIO_SINK)
-message("OPT_BUILD_NEW_PORTAUDIO_SINK")
-add_subdirectory("sink_modules/new_portaudio_sink")
-endif (OPT_BUILD_NEW_PORTAUDIO_SINK)
+if (NOT ANDROID)
+    if (OPT_BUILD_NEW_PORTAUDIO_SINK)
+    add_subdirectory("sink_modules/new_portaudio_sink")
+    endif (OPT_BUILD_NEW_PORTAUDIO_SINK)
+endif ()
 
 
 # Decoders
@@ -342,11 +342,23 @@ add_subdirectory("misc_modules/noise_reduction_logmmse")
 endif (OPT_BUILD_NOISE_REDUCTION_LOGMMSE)
 
 if (OPT_BUILD_VOICE_COMMANDS)
-add_subdirectory("misc_modules/voice_commands")
+    add_subdirectory("misc_modules/voice_commands")
 endif (OPT_BUILD_VOICE_COMMANDS)
 
-add_executable(sdrpp "src/main.cpp" "win32/resources.rc")
-target_link_libraries(sdrpp PRIVATE sdrpp_core)
+set(SDRPP_SOURCES "src/main.cpp")
+set(SDRPP_LIBS "sdrpp_core")
+
+if(WIN32)
+    list(APPEND SDRPP_SOURCES "win32/resources.rc")
+elseif (APPLE)
+    list(APPEND SDRPP_SOURCES "src/macos_init.m")
+    list(APPEND SDRPP_LIBS "-framework Foundation")
+    list(APPEND SDRPP_LIBS "-framework AVFoundation")
+    set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
+endif()
+
+add_executable(sdrpp ${SDRPP_SOURCES})
+target_link_libraries(sdrpp PRIVATE ${SDRPP_LIBS})
 
 # Compiler arguments
 target_compile_options(sdrpp PRIVATE ${SDRPP_COMPILER_FLAGS})

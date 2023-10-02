@@ -33,22 +33,58 @@ public:
         const PaHostApiInfo* hostApiInfo;
         PaDeviceIndex id;
         int defaultSrId;
-        PaStreamParameters outputParams;
+        PaStreamParameters params;
         std::vector<double> sampleRates;
         std::string sampleRatesTxt;
+    };
+
+    struct DeviceCombo {
+        std::map<std::string, AudioDevice_t> devices;
+        std::vector<std::string> deviceNames;
+        std::string deviceNamesTxt;
+
+        AudioDevice_t selectedDev;
+        std::string selectedDevName;
+
+        int devId;
+        int srId;
+
+        std::string configSuffix;
+
+        void clear() {
+            devices.clear();
+            deviceNames.clear();
+            deviceNamesTxt.clear();
+        }
+
+        std::function<PaDeviceIndex()> getDefaultDevice;
+
     };
 
     AudioSink(SinkManager::Stream* stream, std::string streamName) {
         _stream = stream;
         _streamName = streamName;
+        inputDevice.configSuffix = "_in";
+        inputDevice.getDefaultDevice = Pa_GetDefaultInputDevice;
+        outputDevice.getDefaultDevice = Pa_GetDefaultOutputDevice;
 
         // Create config if it doesn't exist
         config.acquire();
         if (!config.conf.contains(_streamName)) {
             config.conf[_streamName]["device"] = "";
+            config.conf[_streamName]["device"+inputDevice.configSuffix] = "";
             config.conf[_streamName]["devices"] = json::object();
+            config.conf[_streamName]["devices"+inputDevice.configSuffix] = json::object();
+        }
+        if (!config.conf[_streamName].contains("device"+inputDevice.configSuffix)) {
+            config.conf[_streamName]["device"+inputDevice.configSuffix] = "";
+            config.conf[_streamName]["devices"+inputDevice.configSuffix] = json::object();
+        }
+        if (config.conf[_streamName].contains("micInput")) {
+            micInput = config.conf[_streamName]["micInput"];
         }
         std::string selected = config.conf[_streamName]["device"];
+        std::string selectedIn = config.conf[_streamName]["device"+inputDevice.configSuffix];
         config.release(true);
 
         // Register the play state handler
@@ -60,9 +96,12 @@ public:
         packer.init(_stream->sinkOut, 1024);
         s2m.init(&packer.out);
 
+
         // Refresh devices and select the one from the config
         refreshDevices();
-        selectDevByName(selected);
+        selectDevByName(outputDevice, selected);
+        selectDevByName(inputDevice, selectedIn);
+
     }
 
     ~AudioSink() {
@@ -89,11 +128,11 @@ public:
     }
 
     void start() {
-        if (running || selectedDevName.empty()) { return; }
+        if (running || outputDevice.selectedDevName.empty()) { return; }
 
         // Get device and samplerate
-        AudioDevice_t& dev = devices[deviceNames[devId]];
-        double sampleRate = dev.sampleRates[srId];
+        AudioDevice_t& dev = outputDevice.devices[outputDevice.deviceNames[outputDevice.devId]];
+        double sampleRate = dev.sampleRates[outputDevice.srId];
         int blockSize = sampleRate / BLOCK_SIZE_DIVIDER;
 
         // Set the SDR++ stream sample rate
@@ -112,12 +151,12 @@ public:
             packer.start();
             s2m.start();
             stereo = false;
-            err = Pa_OpenStream(&devStream, NULL, &dev.outputParams, sampleRate, blockSize, paNoFlag, _mono_cb, this);
+            err = Pa_OpenStream(&devStream, NULL, &dev.params, sampleRate, blockSize, paNoFlag, _mono_cb, this);
         }
         else {
             packer.start();
             stereo = true;
-            err = Pa_OpenStream(&devStream, NULL, &dev.outputParams, sampleRate, blockSize, paNoFlag, _stereo_cb, this);
+            err = Pa_OpenStream(&devStream, NULL, &dev.params, sampleRate, blockSize, paNoFlag, _stereo_cb, this);
         }
 
         // In case of error, abort
@@ -134,7 +173,7 @@ public:
 
         if (micInput) {
             // microphone is here.
-            auto inputIndex = Pa_GetDefaultInputDevice();
+            auto inputIndex = inputDevice.devices[inputDevice.deviceNames[inputDevice.devId]].id;
             if (inputIndex == paNoDevice) {
                 // no device
             } else {
@@ -173,7 +212,7 @@ public:
     }
 
     void stop() {
-        if (!running || selectedDevName.empty()) { return; }
+        if (!running || outputDevice.selectedDevName.empty()) { return; }
 
         if (microphonePaStream) {
             Pa_AbortStream(microphonePaStream);
@@ -206,39 +245,48 @@ public:
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
         // Select device
+
+        auto renderDevCombo = [&](DeviceCombo &dev) {
+            ImGui::SetNextItemWidth(menuWidth);
+            if (ImGui::Combo(CONCAT("##audio_sink_dev_sel", dev.configSuffix), &dev.devId, dev.deviceNamesTxt.c_str())) {
+                selectDevByName(dev, dev.deviceNames[dev.devId]);
+                stop();
+                start();
+                if (dev.selectedDevName != "") {
+                    config.acquire();
+                    config.conf[_streamName]["device"+dev.configSuffix] = dev.selectedDevName;
+                    config.release(true);
+                }
+            }
+        };
+
+        auto &dev = outputDevice;
+        renderDevCombo(dev);
+
+
+        // Select sample rate
         ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo("##audio_sink_dev_sel", &devId, deviceNamesTxt.c_str())) {
-            selectDevByName(deviceNames[devId]);
+        if (ImGui::Combo("##audio_sink_sr_sel", &dev.srId, dev.selectedDev.sampleRatesTxt.c_str())) {
             stop();
             start();
-            if (selectedDevName != "") {
+            if (dev.selectedDevName != "") {
                 config.acquire();
-                config.conf[_streamName]["device"] = selectedDevName;
+                config.conf[_streamName]["devices"+dev.configSuffix][dev.selectedDevName] = dev.selectedDev.sampleRates[dev.srId];
                 config.release(true);
             }
         }
 
-        // Select sample rate
-        ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo("##audio_sink_sr_sel", &srId, selectedDev.sampleRatesTxt.c_str())) {
-            stop();
-            start();
-            if (selectedDevName != "") {
-                config.acquire();
-                config.conf[_streamName]["devices"][selectedDevName] = selectedDev.sampleRates[srId];
-                config.release(true);
-            }
-        }
         if (ImGui::Checkbox("Mic input (restart needed)", &micInput)) {
             config.acquire();
             config.conf[_streamName]["micInput"] = micInput;
             config.release(true);
         }
+        if (micInput) {
+            renderDevCombo(inputDevice);
+        }
         ImGui::Text("Mic Status: %s", inputDeviceInfo.c_str());
     }
 
-    int devId = 0;
-    int srId = 0;
     bool stereo = false;
 
 private:
@@ -266,140 +314,151 @@ private:
 
     void refreshDevices() {
         // Clear current list
-        devices.clear();
-        deviceNames.clear();
-        deviceNamesTxt.clear();
+        inputDevice.clear();
+        outputDevice.clear();
 
         // Get number of devices
         int devCount = Pa_GetDeviceCount();
         PaStreamParameters outputParams;
         char buffer[128];
 
-        for (int i = 0; i < devCount; i++) {
-            AudioDevice_t dev;
+        auto populateDevices = [&](auto &d, const std::string &inout, bool isMicrophone) {
+            for (int i = 0; i < devCount; i++) {
+                AudioDevice_t dev;
 
-            // Get device info
-            dev.deviceInfo = Pa_GetDeviceInfo(i);
-            dev.hostApiInfo = Pa_GetHostApiInfo(dev.deviceInfo->hostApi);
-            dev.id = i;
+                // Get device info
+                dev.deviceInfo = Pa_GetDeviceInfo(i);
+                dev.hostApiInfo = Pa_GetHostApiInfo(dev.deviceInfo->hostApi);
+                dev.id = i;
 
-            // Check if device is usable
-            if (dev.deviceInfo->maxOutputChannels == 0) { continue; }
+                // Check if device is usable
+                if (isMicrophone) {
+                    if (dev.deviceInfo->maxInputChannels == 0) { continue; }
+                } else {
+                    if (dev.deviceInfo->maxOutputChannels == 0) { continue; }
+                }
 #ifdef _WIN32
-            // On Windows, use only WASAPI
+                // On Windows, use only WASAPI
             if (dev.hostApiInfo->type == paMME || dev.hostApiInfo->type == paWDMKS) { continue; }
 #endif
-            // Zero out output params
-            dev.outputParams.device = i;
-            dev.outputParams.sampleFormat = paFloat32;
-            dev.outputParams.suggestedLatency = std::min<PaTime>(AUDIO_LATENCY, dev.deviceInfo->defaultLowOutputLatency);
-            dev.outputParams.channelCount = std::min<int>(dev.deviceInfo->maxOutputChannels, 2);
-            dev.outputParams.hostApiSpecificStreamInfo = NULL;
+                // Zero out output params
+                dev.params.device = i;
+                dev.params.sampleFormat = paFloat32;
+                if (isMicrophone) {
+                    dev.params.suggestedLatency = std::min<PaTime>(AUDIO_LATENCY, dev.deviceInfo->defaultLowInputLatency);
+                } else {
+                    dev.params.suggestedLatency = std::min<PaTime>(AUDIO_LATENCY, dev.deviceInfo->defaultLowOutputLatency);
+                }
+                dev.params.channelCount = std::min<int>(dev.deviceInfo->maxOutputChannels, 2);
+                dev.params.hostApiSpecificStreamInfo = NULL;
 
-            // List available sample rates
-            for (int sr = 12000; sr < 200000; sr += 12000) {
-                if (Pa_IsFormatSupported(NULL, &dev.outputParams, sr) != paFormatIsSupported) { continue; }
-                dev.sampleRates.push_back(sr);
-            }
-            for (int sr = 11025; sr < 192000; sr += 11025) {
-                if (Pa_IsFormatSupported(NULL, &dev.outputParams, sr) != paFormatIsSupported) { continue; }
-                dev.sampleRates.push_back(sr);
-            }
+                // List available sample rates
+                for (int sr = 12000; sr < 200000; sr += 12000) {
+                    if (Pa_IsFormatSupported(NULL, &dev.params, sr) != paFormatIsSupported) { continue; }
+                    dev.sampleRates.push_back(sr);
+                }
+                for (int sr = 11025; sr < 192000; sr += 11025) {
+                    if (Pa_IsFormatSupported(NULL, &dev.params, sr) != paFormatIsSupported) { continue; }
+                    dev.sampleRates.push_back(sr);
+                }
 
-            // If no sample rates are supported, cancel adding device
-            if (dev.sampleRates.empty()) {
-                continue;
-            }
+                // If no sample rates are supported, cancel adding device
+                if (dev.sampleRates.empty()) {
+                    continue;
+                }
 
-            // Sort sample rate list
-            std::sort(dev.sampleRates.begin(), dev.sampleRates.end(), [](double a, double b) { return (a < b); });
+                // Sort sample rate list
+                std::sort(dev.sampleRates.begin(), dev.sampleRates.end(), [](double a, double b) { return (a < b); });
 
-            // Generate text list for UI
-            int srId = 0;
-            int _48kId = -1;
-            for (auto sr : dev.sampleRates) {
-                sprintf(buffer, "%d", (int)sr);
-                dev.sampleRatesTxt += buffer;
-                dev.sampleRatesTxt += '\0';
+                // Generate text list for UI
+                int srId = 0;
+                int _48kId = -1;
+                for (auto sr : dev.sampleRates) {
+                    sprintf(buffer, "%d", (int)sr);
+                    dev.sampleRatesTxt += buffer;
+                    dev.sampleRatesTxt += '\0';
 
-                // Save ID of the default sample rate and 48KHz
-                if (sr == dev.deviceInfo->defaultSampleRate) { dev.defaultSrId = srId; }
-                if (sr == 48000.0) { _48kId = srId; }
-                srId++;
-            }
+                    // Save ID of the default sample rate and 48KHz
+                    if (sr == dev.deviceInfo->defaultSampleRate) { dev.defaultSrId = srId; }
+                    if (sr == 48000.0) { _48kId = srId; }
+                    srId++;
+                }
 
-            // If a 48KHz option was found, use it instead of the default
-            if (_48kId >= 0) { dev.defaultSrId = _48kId; }
+                // If a 48KHz option was found, use it instead of the default
+                if (_48kId >= 0) { dev.defaultSrId = _48kId; }
 
-            std::string apiName = dev.hostApiInfo->name;
+                std::string apiName = dev.hostApiInfo->name;
 
 #ifdef _WIN32
-            // Shorten the names on windows
+                // Shorten the names on windows
             if (apiName.rfind("Windows ", 0) == 0) {
                 apiName = apiName.substr(8);
             }
 #endif
-            // Create device name and save to list
-            sprintf(buffer, "%d. [%s] %s", i, apiName.c_str(), dev.deviceInfo->name);
-            devices[buffer] = dev;
-            deviceNames.push_back(buffer);
-            deviceNamesTxt += buffer;
-            deviceNamesTxt += '\0';
-        }
+                // Create device name and save to list
+                sprintf(buffer, "%d. %s: [%s] %s", i, inout.c_str(), apiName.c_str(), dev.deviceInfo->name);
+                d.devices[buffer] = dev;
+                d.deviceNames.push_back(buffer);
+                d.deviceNamesTxt += buffer;
+                d.deviceNamesTxt += '\0';
+            }
+        };
+
+        populateDevices(outputDevice, "Play", false);
+        populateDevices(inputDevice, "Rec", true);
 
     }
 
-    void selectDefault() {
-        if (devices.empty()) {
-            selectedDevName = "";
+    void selectDefault(DeviceCombo &dev) {
+        if (dev.devices.empty()) {
+            dev.selectedDevName = "";
             return;
         }
 
         // Search for the default device
-        PaDeviceIndex defId = Pa_GetDefaultOutputDevice();
-        for (auto const& [name, dev] : devices) {
-            if (dev.id != defId) { continue; }
-            selectDevByName(name);
+        PaDeviceIndex defId = dev.getDefaultDevice();
+        for (auto const& [name, d] : dev.devices) {
+            if (d.id != defId) { continue; }
+            selectDevByName(dev, name);
             return;
         }
 
         // If default not found, select first
-        selectDevByName(deviceNames[0]);
+        selectDevByName(dev, dev.deviceNames[0]);
     }
 
-    void selectDevByName(std::string name) {
-        auto devIt = std::find(deviceNames.begin(), deviceNames.end(), name);
-        if (devIt == deviceNames.end()) {
-            selectDefault();
+
+
+    void selectDevByName(DeviceCombo &dev, std::string name) {
+        auto devIt = std::find(dev.deviceNames.begin(), dev.deviceNames.end(), name);
+        if (devIt == dev.deviceNames.end()) {
+            selectDefault(dev);
             return;
         }
 
         // Load the device name, device descriptor and device ID
-        selectedDevName = name;
-        selectedDev = devices[name];
-        devId = std::distance(deviceNames.begin(), devIt);
+        dev.selectedDevName = name;
+        dev.selectedDev = dev.devices[name];
+        dev.devId = std::distance(dev.deviceNames.begin(), devIt);
 
         // Load config
         config.acquire();
-        if (!config.conf[_streamName]["devices"].contains(name)) {
-            config.conf[_streamName]["devices"][name] = selectedDev.sampleRates[selectedDev.defaultSrId];
-        }
-        if (config.conf[_streamName].contains("micInput")) {
-            micInput = config.conf[_streamName]["micInput"];
+        if (!config.conf[_streamName]["devices"+dev.configSuffix].contains(name)) {
+            config.conf[_streamName]["devices"+dev.configSuffix][name] = dev.selectedDev.sampleRates[dev.selectedDev.defaultSrId];
         }
         config.release(true);
 
         // Find the sample rate ID, if not use default
         bool found = false;
-        double selectedSr = config.conf[_streamName]["devices"][name];
-        for (int i = 0; i < selectedDev.sampleRates.size(); i++) {
-            if (selectedDev.sampleRates[i] != selectedSr) { continue; }
-            srId = i;
+        double selectedSr = config.conf[_streamName]["devices"+dev.configSuffix][name];
+        for (int i = 0; i < dev.selectedDev.sampleRates.size(); i++) {
+            if (dev.selectedDev.sampleRates[i] != selectedSr) { continue; }
+            dev.srId = i;
             found = true;
             break;
         }
         if (!found) {
-            srId = selectedDev.defaultSrId;
+            dev.srId = dev.selectedDev.defaultSrId;
         }
     }
 
@@ -442,12 +501,9 @@ private:
     std::string _streamName;
 
     bool running = false;
-    std::map<std::string, AudioDevice_t> devices;
-    std::vector<std::string> deviceNames;
-    std::string deviceNamesTxt;
 
-    AudioDevice_t selectedDev;
-    std::string selectedDevName;
+    DeviceCombo outputDevice;
+    DeviceCombo inputDevice;
 
     SinkManager::Stream* _stream;
     dsp::buffer::Packer<dsp::stereo_t> packer;
