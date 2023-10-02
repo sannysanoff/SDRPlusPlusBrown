@@ -207,13 +207,13 @@ public:
                 accessKey.c_str(),
                 "/home/san/Fun/SDRPlusPlus/misc_modules/voice_commands/model/porcupine_params_ru.pv", // porcupine_model_path,
                 "/home/san/Fun/SDRPlusPlus/misc_modules/voice_commands/model/radio_ru_linux_v2_2_0.ppn", // keyword_path,
-                0.5f, // porcupine_sensitivity,
+                0.9f, // porcupine_sensitivity,
                 wake_word_callback,
                 "/home/san/Fun/SDRPlusPlus/misc_modules/voice_commands/model/rhino_params_ru.pv", // rhino_model_path,
                 "/home/san/Fun/SDRPlusPlus/misc_modules/voice_commands/model/sdrppbrown_ru_linux_v2_2_0.rhn", //context_path,
                 0.5f,
                 1.0f,
-                true,
+                false,
                 inference_callback,
                 &picoVoiceMainHandle);
         if (status != PV_STATUS_SUCCESS) {
@@ -238,6 +238,7 @@ public:
 
                 dsp::multirate::RationalResampler<dsp::stereo_t> res;
                 bool initialized = false;
+                std::vector<dsp::stereo_t> resampleBuf(100000, dsp::stereo_t());
 
                 while(enabled) {
                     int rd = audioIn.read();
@@ -250,14 +251,15 @@ public:
                         picoVoiceStatus = "processing";
                     }
                     if (initialized) {
-                        for(int q=0; q<rd; q++) {
+                        auto processed = res.process(rd, audioIn.readBuf, resampleBuf.data());
+                        for(int q=0; q<processed; q++) {
                             auto sample = audioIn.readBuf[q].l;
                             if (sample > 1) {
                                 sample = 0;
                             } else if (sample < -1) {
                                 sample = -1;
                             }
-                            queue.insert(queue.end(), (int)(32767 * sample));
+                            queue.insert(queue.end(), (int)(32767 * 8 * sample));
                         }
                     }
                     audioIn.flush();
@@ -266,6 +268,16 @@ public:
                             auto status = pv_picovoice_process_func(picoVoiceMainHandle, queue.data());
                             if (status != PV_STATUS_SUCCESS) {
                                 fprintf(stderr, "'pv_picovoice_process' failed with '%s'\n", pv_status_to_string_func(status));
+                            }
+                            if (false) {
+                                int minn = 10101010;
+                                int maxx = -10101010;
+                                for (int q = 0; q < queue.size(); q++) {
+                                    auto v = queue[q];
+                                    minn = std::min<float>(minn, v);
+                                    maxx = std::max<float>(maxx, v);
+                                }
+                                printf("%d %d\n", minn, maxx);
                             }
                             queue.erase(queue.begin(), queue.begin() + pvFrameLength);
                         }
