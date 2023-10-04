@@ -321,6 +321,7 @@ struct HL2Device {
     // needs 63 samples as per protocol spec.
     void storeNextIQSamples(unsigned char* dest, const dsp::complex_t* samples) {
         float scale = softwarePower / 255.0;
+        int clipped = 0;
         for (int i = 0; i < 63; i++) {
             auto comp = samples[i];
             // input: -1, 1, output range -32768..32767
@@ -334,7 +335,7 @@ struct HL2Device {
                 float nscale = scale * (1.0 / amp);
                 I = ((int32_t)((comp.re * nscale) * 32767)) & 0xFFFF;
                 Q = ((int32_t)((comp.im * nscale) * 32767)) & 0xFFFF;
-                //                    flog::info("Clipping: re={} im={} amp={} nscale={} I={} Q={}", comp.re, comp.im, amp, nscale, I, Q);
+                clipped++;
             }
 
             if (debugOut) {
@@ -356,6 +357,9 @@ struct HL2Device {
 
             // step is 8 bytes
             dest += 8;
+        }
+        if (clipped) {
+            flog::info("TX I/Q has been clipped {} times", clipped);
         }
     }
 

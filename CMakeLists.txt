@@ -353,7 +353,7 @@ if(WIN32)
 elseif (APPLE)
     list(APPEND SDRPP_SOURCES "src/macos_init.m")
     list(APPEND SDRPP_LIBS "-framework Foundation")
-    list(APPEND SDRPP_LIBS "-framework AVFoundation")
+#    list(APPEND SDRPP_LIBS "-framework AVFoundation")
     set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
 endif()
 

@@ -1893,7 +1893,7 @@ void MobileMainWindow::draw() {
     auto vertPadding = ImGui::GetStyle().WindowPadding.y;
 
 
-    MobileButton *buttonsDefault[] = {&this->qsoButton, &this->zoomToggle, &this->modeToggle, &this->autoWaterfall, &this->audioConfigToggle, &this->smallWheelFunction /*&this->bandUp, &this->bandDown, &this->submodeToggle,*/ };
+    MobileButton *buttonsDefault[] = {&this->qsoButton, &this->zoomToggle, &this->modeToggle, /*&this->autoWaterfall,*/ &this->audioConfigToggle, &this->smallWheelFunction /*&this->bandUp, &this->bandDown, &this->submodeToggle,*/ };
     MobileButton *buttonsQso[] = {&this->endQsoButton,
 #ifndef __ANDROID__
                                   &this->txButton, // on android, volume button works as PTT
@@ -1935,6 +1935,14 @@ void MobileMainWindow::draw() {
         //        ImGui::SetCursorPos(ImVec2{beforeQSOPanel.x, beforeQSOPanel.y + afterQSOPanel.y});
         //        buttonsSpaceY -= afterQSOPanel.y;
     }
+    if (qsoPanel->audioInToTransmitter) {
+        qsoPanel->triggerTXOffEvent--;
+        if (!qsoPanel->triggerTXOffEvent) { // zero cross
+            qsoPanel->audioInToTransmitter.reset();
+            sigpath::txState.emit(false);
+        }
+    }
+
     ImGui::SetCursorPos(beforePanel);
 
 
@@ -2111,7 +2119,7 @@ void MobileMainWindow::draw() {
         this->smallWheelFunctionN = (this->smallWheelFunctionN + 1) % nSmallWheelFunctions;
         this->smallWheelFunction.buttonText = smallWheelFunctionName(this->smallWheelFunctionN);
     }
-    if (pressedButton == &this->audioConfigToggle) {
+    if (pressedButton == &this->audioConfigToggle || softTune.isLongPress()) {
         if (!this->qsoPanel->audioInToFFT) {
             this->qsoPanel->startAudioPipeline();
         }
@@ -2164,7 +2172,7 @@ void MobileMainWindow::draw() {
         }
     }
 //    qsoPanel->setModeSubmode(modeToggle.upperText, submodeToggle.upperText);
-    if (sigpath::transmitter && qsoPanel->triggerTXOffEvent < 0) { // transiver exists, and TX is not in handing off state
+    if (sigpath::transmitter && qsoPanel->triggerTXOffEvent <= 0) { // transiver exists, and TX is not in handing off state
         if (pressedButton == &this->softTune) {
             if (qsoPanel->audioInToTransmitter) {
                 // tuning, need to stop
@@ -2177,7 +2185,7 @@ void MobileMainWindow::draw() {
                 pressedButton->buttonText = "Tuning..";
             }
         }
-        bool txPressed = txStateByButton || txButton.currentlyPressed || ((ImGui::IsKeyDown(ImGuiKey_VolumeUp) || ImGui::IsKeyDown(ImGuiKey_Insert)) && qsoMode == VIEW_QSO);
+        bool txPressed = txStateByButton || txButton.currentlyPressed || ((ImGui::IsKeyDown(ImGuiKey_VolumeUp) || ImGui::IsKeyDown(ImGuiKey_Insert)) && (qsoMode == VIEW_QSO || (qsoMode == VIEW_CONFIG && prevMode == VIEW_QSO)));
         if (txStateByButton && txButton.buttonText != "TX ON") {
             txButton.buttonText = "TX ON";
         }
@@ -3375,11 +3383,6 @@ void QSOPanel::draw(float _currentFreq, ImGui::WaterfallVFO *) {
     }
     currentFFTBufferMutex.unlock();
 
-    triggerTXOffEvent--;
-    if (!triggerTXOffEvent) { // zero cross
-        audioInToTransmitter.reset();
-        sigpath::txState.emit(false);
-    }
 
 
 }
