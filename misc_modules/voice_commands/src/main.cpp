@@ -13,6 +13,8 @@
 #include "pv_picovoice.h"
 #include "signal_path/signal_path.h"
 
+#include <vosk_api.h>
+
 ConfigManager config;
 
 SDRPP_MOD_INFO{
@@ -334,6 +336,7 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
+    VoskModel *model = vosk_model_new("model");
     config.setPath(core::args["root"].s() + "/voice_commands.json");
     config.load(json::object());
     config.enableAutoSave();

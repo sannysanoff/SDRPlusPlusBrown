@@ -129,7 +129,7 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
     } else {
         strcpy(interface_name, "fixed_addr");
     }
-//    flog::info("discover: looking for HPSDR devices on {0}\n", interface_name);
+//    flog::info("discover: looking for HPSDR devices on {0}", interface_name);
 
     // send a broadcast to locate hpsdr boards on the network
     discovery_socket=socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP);
@@ -195,7 +195,7 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
                 getnameinfo(&ifreq.ifr_broadaddr, sizeof(ifreq.ifr_broadaddr), host, sizeof(host), 0, 0, NI_NUMERICHOST);
                 auto z = ifreq.ifr_broadaddr;
                 to_addr.sin_addr.s_addr = ((const sockaddr_in *)(&z))->sin_addr.s_addr;
-                flog::info("Interface: %s  Broadcast: %s\n", interface_name, host);
+                flog::info("Interface: %s  Broadcast: %s", interface_name, host);
             }
         }
 #endif
@@ -379,15 +379,19 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
     usleep(300000);
 
     if(sendto(discovery_socket,(char*)buffer,63,0,(struct sockaddr*)&to_addr,sizeof(to_addr))<0) {
-        flog::error("discover: sendto (broadcast/direct) failed for discovery_socket\n");
+        flog::error("discover: sendto (broadcast/direct) failed for discovery_socket");
     }
     if (scanIP) {
+        bool sendToReported = false;
         unsigned char *ipv4 = (unsigned char *) &to_addr.sin_addr.s_addr;
         flog::info("Scanning interface %s:  %d.%d.%d.1 - %d.%d.%d.254..", interface_name, ipv4[0], ipv4[1], ipv4[2]);
         for (int q = 1; q <= 254; q++) {
             ipv4[3] = q;
             if (sendto(discovery_socket, (char *) buffer, 63, 0, (struct sockaddr *) &to_addr, sizeof(to_addr)) < 0) {
-                flog::error("discover: sendto (scan) failed for discovery_socket\n");
+                if (!sendToReported) {
+                    flog::error("discover: sendto (scan) failed for discovery_socket");
+                    sendToReported = true;
+                }
             }
             usleep(1500);
         }
@@ -501,7 +505,7 @@ void protocol1_discovery(std::string staticIp, bool scanIp) {
 
     freeifaddrs(addrs);
 
-    flog::info( "HPSDR discovery found {0} devices\n",devices);
+    flog::info( "HPSDR discovery found {0} devices",devices);
 
     auto q = discovered;
 

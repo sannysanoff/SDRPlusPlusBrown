@@ -346,10 +346,12 @@ struct HL2Device {
             }
 
 
-            // add low pass filter HERE.
+            dest[0] = 0;
+            dest[1] = 0;
+            dest[2] = 0;
+            dest[3] = 0;
 
-            // skip first 4 bytes
-
+            // actual payload in 4 high bytes of 8byte block.
             dest[4] = I >> 8;
             dest[5] = I & 0xFF;
             dest[6] = Q >> 8;
@@ -364,6 +366,8 @@ struct HL2Device {
     }
 
     StreamTracker sendTracker;
+
+    int lastMaxAmp = 0;
 
     void prepareRequest(int sequence) {
         //        0  1  2  3    4     5  6  7  8  9  10
@@ -385,7 +389,12 @@ struct HL2Device {
         output_buffer[C3] = deviceControl[0x00].C3;
         output_buffer[C4] = deviceControl[0x00].C4;
 
-        maxAmp = 0;
+        lastMaxAmp++;
+        if (lastMaxAmp > 38) {
+            flog::info("Maxamp = {}", maxAmp);
+            maxAmp = 0;
+            lastMaxAmp = 0;
+        }
 
         samplesToSend.lock.lock();
         if (samplesToSend.isDataReady(63)) {
