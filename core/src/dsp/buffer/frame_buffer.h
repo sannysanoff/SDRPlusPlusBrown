@@ -47,8 +47,12 @@ namespace dsp::buffer {
             std::unique_lock lck(bufMtx);
             readCur = writeCur;
         }
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "SampleFrameBuffer:" +block::simplifyTN(tidName);
+        }
 
-        int run() {
+        int run() override {
             // Wait for data
             int count = _in->read();
             if (count < 0) { return -1; }
@@ -101,12 +105,12 @@ namespace dsp::buffer {
         bool bypass = false;
 
     private:
-        void doStart() {
+        void doStart() override  {
             base_type::workerThread = std::thread(&SampleFrameBuffer<T>::workerLoop, this);
             readWorkerThread = std::thread(&SampleFrameBuffer<T>::worker, this);
         }
 
-        void doStop() {
+        void doStop() override {
             _in->stopReader();
             out.stopWriter();
             stopWorker = true;

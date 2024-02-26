@@ -271,8 +271,11 @@ private:
         if (incomingBuffer.size() >= 512 - 8) {
             //            hermesSamples.add(incomingBuffer.size());
             memcpy(stream.writeBuf, incomingBuffer.data(), incomingBuffer.size() * sizeof(dsp::complex_t));
-            stream.swap((int)incomingBuffer.size());
+            if (stream.willSwap()) {
+                stream.swap((int)incomingBuffer.size());
+            }
             incomingBuffer.clear();
+
         }
     }
 

@@ -55,6 +55,10 @@ namespace dsp::bench {
             }
             return count;
         }
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "PeakLevelmeter:" +Sink<T>::simplifyTN(tidName);
+        }
 
         int run() {
             int count = base_type::_in->read();

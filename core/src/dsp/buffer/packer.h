@@ -36,6 +36,12 @@ namespace dsp::buffer {
             block::tempStart();
         }
 
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "Packer:" +Sink<T>::simplifyTN(tidName);
+        }
+
+
         int run() {
             int count = _in->read();
             if (count < 0) {

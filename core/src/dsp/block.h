@@ -68,7 +68,16 @@ namespace dsp {
 
     protected:
         void workerLoop() {
-            std::string tn = typeid(*this).name();
+            SetThreadName(getBlockName());
+            while (run() >= 0) {}
+        }
+
+        virtual std::string getBlockName() {
+            const char* tidName = typeid(*this).name();
+            return "AFNRLogMMSE:" +simplifyTN(tidName);
+        }
+        
+        static std::string simplifyTN(std::string tn) {
             int lastDigit = -1;
             for(int q=0; q<tn.size(); q++) {
                 if (isdigit(tn[q])) {
@@ -76,8 +85,7 @@ namespace dsp {
                 }
             }
             tn = tn.substr(lastDigit+1);
-            SetThreadName("block:" + tn);
-            while (run() >= 0) {}
+            return tn;
         }
 
         virtual void doStart() {

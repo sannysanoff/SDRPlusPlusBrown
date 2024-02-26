@@ -286,6 +286,13 @@ namespace dsp {
             block::start();
         }
 
+    protected:
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "block:" +simplifyTN(tidName);
+        }
+
+    public:
         void process(complex_t *readBuf, int count, complex_t *writeBuf, int &wrote) {
             wrote = 0;
             std::lock_guard<std::mutex> lock(freqMutex);

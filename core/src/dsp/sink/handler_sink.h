@@ -16,7 +16,14 @@ namespace dsp::sink {
             base_type::init(in);
         }
 
-        int run() {
+    protected:
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "Handler:" +Sink<T>::simplifyTN(tidName);
+        }
+
+    public:
+        int run() override {
             int count = base_type::_in->read();
             if (count < 0) { return -1; }
 

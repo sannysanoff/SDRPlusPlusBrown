@@ -79,6 +79,10 @@ namespace dsp {
 
         }
 
+        virtual inline bool willSwap() {
+            std::unique_lock<std::mutex> lck(swapMtx);
+            return canSwap;
+        }
         virtual inline bool swap(int size) {
             {
                 // Wait to either swap or stop

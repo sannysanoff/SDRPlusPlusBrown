@@ -79,6 +79,10 @@ namespace dsp::demod {
         }
 
 
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "demodSSB:" +Sink<T>::simplifyTN(tidName);
+        }
 
         int process(int count, const complex_t* in, T* out) {
             // Move back sideband
@@ -97,7 +101,7 @@ namespace dsp::demod {
             return count;
         }
 
-        int run() {
+        int run() override {
             int count = base_type::_in->read();
             if (count < 0) { return -1; }
 

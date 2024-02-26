@@ -45,6 +45,9 @@ inline void SetThreadName(const std::string &threadName)
 #ifdef __linux__
     prctl(PR_SET_NAME,threadName.c_str(),0,0,0);
 #endif
+#ifdef __APPLE__
+    pthread_setname_np(threadName.c_str());
+#endif
 }
 inline std::string GetThreadName( ) {
 #ifdef __linux__

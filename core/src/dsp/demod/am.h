@@ -131,8 +131,12 @@ namespace dsp::demod {
 
             return count;
         }
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "demodAM:" +Sink<T>::simplifyTN(tidName);
+        }
 
-        int run() {
+        int run() override {
             int count = base_type::_in->read();
             if (count < 0) { return -1; }
 

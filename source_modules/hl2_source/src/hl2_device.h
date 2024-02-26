@@ -944,11 +944,12 @@ struct HL2Device {
 
             SetThreadName("hl2_receive_thread");
 
-            fprintf(stderr, "hl2: protocol1: receive_thread started\n");
+            flog::info("hl2: protocol1: receive_thread started");
 
             length = sizeof(addr);
             auto ctm = currentTimeNanos();
             std::string logg;
+            auto npkt = 0;
             while (running) {
                 auto pctm = currentTimeNanos();
                 if ((pctm - ctm) / 1000 > 500) {
@@ -982,6 +983,10 @@ struct HL2Device {
                     // running=FALSE;
                     continue;
                 }
+                npkt++;
+                if (npkt % 10000 == 1) {
+                    flog::info("HL2 packets received: {}", npkt);
+                }
 
 
                 if (buffer[0] == 0xEF && buffer[1] == 0xFE) {
@@ -1001,12 +1006,12 @@ struct HL2Device {
                             //                                            full_tx_buffer(radio->transmitter);
                             break;
                         default:
-                            fprintf(stderr, "unexpected EP %d length=%d\n", ep, bytes_read);
+                            flog::info("unexpected EP {} length={}", ep, bytes_read);
                             break;
                         }
                         break;
                     case 2: // response to a discovery packet
-                        fprintf(stderr, "unexepected discovery response when not in discovery mode\n");
+                        flog::info("unexepected discovery response when not in discovery mode");
                         break;
                     case 28: // HL2 proxy extension protocol
                         ep = buffer[3] & 0xFF;
@@ -1016,16 +1021,16 @@ struct HL2Device {
                         }
                         break;
                     default:
-                        fprintf(stderr, "unexpected packet type: 0x%02X\n", buffer[2]);
+                        flog::info("unexpected packet type: {}}", buffer[2]);
                         break;
                     }
                 }
                 else {
-                    fprintf(stderr, "received bad header bytes on data port %02X,%02X\n", buffer[0], buffer[1]);
+                    flog::info("received bad header bytes on data port {},{}", buffer[0], buffer[1]);
                 }
             }
 
-            fprintf(stderr, "hl2: protocol1: receive_thread exited\n");
+            flog::info("hl2: protocol1: receive_thread exited, packets received: {}", npkt);
             return 0;
         });
     }

@@ -41,6 +41,11 @@ namespace dsp::buffer {
             base_type::tempStart();
         }
 
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "Reshaper:" +block::simplifyTN(tidName);
+        }
+
         void setKeep(int keep) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
@@ -99,6 +104,7 @@ namespace dsp::buffer {
         }
 
         void bufferWorker() {
+            SetThreadName("dsp::buffer:Reshaper");
             T* buf = new T[_keep];
             bool delay = _skip < 0;
 

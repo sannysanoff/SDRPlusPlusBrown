@@ -103,7 +103,12 @@ namespace dsp::multirate {
             return count;
         }
 
-        int run() {
+        std::string getBlockName() override {
+            const char* tidName = typeid(*this).name();
+            return "RationalResampler:" +Processor<T,T>::simplifyTN(tidName);
+        }
+
+        int run() override {
             int count = base_type::_in->read();
             if (count < 0) { return -1; }
 
