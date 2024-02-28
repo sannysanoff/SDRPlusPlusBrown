@@ -12,6 +12,6 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
     macosInit();
 #endif
-//    cw_test();
+    cw_test();
     return sdrpp_main(argc, argv);
 }

@@ -335,7 +335,7 @@ namespace ImGui {
         int waterfallHeadSectionIndex = 0;
         int waterfallHeadSectionHeight = 0;
 
-        GLuint* waterfallTexturesIds;
+        GLuint* waterfallTexturesIds = nullptr;
         int* waterfallTexturesStatuses;
 
         bool draggingFW = false;

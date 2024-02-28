@@ -1766,7 +1766,9 @@ namespace ImGui {
     }
 
     WaterFall::~WaterFall() {
-        glDeleteTextures(WATERFALL_NUMBER_OF_SECTIONS, waterfallTexturesIds);
+        if (waterfallTexturesIds) {
+            glDeleteTextures(WATERFALL_NUMBER_OF_SECTIONS, waterfallTexturesIds);
+        }
         if (rawFFTs) {
             free(rawFFTs);
         }

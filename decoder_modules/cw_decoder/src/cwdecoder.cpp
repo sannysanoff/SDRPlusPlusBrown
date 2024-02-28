@@ -7,13 +7,60 @@
 #include <cstdlib>
 #include <cstring>
 #include <numeric> // for std::iota
-#include <chrono>
 #include <fstream>
 #include <ctm.h>
 
 #include <dsp/types.h>
 #include <dsp/window/blackman.h>
 #include <../src/utils/arrays.h>
+
+constexpr int hertz = 250;
+
+struct LayoutKey {
+    int offset;
+    int length;
+    bool operator==(const LayoutKey& other) const {
+        return offset == other.offset && length == other.length;
+    }
+};
+
+struct CompareLayoutKey {
+    bool operator()(const LayoutKey& a, const LayoutKey& b) const {
+        if (a.offset != b.offset) return a.offset < b.offset;
+        return a.length < b.length;
+    }
+};
+
+// namespace std {
+    template <>
+    struct std::hash<LayoutKey> {
+        size_t operator()(const LayoutKey& key) const noexcept {
+            // Combine the hash of individual members using a method similar to boost::hash_combine
+            size_t hash1 = std::hash<int>()(key.offset);
+            size_t hash2 = std::hash<int>()(key.length);
+            return hash1 ^ (hash2 << 1); // Shift and combine hashes
+        }
+    };
+
+// }
+
+std::vector<float> normalize(const std::vector<float>& src) {
+    std::vector<float> rv = src;
+    auto minn = src[0];
+    auto maxx = src[0];
+    for (int i = 1; i < src.size(); i++) {
+        if (src[i] > maxx) {
+            maxx = src[i];
+        }
+        if (src[i] < minn) {
+            minn = src[i];
+        }
+    }
+    for (float& i : rv) {
+        i = (i - minn) / (maxx - minn);
+    }
+    return rv;
+}
 
 struct MorseCode {
     const char* sequence; // Morse code sequence
@@ -23,7 +70,6 @@ struct MorseCode {
 struct Matrix2D : public std::vector<std::vector<float>> {
     Matrix2D() = default;
     Matrix2D(int major, int minor) : std::vector<std::vector<float>>(minor, std::vector<float>(major, 0)) {
-
     }
 };
 
@@ -100,6 +146,7 @@ std::vector<MorseCode> morseTable = {
 
 Matrix2DPtr read_csv(const char* filename) {
     auto rv = std::make_shared<Matrix2D>();
+    printf("Loading file: %s...\n", filename);
     FILE* file = fopen(filename, "r"); // Open the file for reading
     if (!file) {
         perror("Failed to open file");
@@ -107,22 +154,29 @@ Matrix2DPtr read_csv(const char* filename) {
     }
 
     char line[100000]; // Buffer to hold each line, up to 100,000 bytes
+    char buf[1000000]; // Buffer to hold each line, up to 100,000 bytes
+    setvbuf(file, buf, _IOFBF, sizeof(buf));
     while (fgets(line, sizeof(line), file)) {
-        std::vector<float> row;
+        rv->emplace_back();
+        std::vector<float> &row = rv->back();
+        if (rv->size() > 1) {
+            row.reserve(rv->at(0).size());
+        }
         char* token = strtok(line, ","); // Tokenize the line by comma
         while (token) {
             row.emplace_back(strtof(token, nullptr)); // Convert token to float and add to row
             token = strtok(nullptr, ",");             // Get next token
         }
-        rv->emplace_back(row); // Add the row to the main data vector
+        if (rv->size() > 1000*768*15) {
+            break;
+        }
     }
 
     fclose(file); // Close the file
-    return rv;  // Return the populated data structure
+    return rv;    // Return the populated data structure
 }
 
-[[maybe_unused]]
-bool write_csv(const char* filename, const std::vector<std::vector<float>>& data) {
+[[maybe_unused]] bool write_csv(const char* filename, const std::vector<std::vector<float>>& data) {
     std::ofstream file(filename); // Open the file for writing
 
     if (!file.is_open()) {
@@ -147,6 +201,7 @@ bool write_csv(const char* filename, const std::vector<std::vector<float>>& data
 
 struct DecodedLetter {
     int localOffset;
+    int duration;
     const char* letter;
     double score;
 };
@@ -157,7 +212,7 @@ struct DecodedRun {
 
     [[nodiscard]] std::string toString() const {
         std::string rv;
-        rv += std::to_string((int)score);
+        rv += std::to_string((int)(score * 10000));
         rv += ": ";
         for (auto& letter : letters) {
             rv += letter.letter;
@@ -167,7 +222,27 @@ struct DecodedRun {
 };
 
 struct Decoded {
+    int globalOffset = -1;
+    int exactFrequency = -1;
     std::vector<DecodedRun> variations;
+
+    void adjustScores(int nsamples) {
+        std::vector<float> scores;
+        scores.reserve(variations.size());
+        for (auto & variation : variations) {
+            scores.emplace_back(variation.score);
+        }
+        scores = normalize(scores);
+        for (int q = 0; q < variations.size(); q++) {
+            variations[q].score = 0.9f + scores[q] / 10.0f;
+            for(auto &l: variations[q].letters) {
+                // range 0.9..1
+                float closeToMiddleOfFrame = abs((float)l.localOffset - (float)nsamples/2.0f) / ((float)nsamples/2.0f) / 10.0f + 0.9f;
+                l.score *= closeToMiddleOfFrame;
+            }
+        }
+        // 0.9 ... 1 now
+    }
 };
 
 struct SingleRun {
@@ -225,13 +300,12 @@ enum DecodedSegmentType {
 struct SegmentMeaning {
     DecodedSegmentType segtype = ROOT;
     double score = 0;
-    int localOffset = 0;
-    double value = 0;
+    SingleRun run = {0, 0, 0};
 
     SegmentMeaning() = default;
 
-    SegmentMeaning(DecodedSegmentType segtype, double score, int localOffset, double value)
-        : segtype(segtype), score(score), localOffset(localOffset), value(value) {}
+    SegmentMeaning(DecodedSegmentType segtype, double score, const SingleRun run)
+        : segtype(segtype), score(score), run(run) {}
 };
 
 template <typename T>
@@ -239,7 +313,7 @@ T rootNode();
 
 template <>
 SegmentMeaning rootNode<SegmentMeaning>() {
-    return SegmentMeaning{ ROOT, 0, -1, 0 };
+    return SegmentMeaning{ ROOT, 0, SingleRun{0, 0, 0} };
 }
 
 template <typename T>
@@ -250,7 +324,7 @@ struct Node {
     int depth;
     T value;
 
-    explicit Node(T value) : value(value), leftNodeIndex(-1), rightNodeIndex(-1), parentIndex(-1), depth(0) {
+    explicit Node(T value) : leftNodeIndex(-1), rightNodeIndex(-1), parentIndex(-1), depth(0), value(value) {
         this->value = value;
     }
 };
@@ -259,37 +333,22 @@ template <typename T>
 struct BinaryTree {
     std::vector<Node<T>> nodes;
 
+    int scanFrom = 0;
+
     BinaryTree() {
         nodes.emplace_back(Node(rootNode<T>()));
     }
 
     void withEachLeaf(const std::function<void(BinaryTree<T>&, int)>& fun) {
-        if (!nodes.empty()) {
-            visitNode(0, fun); // Start from the root node, which is at index 0
-        }
-    }
-
-    void visitNode(int nodeIndex, const std::function<void(BinaryTree<T>&, int)>& fun) {
-        if (nodeIndex >= nodes.size()) {
-            abort();
-        }
-        Node<T>* node = &nodes[nodeIndex];
-
-        // Check if this is a leaf node
-        if (node->leftNodeIndex == -1 && node->rightNodeIndex == -1) {
-            fun(*this, nodeIndex); // Apply the function on the leaf node
-        }
-        else {
-            // Recursively visit the left child if it exists
-            if (node->leftNodeIndex != -1) {
-                visitNode(node->leftNodeIndex, fun);
+        int savedSize = nodes.size();
+        for(int i=scanFrom; i<savedSize; i++) {
+            Node<T>* node = &nodes[i];
+            if (node->leftNodeIndex == -1 && node->rightNodeIndex == -1) {
+                fun(*this, i); // Apply the function on the leaf node
             }
-
-            node = &nodes[nodeIndex]; // reread value.
-            // Recursively visit the right child if it exists
-            if (node->rightNodeIndex != -1) {
-                visitNode(node->rightNodeIndex, fun);
-            }
+        }
+        if (nodes.size() != savedSize) {
+            scanFrom = savedSize;
         }
     }
 
@@ -327,9 +386,10 @@ void segmentMeaningToWords(const std::vector<SegmentMeaning>& src, std::vector<D
     int countEndLetters = 0;
     int countBadSigns = 0;
     DecodedRun dr;
-    bool found;
     for (int q = 0; q < src.size(); q++) {
-        switch (src[q].segtype) {
+        auto sq = src[q];
+        auto segtype = sq.segtype;
+        switch (segtype) {
         case DIT:
             result[nresult] = '.';
             seg[nresult] = &src[q];
@@ -348,19 +408,19 @@ void segmentMeaningToWords(const std::vector<SegmentMeaning>& src, std::vector<D
         case END_WORD:
             if (nresult > 0) {
                 result[nresult] = 0;
-                found = false;
-                for (auto & i : morseTable) {
+                bool found = false;
+                for (auto& i : morseTable) {
                     if (!strcmp(result, i.sequence)) {
                         double localScore = 0.0;
-                        double minValue = seg[0]->value;
-                        double maxValue = seg[0]->value;
+                        double minValue = seg[0]->run.value;
+                        double maxValue = seg[0]->run.value;
                         for (int qq = 0; qq < nresult; qq++) {
                             localScore += seg[qq]->score;
-                            if (seg[qq]->value > maxValue) {
-                                maxValue = seg[qq]->value;
+                            if (seg[qq]->run.value > maxValue) {
+                                maxValue = seg[qq]->run.value;
                             }
-                            if (seg[qq]->value < minValue) {
-                                minValue = seg[qq]->value;
+                            if (seg[qq]->run.value < minValue) {
+                                minValue = seg[qq]->run.value;
                             }
                         }
                         double irregularity = 1 - minValue / maxValue;
@@ -373,17 +433,20 @@ void segmentMeaningToWords(const std::vector<SegmentMeaning>& src, std::vector<D
                             // all signals for this decoded letter get this multipler. If letter is not regular, it goes down.
                             scoreMultipliers[index] = scoreMultiplier;
                         }
-                        if (src[q].segtype == END_LETTER && src[q].score == 0) {
+                        if (segtype == END_LETTER && (sq.score == 0 || q == src.size()-1)) {
                             localScore *= 0.5; // unterminated letter, samples ended.
                         }
+                        if (q == 100000) {
+                            printf("%d", (int)src.size()); // i want it here in debug scope
+                        }
                         dr.letters.emplace_back(
-                            DecodedLetter{ seg[0]->localOffset, i.decoded, localScore });
+                            DecodedLetter{ seg[0]->run.start, src[q-1].run.start+src[q-1].run.len-seg[0]->run.start, i.decoded, localScore});
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    dr.letters.emplace_back(DecodedLetter{ seg[0]->localOffset, "#", 0 });
+                    dr.letters.emplace_back(DecodedLetter{ seg[0]->run.start, src[q-1].run.start+src[q-1].run.len-seg[0]->run.start, "#", 0 });
                     if (dr.letters.size() != 1) {
                         // first bad sign => don't count
                         countBadSigns++;
@@ -393,7 +456,7 @@ void segmentMeaningToWords(const std::vector<SegmentMeaning>& src, std::vector<D
                 countEndLetters++;
             }
             if (src[q].segtype == END_WORD) {
-                dr.letters.emplace_back(DecodedLetter{ src[q].localOffset, " ", src[q].score });
+                dr.letters.emplace_back(DecodedLetter{ src[q].run.start, src[q].run.len, " ", src[q].score });
             }
             break;
         case ROOT:
@@ -437,7 +500,7 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
         auto da = ts.qualifyLongSignal(segment.len);
         double sureScore = fabs(dit - da);
         if (sureScore > 0.3) {
-            SegmentMeaning value(dit > da ? DIT : DA, sureScore, segment.start, segment.value);
+            SegmentMeaning value(dit > da ? DIT : DA, sureScore, segment);
             bt.withEachLeaf([&](auto& tree, int nodeIndex) {
                 tree.addNode(nodeIndex, value);
             });
@@ -445,29 +508,26 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
         else {
             bt.withEachLeaf([&](auto& tree, int nodeIndex) {
                 tree.addNode(nodeIndex, SegmentMeaning(DIT, sureScore + (dit > da ? 0.05 : 0),
-                                                       segment.start, segment.value));
+                                                       segment));
                 tree.addNode(nodeIndex,
-                             SegmentMeaning(DA, sureScore + (da > dit ? 0.05 : 0),
-                                            segment.start, segment.value));
+                             SegmentMeaning(DA, sureScore + (da > dit ? 0.05 : 0),segment));
             });
         }
         // space measurement
-        int followingSpace;
+        int spaceLength;
+        int spaceStart = segment.start + segment.len;
         if (q == run.size() - 1) {
-            followingSpace = totalSamples - (segment.start + segment.len);
+            spaceLength = totalSamples - (segment.start + segment.len);
         }
         else {
             auto nsegment = run[q + 1];
-            followingSpace = nsegment.start - (segment.start + segment.len);
+            spaceLength = nsegment.start - (segment.start + segment.len);
         }
-        if (followingSpace > ts.spaceLong * 2) {
+        if (spaceLength > ts.spaceLong * 2) {
             bt.withEachLeaf([&](auto& tree, int nodeIndex) {
-                tree.addNode(nodeIndex, SegmentMeaning(END_WORD, 1,
-                                                       segment.start +
-                                                           segment.len,
-                                                       0));
+                tree.addNode(nodeIndex, SegmentMeaning(END_WORD, 1, SingleRun{0, spaceLength, spaceStart}));
             });
-            //            if (followingSpace < ts.spaceLong * 4) {
+            //            if (spaceLength < ts.spaceLong * 4) {
             //                bt.withEachLeaf([&](auto &tree, int nodeIndex) {
             //                    tree.addNode(nodeIndex, SegmentMeaning(END_WORD, 0.9,
             //                                                           segment.start +
@@ -476,8 +536,8 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
             //            }
         }
         else {
-            auto shorter = ts.qualifyShortSpace(followingSpace);
-            auto longer = ts.qualifyLongSpace(followingSpace);
+            auto shorter = ts.qualifyShortSpace(spaceLength);
+            auto longer = ts.qualifyLongSpace(spaceLength);
             sureScore = fabs(shorter - longer);
             if (sureScore > 0.5) {
                 if (shorter > longer) {
@@ -485,7 +545,7 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
                         // flush last letter
                         bt.withEachLeaf([&](auto& tree, int nodeIndex) {
                             tree.addNode(nodeIndex,
-                                         SegmentMeaning(END_LETTER, 0, segment.start + segment.len, 0));
+                                         SegmentMeaning(END_LETTER, 0, SingleRun{0, spaceLength, spaceStart}));
                         });
                     }
                     // nothing
@@ -493,23 +553,23 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
                 else {
                     bt.withEachLeaf([&](auto& tree, int nodeIndex) {
                         tree.addNode(nodeIndex,
-                                     SegmentMeaning(END_LETTER, sureScore, segment.start + segment.len, 0));
+                                     SegmentMeaning(END_LETTER, sureScore, SingleRun{0, spaceLength, spaceStart}));
                     });
                 }
             }
             else {
                 bt.withEachLeaf([&](auto& tree, int nodeIndex) {
                     tree.addNode(nodeIndex, SegmentMeaning(IGNORE, sureScore + (shorter < longer ? 0.05 : 0),
-                                                           segment.start + segment.len, 0));
+                                                           SingleRun{0, spaceLength, spaceStart}));
                     tree.addNode(nodeIndex,
                                  SegmentMeaning(END_LETTER, sureScore + (longer > shorter ? 0.05 : 0),
-                                                segment.start + segment.len, 0));
+                                                SingleRun{0, spaceLength, spaceStart}));
                 });
             }
         }
         q++;
     }
-    bt.withEachLeaf([&](BinaryTree<SegmentMeaning>& tree, int nodeIndex) {
+    bt.withEachLeaf([&](const BinaryTree<SegmentMeaning>& tree, int nodeIndex) {
         std::vector<SegmentMeaning> sm;
         while (nodeIndex != 0) {
             sm.insert(sm.begin(), tree.nodes[nodeIndex].value);
@@ -517,7 +577,7 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun>& run, const T
         }
         segmentMeaningToWords(sm, rv);
     });
-    for (auto & rvi : rv) {
+    for (auto& rvi : rv) {
         auto& letters = rvi.letters;
         letters[0].score *= startEdgeScore; // first letter maybe from the middle
                                             //        if (!strcmp(letters.back().letter," ")) {
@@ -575,7 +635,7 @@ std::vector<Peak> findPeaks(const std::vector<SingleRun>& run) {
         if (mxi == -1) {
             break;
         }
-        rv.emplace_back(Peak{ mxi});
+        rv.emplace_back(Peak{ mxi });
         auto scan = mxi + 1;
         while (scan < COUNTLEN && countsma[scan + 1] < countsma[scan]) {
             countsma[scan] = 0;
@@ -591,8 +651,8 @@ std::vector<Peak> findPeaks(const std::vector<SingleRun>& run) {
     return rv;
 }
 
-Decoded decodeFrame(const std::vector<float>& frame) {
-    Decoded rv;
+std::shared_ptr<Decoded> decodeFrame(const std::vector<float>& frame) {
+    auto rv = std::make_shared<Decoded>();
     std::vector<SingleRun> runs = convertToRuns(frame);
     std::vector<SingleRun> spaces;
     for (int i = 0; i < runs.size() - 1; i++) {
@@ -608,21 +668,21 @@ Decoded decodeFrame(const std::vector<float>& frame) {
     std::sort(silencePeaks.begin(), silencePeaks.end(), [](auto& a, auto& b) {
         return a.peakIndex <= b.peakIndex;
     });
-    for (auto & signalPeak : signalPeaks) {
-        for (auto & silencePeak : silencePeaks) {
+    for (auto& signalPeak : signalPeaks) {
+        for (auto& silencePeak : silencePeaks) {
             auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3,
                                         silencePeak.peakIndex, silencePeak.peakIndex * 3 };
             for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
-                rv.variations.emplace_back(t);
+                rv->variations.emplace_back(t);
             }
         }
         auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3, signalPeak.peakIndex,
                                     signalPeak.peakIndex * 3 };
         for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
-            rv.variations.emplace_back(t);
+            rv->variations.emplace_back(t);
         }
     }
-    std::sort(rv.variations.begin(), rv.variations.end(),
+    std::sort(rv->variations.begin(), rv->variations.end(),
               [](const DecodedRun& a, const DecodedRun& b) { return a.score > b.score; });
     return rv;
 }
@@ -665,22 +725,6 @@ std::vector<SingleRun> convertToRuns(const std::vector<float>& vector) {
     return rv;
 }
 
-void decodeChannels(std::vector<std::vector<float>>& res) {
-    long long total = 0;
-    for (int i = 0; i < res.size(); i++) {
-        printf("SIGNAL %d (line %d):\n", i, i + 1);
-        auto t1 = currentTimeNanos();
-        auto decodeResult = decodeFrame(res[i]);
-        t1 = currentTimeNanos() - t1;
-        total += t1;
-        for (int q = 0; q < decodeResult.variations.size() && q < 10; i++) {
-            auto s = decodeResult.variations[q].toString();
-            printf("     %s\n", s.c_str());
-        }
-    }
-    printf("Total time: %f microsec\n", (double)total / 1000.0);
-}
-
 float sumVector(const std::vector<float>& vec) {
     float sum = 0.0f;
     for (float value : vec) {
@@ -715,11 +759,6 @@ Matrix2DPtr addConstantToMatrix(const std::vector<std::vector<float>>& matrix, f
         result->push_back(addConstantToVector(row, constant));
     }
     return result;
-}
-
-float meanOfVector(const std::vector<float>& vec) {
-    float sum = sumVector(vec);
-    return sum / (float)vec.size();
 }
 
 // Mean of a matrix
@@ -841,23 +880,6 @@ std::vector<float> xrollmin(const std::vector<float>& data, int window_size) {
     return rm;
 }
 
-std::vector<float> normalize(std::vector<float>& src) {
-    std::vector<float> rv = src;
-    auto minn = src[0];
-    auto maxx = src[0];
-    for (int i = 1; i < src.size(); i++) {
-        if (src[i] > maxx) {
-            maxx = src[i];
-        }
-        if (src[i] < minn) {
-            minn = src[i];
-        }
-    }
-    for (float & i : rv) {
-        i = (i - minn) / (maxx - minn);
-    }
-    return rv;
-}
 
 struct OffDur {
     int offs = 0;
@@ -892,7 +914,7 @@ float minAllowLength(float x) {
     return 45.2121f - 14.0818f * x + 1.7897f * x * x - 0.0763636f * x * x * x;
 }
 
-Matrix2DPtr samplesToData(const dsp::arrays::ComplexArray &samples, int framerate, int hz, float offSec, float durSec) {
+Matrix2DPtr samplesToData(const dsp::arrays::ComplexArray& samples, int framerate, int hz, float offSec, float durSec) {
     int win = framerate / hz;
     auto window = dsp::arrays::npzeros_c(win);
     for (int i = 0; i < win; i++) {
@@ -919,32 +941,77 @@ Matrix2DPtr samplesToData(const dsp::arrays::ComplexArray &samples, int framerat
     return rv;
 }
 
-Matrix2DPtr getBand(const dsp::arrays::ComplexArray &samples, float startSec, float lengthSec) {
-    std::vector<std::vector<float>> rv;
-//    if (false) {
-//        return read_csv("/Users/san/Fun/morse/band.txt");
-//    }
-
-    auto framerate = 192000;
-    // auto dur = 4.0;
-
-
-    auto herz = 250;
-    int win = framerate / herz;
-    auto fftframes = samplesToData(samples, framerate, herz, startSec, lengthSec);
-
-    //    write_csv("/Users/san/Fun/morse/c_frames.csv", fftframes);
-    return fftframes;
-}
 
 struct DecodingState {
+
+    struct DecodesOnFrequency {
+        std::vector<std::shared_ptr<Decoded>> decodes;
+    };
+
+    std::vector<std::shared_ptr<DecodesOnFrequency>> allDecodes;
 
     static int calcFrequency(int sampleRate, int middleFrequency, int bucket, int nBuckets) {
         int startFrequency = middleFrequency - sampleRate / 2;
         return startFrequency + (bucket * sampleRate) / nBuckets;
     }
 
-    static void decodeInterval(float globalOffset, const Matrix2DPtr &band, int sampleRate, int middleFrequency) {
+    void addDecodedVariant(const std::shared_ptr<Decoded>& d, int freq) {
+        bool found = false;
+        d->exactFrequency = freq;
+        for(auto &variation : d->variations) {
+            for (auto &l: variation.letters) {
+                l.localOffset += d->globalOffset;
+            }
+        }
+        for (const auto& freqChannel : allDecodes) {
+            std::vector<std::shared_ptr<Decoded>>& decodes = freqChannel->decodes;
+            int checkFrequency = decodes.front()->exactFrequency;
+            if (abs(checkFrequency - freq) <= 10) {
+                decodes.insert(decodes.begin(), d);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            auto newChannel = std::make_shared<DecodesOnFrequency>();
+            newChannel->decodes.emplace_back(d);
+            allDecodes.emplace_back(newChannel);
+        }
+    }
+
+    [[clang::noinline]] void decodeChannels(const std::vector<std::vector<float>>& res, const std::vector<int>& freqs, int globalOffset, int nsamples) {
+        for (int i = 0; i < res.size(); i++) {
+            if (freqs[i] != 285) {
+                continue;
+            }
+            auto decodeResult = decodeFrame(res[i]);
+            if (decodeResult->variations.empty()) {
+                continue; // nothing here
+            }
+            auto drp = decodeResult.get();
+            printf("[%d] SIGNAL %d (line %d) - freq %d - variations %d:\n", globalOffset, i, i + 1, freqs[i], (int)drp->variations.size());
+
+            decodeResult->adjustScores(nsamples);
+            auto newSize = std::min<int>((int)drp->variations.size(), 10);
+            drp->variations.resize(newSize);
+            for (auto & variation : drp->variations) {
+                auto s = variation.toString();
+                printf("     %s : ", s.c_str());
+                for(auto z: variation.letters) {
+                    printf("%d ", (int)(100*z.score));
+                }
+                printf(" <> ");
+                for(auto z: variation.letters) {
+                    printf("%d..%d ", z.localOffset, z.localOffset+z.duration-1);
+                }
+                printf("\n");
+            }
+            drp->globalOffset = globalOffset;
+            addDecodedVariant(decodeResult, freqs[i]);
+        }
+    }
+
+    void decodeInterval(float globalOffsetSeconds, const Matrix2DPtr& band, int sampleRate, int middleFrequency) {
         auto data = addConstantToMatrix(*band, -meanOfMatrix(*band));
 
         std::vector<float> correlations;
@@ -978,7 +1045,7 @@ struct DecodingState {
             if (correlations[i] != 0) {
                 channels.emplace_back((*data)[i + 1]);
                 int args = calcFrequency(sampleRate, middleFrequency, i, (int)data->size());
-                channelFrequencies.emplace_back(args);
+                channelFrequencies.emplace_back(i);
             }
         }
 
@@ -1025,19 +1092,114 @@ struct DecodingState {
 
         printf("done.\n");
 
-
         //   signals = read_csv("/Users/san/Fun/morse/decoded.txt");
-        decodeChannels(signals);
+        decodeChannels(signals, channelFrequencies, (int)(globalOffsetSeconds * hertz), (int)band->at(0).size());
+    }
 
+
+    struct LetterAndScore {
+        DecodedLetter* letter;
+        DecodedRun* run;
+    };
+
+    static bool intersects(int off1, int len1, int off2, int len2) {
+        int end1 = off1 + len1;
+        int end2 = off2 + len2;
+
+        // Check if either interval starts after the other one ends
+        if (off1 >= end2 || off2 >= end1) {
+            return false; // No overlap
+        } else {
+            return true;  // Overlap exists
+        }
+    }
+
+    void dumpState() const {
+        for(auto &ad : allDecodes) {
+            // recombination
+            std::unordered_map<LayoutKey, LetterAndScore> heap;
+            for(auto &dec: ad->decodes) {
+                long limitDistance = 20 * hertz; // 20 seconds
+                long minTime = -1;
+                long maxTime = -1;
+                for (auto &vari: dec->variations) {
+                    for(auto &lette : vari.letters) {
+                        if (minTime == -1 || lette.localOffset < minTime) {
+                            minTime = lette.localOffset;
+                        }
+                        if (maxTime == -1 || lette.localOffset > maxTime) {
+                            maxTime = lette.localOffset;
+                        }
+                        if (maxTime - lette.localOffset > limitDistance) {
+                            break;
+                        }
+                        LayoutKey lk{lette.localOffset, lette.duration};
+                        auto existing = heap.find(lk);
+                        if (existing != heap.end()) {
+                            if (lette.score > existing->second.letter->score) {
+                                // printf("UPD: [%f] new score: %f   existing score %f   new letter %s    old letter %s    offset %d   len %d\n", vari.score, lette.score, existing->second.letter->score, lette.letter, existing->second.letter->letter, lk.offset, lk.length);
+                                heap[lk] = LetterAndScore{&lette, &vari};
+                            }
+                            //
+                        } else {
+                            // printf("INS: [%f] new score: %f    new letter %s      offset %d   len %d\n", vari.score, lette.score, lette.letter, lk.offset, lk.length);
+                            heap[lk] = LetterAndScore{&lette, &vari};
+                        }
+                    }
+                }
+            }
+            std::vector<LayoutKey> sorted;
+            sorted.reserve(heap.size());
+            for(auto [k,v] : heap) {
+                sorted.emplace_back(k);
+            }
+            std::sort(sorted.begin(), sorted.end(), CompareLayoutKey());
+            printf("Decode: freq %d\n", ad->decodes[0]->exactFrequency);
+            DecodedLetter *lastLetter = nullptr;
+            for(auto k : sorted) {
+                auto best = heap[k].letter;
+                if (lastLetter != nullptr && intersects(best->localOffset, best->duration, lastLetter->localOffset, lastLetter->duration)) {
+                    // printf("  --- discarding/drawn: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
+                    continue;
+                }
+                for(auto z: sorted) {
+                    if (intersects(best->localOffset, best->duration, z.offset, z.length) && best->score < heap[z].letter->score) {
+                        // printf("  --- discarding, found best: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
+                        goto cont0;
+                    }
+                }
+                printf("%s",best->letter);
+                // printf("  score: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
+                lastLetter = best;
+cont0:;
+
+            }
+            printf("\n");
+        }
+        printf("End dump state\n");
+        exit(0);
     }
 };
 
 struct SourceData {
     dsp::arrays::ComplexArray allSamples;
 
-    [[nodiscard]] Matrix2DPtr getFrames(float secondsOffset, float secondsLength) const {
-        return  getBand(allSamples, secondsOffset, secondsLength);
+    [[nodiscard]] static Matrix2DPtr getBand(const dsp::arrays::ComplexArray& samples, float startSec, float lengthSec) {
+        std::vector<std::vector<float>> rv;
+        // if (false) {
+        //     return read_csv("/Users/san/Fun/morse/band.txt");
+        // }
+
+        auto framerate = 192000;
+        auto fftframes = samplesToData(samples, framerate, hertz, startSec, lengthSec);
+        return fftframes;
     }
+
+    [[nodiscard]] Matrix2DPtr getFrames(float secondsOffset, float secondsLength) const {
+        return getBand(allSamples, secondsOffset, secondsLength);
+    }
+
+
 
     static int getSampleRate() {
         return 192000;
@@ -1049,8 +1211,8 @@ struct SourceData {
 };
 
 std::shared_ptr<SourceData> getSourceData() {
-    auto samples0 =  read_csv("/Users/san/Fun/morse/ffdata.csv");
-    auto samples = dsp::arrays::npzeros_c(samples0->size());
+    auto samples0 = read_csv("/Users/san/Fun/morse/ffdata.csv");
+    auto samples = dsp::arrays::npzeros_c((int)samples0->size());
     for (int i = 0; i < samples0->size(); i++) {
         (*samples)[i] = dsp::complex_t{ (*samples0)[i][0], (*samples0)[i][1] };
     }
@@ -1062,14 +1224,17 @@ std::shared_ptr<SourceData> getSourceData() {
 void cw_test() {
 
     auto sourceData = getSourceData();
-
-    float secondsOffset = 0;
-
-    auto band = sourceData->getFrames(secondsOffset, 4);
-
     DecodingState ds;
-    ds.decodeInterval(secondsOffset, band, sourceData->getSampleRate(), sourceData->getFrequency());
-
+    for (int secondsOffset = 0; secondsOffset < 10; secondsOffset += 2) {
+        long long total = 0;
+        auto t1 = currentTimeNanos();
+        auto band = sourceData->getFrames((float)secondsOffset, 4);
+        ds.decodeInterval((float)secondsOffset, band, sourceData->getSampleRate(), sourceData->getFrequency());
+        t1 = currentTimeNanos() - t1;
+        total += t1;
+        printf("Total time: %f microsec\n", (double)total / 1000.0);
+    }
+    ds.dumpState();
 }
 
 #pragma clang diagnostic pop
