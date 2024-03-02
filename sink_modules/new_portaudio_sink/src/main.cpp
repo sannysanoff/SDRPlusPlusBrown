@@ -123,11 +123,22 @@ public:
                                   const PaStreamCallbackTimeInfo *timeInfo,
                                   PaStreamCallbackFlags statusFlags,
                                   void *userData) {
+        static long long zerosReportTS = 0;
         AudioSink *_this = (AudioSink*)userData;
+        bool nonzero = false;
         for(int q=0; q<framesPerBuffer; q++) {
-            _this->microphone.writeBuf[q].l = _this->microphone.writeBuf[q].r = ((const float*)inputBuffer)[q];
+            auto val = ((const float*)inputBuffer)[q];
+            if (val != 0) {
+                nonzero = true;
+            }
+            _this->microphone.writeBuf[q].l = _this->microphone.writeBuf[q].r = val;
         }
         _this->microphone.swap(framesPerBuffer);
+        auto ctm = currentTimeMillis();
+        if (!nonzero && (ctm - zerosReportTS > 10000)) {
+            flog::info("WARNING: all zero samples from the microphone.");
+            zerosReportTS = ctm;
+        }
         return paContinue;
     }
 

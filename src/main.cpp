@@ -12,6 +12,9 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
     macosInit();
 #endif
-    cw_test();
+    if (getenv("TEST_CW_COND") != nullptr) {
+        cw_test();
+        exit(0);
+    }
     return sdrpp_main(argc, argv);
 }

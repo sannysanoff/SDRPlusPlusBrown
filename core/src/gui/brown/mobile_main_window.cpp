@@ -2482,11 +2482,6 @@ MobileMainWindow::MobileMainWindow() : MainWindow(),
                                        pvt(std::make_shared<MobileMainWindowPrivate>()),
                                        softTune("", SOFT_TUNE_LABEL) {
     pvt->pub = this;
-    qsoPanel = std::make_shared<QSOPanel>();
-    configPanel = std::make_shared<ConfigPanel>(&qsoPanel->audioInProcessed);
-    qsoPanel->configPanel = configPanel;
-    cwPanel = std::make_shared<CWPanel>();
-    audioWaterfall = std::make_shared<SubWaterfall>(trxAudioSampleRate, 5000, "Audio Heard");
 }
 
 int mwedit;
@@ -2495,7 +2490,15 @@ long long lastMwEdit = 0;
 void MobileMainWindow::init() {
 
 
+
     MainWindow::init();
+
+    qsoPanel = std::make_shared<QSOPanel>();
+    configPanel = std::make_shared<ConfigPanel>(&qsoPanel->audioInProcessed);
+    qsoPanel->configPanel = configPanel;
+    cwPanel = std::make_shared<CWPanel>();
+    audioWaterfall = std::make_shared<SubWaterfall>(trxAudioSampleRate, 5000, "Audio Heard");
+
     configPanel->init();
     audioWaterfall->init();
     qsoPanel->init();

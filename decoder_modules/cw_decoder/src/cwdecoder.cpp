@@ -11,10 +11,11 @@
 #include <ctm.h>
 
 #include <dsp/types.h>
+#include <unordered_set>
 #include <dsp/window/blackman.h>
 #include <../src/utils/arrays.h>
 
-constexpr int hertz = 250;
+constexpr int hertz = 100;
 
 struct LayoutKey {
     int offset;
@@ -144,6 +145,41 @@ std::vector<MorseCode> morseTable = {
 };
 
 
+
+Matrix2DPtr read_complex_array(const char* filename) {
+    Matrix2DPtr matrix = std::make_shared<Matrix2D>();
+
+    printf("%lld begin read file...\n", currentTimeMillis());
+    std::ifstream file(filename, std::ios::in | std::ios::binary);
+
+    if (!file.is_open()) {
+        // Handle the error: file could not be opened
+        return nullptr;
+    }
+
+    // Determine the size of the matrix
+    file.seekg(0, std::ios::end);
+    size_t file_size = file.tellg();
+    size_t num_elements = file_size / (2 * sizeof(double)); // Two floats per complex number
+    size_t major_dim = 2; // Assuming square shape for simplicity
+    size_t minor_dim =num_elements;
+    file.seekg(0, std::ios::beg);
+
+    matrix->resize(minor_dim, std::vector<float>(major_dim, 0));
+
+    double real_part, imag_part;
+    for (int i = 0; i < minor_dim; ++i) {
+        file.read(reinterpret_cast<char*>(&real_part), sizeof(double));
+        file.read(reinterpret_cast<char*>(&imag_part), sizeof(double));
+        (*matrix)[i][0] = (float)real_part;
+        (*matrix)[i][1] = (float)imag_part;
+    }
+
+    file.close();
+    printf("%lld end read file...\n", currentTimeMillis());
+    return matrix;
+}
+
 Matrix2DPtr read_csv(const char* filename) {
     auto rv = std::make_shared<Matrix2D>();
     printf("Loading file: %s...\n", filename);
@@ -204,6 +240,7 @@ struct DecodedLetter {
     int duration;
     const char* letter;
     double score;
+    double level;
 };
 
 struct DecodedRun {
@@ -654,36 +691,40 @@ std::vector<Peak> findPeaks(const std::vector<SingleRun>& run) {
 std::shared_ptr<Decoded> decodeFrame(const std::vector<float>& frame) {
     auto rv = std::make_shared<Decoded>();
     std::vector<SingleRun> runs = convertToRuns(frame);
-    std::vector<SingleRun> spaces;
-    for (int i = 0; i < runs.size() - 1; i++) {
-        auto& r1 = runs[i];
-        auto& r2 = runs[i + 1];
-        spaces.emplace_back(SingleRun{ 0, r2.start - (r1.start + r1.len), r1.start + r1.len });
-    }
-    auto signalPeaks = findPeaks(runs);
-    auto silencePeaks = findPeaks(spaces);
-    std::sort(signalPeaks.begin(), signalPeaks.end(), [](auto& a, auto& b) {
-        return a.peakIndex <= b.peakIndex;
-    });
-    std::sort(silencePeaks.begin(), silencePeaks.end(), [](auto& a, auto& b) {
-        return a.peakIndex <= b.peakIndex;
-    });
-    for (auto& signalPeak : signalPeaks) {
-        for (auto& silencePeak : silencePeaks) {
-            auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3,
-                                        silencePeak.peakIndex, silencePeak.peakIndex * 3 };
-            for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
-                rv->variations.emplace_back(t);
+    if (runs.size() > 1) {      // filter definite rubbish
+        std::vector<SingleRun> spaces;
+        for (int i = 0; i < runs.size() - 1; i++) {
+            auto& r1 = runs[i];
+            auto& r2 = runs[i + 1];
+            spaces.emplace_back(SingleRun{ 0, r2.start - (r1.start + r1.len), r1.start + r1.len });
+        }
+        auto signalPeaks = findPeaks(runs);
+        auto silencePeaks = findPeaks(spaces);
+        std::sort(signalPeaks.begin(), signalPeaks.end(), [](auto& a, auto& b) {
+            return a.peakIndex <= b.peakIndex;
+        });
+        std::sort(silencePeaks.begin(), silencePeaks.end(), [](auto& a, auto& b) {
+            return a.peakIndex <= b.peakIndex;
+        });
+        if (signalPeaks.size() > 1) { // 1 peak = 100% noise
+            for (auto& signalPeak : signalPeaks) {
+                for (auto& silencePeak : silencePeaks) {
+                    auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3,
+                                                silencePeak.peakIndex, silencePeak.peakIndex * 3 };
+                    for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
+                        rv->variations.emplace_back(t);
+                    }
+                }
+                auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3, signalPeak.peakIndex,
+                                            signalPeak.peakIndex * 3 };
+                for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
+                    rv->variations.emplace_back(t);
+                }
             }
-        }
-        auto ts = TemporalSettings{ signalPeak.peakIndex, signalPeak.peakIndex * 3, signalPeak.peakIndex,
-                                    signalPeak.peakIndex * 3 };
-        for (auto& t : decodeLetters(runs, ts, (int)frame.size())) {
-            rv->variations.emplace_back(t);
+            std::sort(rv->variations.begin(), rv->variations.end(),
+                      [](const DecodedRun& a, const DecodedRun& b) { return a.score > b.score; });
         }
     }
-    std::sort(rv->variations.begin(), rv->variations.end(),
-              [](const DecodedRun& a, const DecodedRun& b) { return a.score > b.score; });
     return rv;
 }
 
@@ -704,21 +745,23 @@ std::vector<SingleRun> convertToRuns(const std::vector<float>& vector) {
             }
         }
     }
-    for (int i = 0; i < rv.size() - 1; i++) {
-        auto mean = rv[i].value;
-        auto inQuestion = rv[i + 1].value;
-        auto distance = rv[i + 1].start - rv[i].start - rv[i].len;
-        auto twolen = rv[i].len * 2;
-        if (i < vector.size() - 2) {
-            mean += rv[i + 2].value;
-            mean /= 2;
-            distance = rv[i + 2].start - rv[i].start - rv[i].len;
-            twolen = rv[i].len + rv[i + 2].len;
-        }
-        if (inQuestion < mean * 0.25) {
-            if (distance < twolen * 5) {
-                rv.erase(rv.begin() + i + 1); // weak signal between strong
-                i--;
+    if (rv.size() > 1) {
+        for (int i = 0; i < rv.size() - 1; i++) {
+            auto mean = rv[i].value;
+            auto inQuestion = rv[i + 1].value;
+            auto distance = rv[i + 1].start - rv[i].start - rv[i].len;
+            auto twolen = rv[i].len * 2;
+            if (i < vector.size() - 2) {
+                mean += rv[i + 2].value;
+                mean /= 2;
+                distance = rv[i + 2].start - rv[i].start - rv[i].len;
+                twolen = rv[i].len + rv[i + 2].len;
+            }
+            if (inQuestion < mean * 0.25) {
+                if (distance < twolen * 5) {
+                    rv.erase(rv.begin() + i + 1); // weak signal between strong
+                    i--;
+                }
             }
         }
     }
@@ -911,7 +954,7 @@ std::vector<OffDur> toOffDur(const std::vector<float>& signal) {
 
 float minAllowLength(float x) {
     // magic polynome (not best)
-    return 45.2121f - 14.0818f * x + 1.7897f * x * x - 0.0763636f * x * x * x;
+    return (45.2121f - 14.0818f * x + 1.7897f * x * x - 0.0763636f * x * x * x) / 2.5;
 }
 
 Matrix2DPtr samplesToData(const dsp::arrays::ComplexArray& samples, int framerate, int hz, float offSec, float durSec) {
@@ -981,7 +1024,7 @@ struct DecodingState {
 
     [[clang::noinline]] void decodeChannels(const std::vector<std::vector<float>>& res, const std::vector<int>& freqs, int globalOffset, int nsamples) {
         for (int i = 0; i < res.size(); i++) {
-            if (freqs[i] != 285) {
+            if (freqs[i] != 722) {
                 continue;
             }
             auto decodeResult = decodeFrame(res[i]);
@@ -1014,53 +1057,35 @@ struct DecodingState {
     void decodeInterval(float globalOffsetSeconds, const Matrix2DPtr& band, int sampleRate, int middleFrequency) {
         auto data = addConstantToMatrix(*band, -meanOfMatrix(*band));
 
-        std::vector<float> correlations;
-
-        // Efficiently iterate over column indices
-        for (auto i = 0; i < data->size() - 1; i++) {
-            auto v = calculateCorrelation((*data)[i], (*data)[i + 1]);
-            correlations.emplace_back(v);
+        std::vector<float> energy;
+        for(const auto & q : *data) {
+            energy.emplace_back(sumVector(q)/(float)q.size());
         }
-
-        auto corr2 = correlations;
-        corr2.insert(corr2.begin(), 0.0);
-        corr2.insert(corr2.begin(), 0.0);
-        corr2.insert(corr2.end(), 0.0);
-        corr2.insert(corr2.end(), 0.0);
-        corr2 = rollmax(corr2, 5);
-        for (int i = 0; i < correlations.size(); i++) {
-            if (correlations[i] < 0.5 || correlations[i] != corr2[i]) {
-                correlations[i] = 0;
-            }
-        }
-        correlations.emplace_back(0);
-
+        auto e = xrollmin(energy, 10);
+        auto t = xrollmax(energy, 3);
         std::vector<std::vector<float>> channels;
         std::vector<int> channelFrequencies;
-
-        for (int i = 0; i < correlations.size() - 1; i++) {
-            if ((i + 1) <= 240 || (i + 1) >= 520) { // temporarily
-                continue;
-            }
-            if (correlations[i] != 0) {
-                channels.emplace_back((*data)[i + 1]);
-                int args = calcFrequency(sampleRate, middleFrequency, i, (int)data->size());
-                channelFrequencies.emplace_back(i);
+        for(int b=0; b<e.size(); b++) {
+            if (energy[b] == t[b] && energy[b] - e[b] > 1) {
+                channels.emplace_back((*data)[b ]);
+                int args = calcFrequency(sampleRate, middleFrequency, b, (int)data->size());
+                channelFrequencies.emplace_back(b);
             }
         }
+
 
         std::vector<std::vector<float>> signals;
         for (auto src : channels) {
-            auto mean6 = xrollmean(src, 7);
-            auto bgnoise = xrollmin(mean6, 100);
-            auto noiseslow = xrollmean(bgnoise, 100);
+            auto mean6 = xrollmean(src, 4);
+            auto bgnoise = xrollmin(mean6, 40);
+            auto noiseslow = xrollmean(bgnoise, 40);
             for (int j = 0; j < src.size(); j++) {
                 src[j] -= noiseslow[j];
             }
-            auto mean3 = xrollmean(src, 3);
-            auto mean5 = xrollmean(src, 5);
-            auto env = xrollmax(mean3, 100);
-            env = xrollmean(env, 100);
+            auto mean3 = xrollmean(src, 2);
+            auto mean5 = xrollmean(src, 2);
+            auto env = xrollmax(mean3, 30);
+            env = xrollmean(env, 30);
             std::vector<float> sig(env.size(), 0);
             for (int j = 0; j < src.size(); j++) {
                 if (mean5[j] > env[j] * 0.5 || src[j] > env[j] * 0.75) {
@@ -1109,9 +1134,14 @@ struct DecodingState {
         // Check if either interval starts after the other one ends
         if (off1 >= end2 || off2 >= end1) {
             return false; // No overlap
-        } else {
-            return true;  // Overlap exists
         }
+        else {
+            return true; // Overlap exists
+        }
+    }
+
+    static bool fits(int smallerOffset, int smallerLen, int spaceStart, int spaceEnd) {
+        return smallerOffset + smallerLen <= spaceEnd && smallerOffset >= spaceStart;
     }
 
     void dumpState() const {
@@ -1156,21 +1186,41 @@ struct DecodingState {
             std::sort(sorted.begin(), sorted.end(), CompareLayoutKey());
             printf("Decode: freq %d\n", ad->decodes[0]->exactFrequency);
             DecodedLetter *lastLetter = nullptr;
+            std::vector<LayoutKey> skipped;
             for(auto k : sorted) {
                 auto best = heap[k].letter;
                 if (lastLetter != nullptr && intersects(best->localOffset, best->duration, lastLetter->localOffset, lastLetter->duration)) {
                     // printf("  --- discarding/drawn: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
                     continue;
                 }
+                if (skipped.size() > 0 && best->localOffset >= skipped[0].offset + skipped[0].length) {
+                    for(int si = 0; si < skipped.size(); si++) { // in order alreay
+                        auto attempt = heap[skipped[si]].letter;
+                        if (fits(attempt->localOffset, attempt->duration, lastLetter ? (lastLetter->localOffset + lastLetter->duration) : 0, best->localOffset)) {
+                            printf("%s",attempt->letter);
+                            printf("  - was skipped - score: %0.7f  off=%05d  len=%02d  value=`%s`\n", attempt->score, attempt->localOffset, attempt->duration, attempt->letter);
+                            lastLetter = attempt;
+                            skipped.erase(skipped.begin(), skipped.begin() + (si+1));
+                            si = -1;
+                        }
+                    }
+                }
                 for(auto z: sorted) {
-                    if (intersects(best->localOffset, best->duration, z.offset, z.length) && best->score < heap[z].letter->score) {
-                        // printf("  --- discarding, found best: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
+                    auto check = heap[z].letter;
+                    if (intersects(best->localOffset, best->duration, z.offset, z.length) && best->score < check->score) {
+                        printf("  --- discarding this: %0.7f  off=%05d  len=%02d value=`%s`, better one: %0.7f  off=%05d  len=%02d value=`%s` \n",
+                            best->score, best->localOffset, best->duration, best->letter,
+                            check->score, check->localOffset, check->duration, check->letter
+                            );
+                        skipped.emplace_back(k);
                         goto cont0;
                     }
                 }
                 printf("%s",best->letter);
-                // printf("  score: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
+                printf("  score: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset, best->duration, best->letter);
                 lastLetter = best;
+                skipped.clear();
+
 cont0:;
 
             }
@@ -1211,13 +1261,14 @@ struct SourceData {
 };
 
 std::shared_ptr<SourceData> getSourceData() {
-    auto samples0 = read_csv("/Users/san/Fun/morse/ffdata.csv");
+    auto samples0 = read_complex_array("/Users/san/Fun/morse/ffdata.bin");
     auto samples = dsp::arrays::npzeros_c((int)samples0->size());
     for (int i = 0; i < samples0->size(); i++) {
         (*samples)[i] = dsp::complex_t{ (*samples0)[i][0], (*samples0)[i][1] };
     }
     auto rv = std::make_shared<SourceData>();
     rv->allSamples = samples;
+    printf("%lld end complex convert.\n", currentTimeMillis());
     return rv;
 }
 
@@ -1225,7 +1276,7 @@ void cw_test() {
 
     auto sourceData = getSourceData();
     DecodingState ds;
-    for (int secondsOffset = 0; secondsOffset < 10; secondsOffset += 2) {
+    for (int secondsOffset = 0; secondsOffset < 20; secondsOffset += 2) {
         long long total = 0;
         auto t1 = currentTimeNanos();
         auto band = sourceData->getFrames((float)secondsOffset, 4);
@@ -1235,6 +1286,7 @@ void cw_test() {
         printf("Total time: %f microsec\n", (double)total / 1000.0);
     }
     ds.dumpState();
+    exit(0);
 }
 
 #pragma clang diagnostic pop
