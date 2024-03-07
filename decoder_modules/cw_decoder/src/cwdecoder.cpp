@@ -15,6 +15,8 @@
 #include <dsp/window/blackman.h>
 #include <../src/utils/arrays.h>
 
+// todo: check 14019430 (freq 812@100hz) CQ WAE IR2D (second time is wors on 100 hz)
+
 static std::string strprintf(const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -576,18 +578,39 @@ void segmentMeaningToWords(const std::vector<SegmentMeaning> &src, std::vector<D
 int globalCount = 0;
 int decodeLettersCount = 0;
 
-std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun> &run, const TemporalSettings &ts, int totalSamples,
-                                      bool debugIt) {
+std::vector<DecodedRun> decodeLetters(
+    const std::vector<SingleRun> &run,
+    const TemporalSettings &ts,
+    int totalSamples,
+    bool debugIt)
+//
+{
     std::vector<DecodedRun> rv;
     auto q = 0;
     BinaryTree<SegmentMeaning> bt;
-    auto startEdgeScore = 1.0;
     std::string debugLog;
+
+    double startEdgeScore = 1.0;
     float lastValue = -1;
     bool lastEndWord = false;
+    int ones = 0, twos = 0, dits = 0, das = 0;
 
+    auto addStats = [&](const SegmentMeaning &opt) {
+        switch (opt.segtype) {
+            case DA:
+                das++;
+                break;
+            case DIT:
+                dits++;
+                break;
+            default:
+                break;
+        }
+    };
 
     auto appendOne = [&](const SegmentMeaning &opt) {
+        ones++;
+        addStats(opt);
         bt.withEachLeaf([&](auto &tree, int nodeIndex) {
             tree.addNode(nodeIndex, opt);
         });
@@ -595,6 +618,13 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun> &run, const T
     };
 
     auto appendTwo = [&](const SegmentMeaning &opt1, const SegmentMeaning &opt2) {
+        twos++;
+        addStats(opt1);
+        addStats(opt2);
+        bt.withEachLeaf([&](auto &tree, int nodeIndex) {
+            tree.addNode(nodeIndex, opt1);
+            tree.addNode(nodeIndex, opt2);
+        });
         debugLog += "[";
         if (opt1.score > opt2.score) {
             debugLog += opt1.toString();
@@ -607,6 +637,16 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun> &run, const T
     };
 
     while (q < run.size()) {
+        if (ones + twos > 20) {
+            if (float(das) / float(dits) < 0.2) {
+                debugLog += "early discard 1";
+                return rv;
+            }
+            if (float(twos) / float(twos + ones) > 0.25) {
+                debugLog += "early discard 2";
+                return rv;
+            }
+        }
         auto segment = run[q];
         if (q == 0 && run[q].start < ts.spaceLong) {
             startEdgeScore = 0.5; // unsure if complete word.
@@ -615,22 +655,10 @@ std::vector<DecodedRun> decodeLetters(const std::vector<SingleRun> &run, const T
         double sureScore = fabs(dit - da);
         if (segment.value < lastValue / 1.5f && !lastEndWord) {
             // special case when noise follows the legit letters
-            SegmentMeaning opt1(IGNORE, 0.5, segment);
-            SegmentMeaning opt2(END_WORD, 0.5, segment);
-            bt.withEachLeaf([&](auto &tree, int nodeIndex) {
-                tree.addNode(nodeIndex, opt1);
-                tree.addNode(nodeIndex,
-                             opt2);
-            });
-            debugLog += "[";
-            if (opt1.score > opt2.score) {
-                debugLog += opt1.toString();
-                debugLog += opt2.toString();
-            } else {
-                debugLog += opt2.toString();
-                debugLog += opt1.toString();
-            }
-            debugLog += "]";
+            auto dummy = run[q];
+            dummy.len = 0;
+            appendTwo(SegmentMeaning(IGNORE, 0.5, dummy), SegmentMeaning(END_WORD, 0.5, dummy));
+            // proceed as usually
         }
         if (sureScore > 0.3) {
             appendOne(SegmentMeaning(dit > da ? DIT : DA, sureScore, segment));
@@ -723,13 +751,14 @@ std::vector<Peak> findPeaks(const std::vector<SingleRun> &run) {
         addHit(counts, r.len + 3, 0.5);
         addHit(counts, r.len - 3, 0.5);
     }
-    for (int q = 3; q < COUNTLEN - 3; q++) {
-        auto summ = 0.0f;
-        for (int j = -3; j <= 3; j++) {
-            summ += counts[q + j];
-        }
-        countsma[q] = summ / 7.0f;
-    }
+    // for (int q = 3; q < COUNTLEN - 3; q++) {
+    //     auto summ = 0.0f;
+    //     for (int j = -2; j <= 2; j++) {
+    //         summ += counts[q + j];
+    //     }
+    //     countsma[q] = summ / 5.0f;
+    // }
+    memcpy(countsma, counts, sizeof(counts));
     std::vector<Peak> rv;
     for (int q = 0; q < 5; q++) {
         auto mx = 0.0;
@@ -743,7 +772,9 @@ std::vector<Peak> findPeaks(const std::vector<SingleRun> &run) {
         if (mxi == -1) {
             break;
         }
-        rv.emplace_back(Peak{mxi});
+        if (mxi > 1) {
+            rv.emplace_back(Peak{mxi});
+        }
         auto scan = mxi + 1;
         while (scan < COUNTLEN && countsma[scan + 1] < countsma[scan]) {
             countsma[scan] = 0;
@@ -1057,7 +1088,7 @@ Matrix2DPtr samplesToData(const dsp::arrays::ComplexArray &samples, int framerat
         for (int j = 0; j < win; j++) {
             part->at(j) = samples->at((i + offsetFrames) * win + j) * (*window)[j];
         }
-        dsp::arrays::npfftfft(part, plan);
+        npfftfft(part, plan);
         auto carr = plan->getOutput()->data();
         std::vector<float> dest(win);
         auto di = win / 2;
@@ -1090,16 +1121,23 @@ struct DecodingState {
                 l.localOffset += d->globalOffset;
             }
         }
+        int minIndex = -1;
+        int minDist = 9999999;
+        int index = 0;
         for (const auto &freqChannel: allDecodes) {
             std::vector<std::shared_ptr<Decoded> > &decodes = freqChannel->decodes;
             int checkFrequency = decodes.front()->exactFrequency;
-            if (abs(checkFrequency - freq) <= 10) {
-                decodes.insert(decodes.begin(), d);
-                found = true;
-                break;
+            int dist = abs(checkFrequency - freq);
+            if (dist < minDist) {
+                minIndex = index;
+                minDist = dist;
             }
+            index++;
         }
-        if (!found) {
+        if (minDist <= 3) {
+            auto &dest = allDecodes[minIndex]->decodes;
+            dest.insert(dest.begin(), d);
+        } else {
             auto newChannel = std::make_shared<DecodesOnFrequency>();
             newChannel->decodes.emplace_back(d);
             allDecodes.emplace_back(newChannel);
@@ -1109,16 +1147,17 @@ struct DecodingState {
     [[clang::noinline]] void decodeChannels(const std::vector<std::vector<float> > &res, const std::vector<int> &freqs,
                                             int globalOffset, int nsamples) {
         for (int i = 0; i < res.size(); i++) {
-            if (freqs[i] != 755) {
+            if (abs(freqs[i] - 811) > 2 ) {   // FREQFILTER
                 continue;
             }
             auto decodeResult = decodeFrame(res[i]);
             auto drp = decodeResult.get();
-            printf("[%d] SIGNAL %d (line %d) - freq %d - variations %d:\n", globalOffset, i, i + 1, freqs[i],
-                   (int) drp->variations.size());
+            printf("[%d] SIGNAL %d (line %d) - freq %d - variations %d:\n",
+                   globalOffset, i, i + 1, freqs[i], (int) drp->variations.size());
             if (decodeResult->variations.empty()) {
                 continue; // nothing here
             }
+            printf(" sequence: %s\n", decodeResult->variations.front().debugLog.c_str());
             decodeResult->adjustScores(nsamples);
             int topn = 10;
             auto newSize = std::min<int>((int) drp->variations.size(), topn);
@@ -1152,6 +1191,8 @@ struct DecodingState {
 
     void decodeInterval(float globalOffsetSeconds, const Matrix2DPtr &band, int sampleRate, int middleFrequency) {
         auto data = addConstantToMatrix(*band, -meanOfMatrix(*band));
+
+
         int globalOffset = (int) (globalOffsetSeconds * hertz);
 
         std::vector<float> energy;
@@ -1307,6 +1348,7 @@ struct DecodingState {
                             printf("%s", attempt->letter);
                             printf("  - was skipped - score: %0.7f  off=%05d  len=%02d  value=`%s`\n", attempt->score,
                                    attempt->localOffset, attempt->duration, attempt->letter);
+                            totalResult += attempt->letter;
                             lastLetter = attempt;
                             skipped.erase(skipped.begin(), skipped.begin() + (si + 1));
                             si = -1;
@@ -1326,8 +1368,8 @@ struct DecodingState {
                     }
                 }
                 printf("%s", best->letter);
-                printf("  score: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score, best->localOffset,
-                       best->duration, best->letter);
+                printf("  score: %0.7f  off=%05d  len=%02d  value=`%s`\n", best->score,           best->localOffset, best->duration, best->letter);
+
                 totalResult += best->letter;
                 lastLetter = best;
                 skipped.clear();
@@ -1394,11 +1436,11 @@ std::shared_ptr<SourceData> getSourceData() {
 void cw_test() {
     auto sourceData = getSourceData();
     DecodingState ds;
-    for (int secondsOffset = 0; secondsOffset < 20; secondsOffset += 2) {
+    for (float secondsOffset = 0; secondsOffset < 20; secondsOffset += 2) {
         long long total = 0;
         auto t1 = currentTimeNanos();
-        auto band = sourceData->getFrames((float) secondsOffset, 4);
-        ds.decodeInterval((float) secondsOffset, band, sourceData->getSampleRate(), sourceData->getFrequency());
+        auto band = sourceData->getFrames(secondsOffset, 4);
+        ds.decodeInterval(secondsOffset, band, sourceData->getSampleRate(), sourceData->getFrequency());
         t1 = currentTimeNanos() - t1;
         total += t1;
         printf("Total time: %f microsec\n", (double) total / 1000.0);
