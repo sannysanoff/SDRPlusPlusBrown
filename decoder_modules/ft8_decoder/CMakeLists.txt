@@ -26,12 +26,19 @@ endif ()
 # Install directives
 install(TARGETS ft8_decoder DESTINATION lib/sdrpp/plugins)
 
+
+
+#### decoder binary
+
+
 file(GLOB_RECURSE SDRPP_FT8MSHV_SRC src/*.cpp src/*.c ../../core/src/utils/networking.cpp ../../core/src/utils/flog.cpp EXCLUDE main.c)
 list(FILTER SDRPP_FT8MSHV_SRC EXCLUDE REGEX "main.c*")
 
 if (MSVC)
     # winmain-type code
     add_executable(sdrpp_ft8_mshv WIN32 "src/sdrpp_ft8_mshv_main.cpp" "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
+elseif (EMSCRIPTEN)
+    add_library(sdrpp_ft8_mshv "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
 else ()
     add_executable(sdrpp_ft8_mshv "src/sdrpp_ft8_mshv_main.cpp" "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
 endif ()
@@ -66,11 +73,17 @@ elseif (ANDROID)
             android log
             )
 
+elseif (EMSCRIPTEN)
+    find_package(PkgConfig)
+    pkg_check_modules(FFTW3 REQUIRED fftw3f)
+
 else ()
     find_package(PkgConfig)
     pkg_check_modules(FFTW3 REQUIRED fftw3f)
+
     pkg_check_modules(VOLK REQUIRED volk)
     target_link_libraries(sdrpp_ft8_mshv PUBLIC fftw3f volk pthread)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC fftw3f pthread)
     target_include_directories(sdrpp_ft8_mshv PUBLIC
             ${FFTW3_INCLUDE_DIRS}
             ${VOLK_INCLUDE_DIRS}

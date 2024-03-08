@@ -1,5 +1,9 @@
 #pragma once
+
+#ifndef __EMSCRIPTEN__
 #include <volk/volk.h>
+#endif
+
 #include <module.h>
 
 namespace dsp::buffer {
@@ -17,7 +21,11 @@ namespace dsp::buffer {
 
     template<class T>
     inline T* alloc(int count) {
+#ifndef __EMSCRIPTEN__
         auto rv = (T*)volk_malloc(count * sizeof(T), volk_get_alignment());
+#else
+        return (T*)malloc(count * sizeof(T));
+#endif
         //_trace_buffer_alloc(rv);
         return rv;
     }
@@ -29,7 +37,12 @@ namespace dsp::buffer {
 
     inline void free(void* buffer) {
         //_unregister_buffer_dbg(buffer);
+#ifndef __EMSCRIPTEN__
         volk_free(buffer);
+#else
+        return ::free(buffer);
+#endif
     }
+
 
 }
