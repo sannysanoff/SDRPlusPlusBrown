@@ -7,9 +7,10 @@
 #include <vector>
 #include <string>
 
+#include "../fftw_mshv_plug.h"
+
 #include <complex.h>
 //#define complex		_Complex
-#include <fftw3.h>
 #include <memory>
 #include <cstring>
 #include <thread>
@@ -405,7 +406,7 @@ inline std::ostream &operator << (std::ostream &os, const QString &s) {
 }
 
 struct fftw_complexW {
-    fftw_complex c;
+    plug_complex_float c;
     constexpr fftw_complexW() : c() {
         c[0] = 0;
         c[1] = 0;

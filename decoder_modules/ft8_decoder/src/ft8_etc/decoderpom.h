@@ -13,11 +13,11 @@ void initDecoderPom();
 class HvThr
 {
 public:
-    void four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan *pc,int &cpc,int nfft,int isign,int iform);
-    void four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,fftwf_plan *pd,int &cpd,
+    void four2a_c2c(std::complex<float> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform);
+    void four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,FFT_PLAN *pd,int &cpd,
                     int nfft,int isign,int iform);
 
-    void four2a_c2c(std::complex<double> *a,std::complex<float> *a1,fftwf_plan *pc,int &cpc,int nfft,int isign,int iform) {
+    void four2a_c2c(std::complex<double> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform) {
         std::vector<std::complex<float>> buf(nfft);
         for (int i = 0; i < nfft; ++i) {
             buf[i] = a[i];
@@ -27,7 +27,7 @@ public:
             a[i] = buf[i];
         }
     }
-    void four2a_d2c(std::complex<double> *a,std::complex<float> *a1,double *d,float *d1,fftwf_plan *pd,int &cpd,
+    void four2a_d2c(std::complex<double> *a,std::complex<float> *a1,double *d,float *d1,FFT_PLAN *pd,int &cpd,
                     int nfft,int isign,int iform) {
         std::vector<std::complex<float>> outbuf(nfft);
         std::vector<float> buf(nfft);
@@ -40,7 +40,7 @@ public:
         }
     }
 
-    void DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool imid);
+    void DestroyPlans(FFT_PLAN *pc,int &cpc,FFT_PLAN *pd,int &cpd,bool imid);
 private:
     int nn_c2c[NPMAX+10];
     int ns_c2c[NPMAX+10];

@@ -37,7 +37,7 @@
 #define SLPASTEP 1000 //1000 importent SLPAMIN > SLPASTEP
 static bool _block_th_all_ = false;        //need to be static for all
 static int _wait_t_ = SLPAMIN - SLPASTEP;  //need to be static for all
-static int setup_c2c_d2c_(bool &wait,fftwf_plan &p,std::complex<float> *a,int nfft,int isign,int iform,float *d = 0)
+static int setup_c2c_d2c_(bool &wait,FFT_PLAN &p,std::complex<float> *a,int nfft,int isign,int iform,float *d = 0)
 {
     if (_block_th_all_ || !wait)
     {
@@ -47,19 +47,23 @@ static int setup_c2c_d2c_(bool &wait,fftwf_plan &p,std::complex<float> *a,int nf
     }
     _block_th_all_ = true; //if (cplu == 0) qDebug()<<"----------------------"; cplu++; qDebug()<<"PLANS="<<cplu<<nfft;
 
-    unsigned int flag = FFTW_ESTIMATE_PATIENT;
+    //unsigned int flag = FFTW_ESTIMATE_PATIENT;
 //    unsigned int flag = FFTW_ESTIMATE;
 //    if (nfft > 6000) {
 //        flag = FFTW_ESTIMATE;
 //    }
     if 		(isign==-1 && iform==1)
-        p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_FORWARD, flag);
+            p = fftplug_allocate_plan_c2c(nfft, true);
+        // p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_FORWARD, flag);
     else if (isign==1 && iform==1)
-        p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_BACKWARD, flag);
+        p = fftplug_allocate_plan_c2c(nfft, false);
+        //p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_BACKWARD, flag);
     else if (isign==-1 && iform==0)
-        p=fftwf_plan_dft_r2c_1d(nfft, d,(fftwf_complex *)a, flag);
+        p = fftplug_allocate_plan_r2c(nfft);
+        //p=fftwf_plan_dft_r2c_1d(nfft, d,(fftwf_complex *)a, flag);
     else if (isign==1 && iform==-1)
-        p=fftwf_plan_dft_c2r_1d(nfft,(fftwf_complex *)a,d, flag);
+        //p=fftwf_plan_dft_c2r_1d(nfft,(fftwf_complex *)a,d, flag);
+            p = fftplug_allocate_plan_c2r(nfft);
 
     _block_th_all_ = false;
     return 0;
@@ -93,7 +97,7 @@ bool writeStringToFile(const std::string& text, const std::string& filename) {
 
 #define NPAMAX 1441000  //q65 max=1440000 PI4 max 768000
 #define NSMALL 16384
-void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan *pc,int &cpc,int nfft,int isign,int iform)
+void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform)
 {
     static std::complex<double> aa[NSMALL+10];
 
@@ -145,8 +149,11 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
             a1[i]=aa[i];
     }
 
-    fftwf_execute(pc[z]);
+    memcpy(fftplug_get_complex_input(pc[z]), a1, nfft * sizeof(plug_complex_float));
+    fftplug_execute_plan(pc[z]);
+    memcpy(a1, fftplug_get_complex_output(pc[z]), nfft * sizeof(plug_complex_float));
     for (int i = 0; i < nfft; ++i) {
+#if 0
         if (std::isnan(a1[i].real())) {
             std::string s;
             for (int z = 0; z < nfft; z++) {
@@ -156,6 +163,7 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
 
             abort();
         }
+#endif
         a[i] = a1[i];
     }
 }
@@ -167,7 +175,7 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
 
 int four2a_d2c_cnt = 0;
 
-void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,fftwf_plan *pd,int &cpd,
+void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,FFT_PLAN *pd,int &cpd,
                        int nfft,int isign,int iform)
 {
     static std::complex<double> aa[NSMALL+10];
@@ -232,15 +240,9 @@ void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,f
         }
     }
 
-//    if (four2a_d2c_cnt == 466) {
-//        std::cout << "four2a_d2c:466, z=" << z<< " input to fft: ";
-//        for(int z=0; z<nfft; z++) {
-//            std::cout << z<<+":"<< a1[z] << " ";
-//            std::flush(std::cout);
-//        }
-//        std::cout << std::endl;
-//    }
-    fftwf_execute_dft_r2c(pd[z], d1, (fftwf_complex*)a1);
+    memcpy(fftplug_get_float_input(pd[z]), d1, nfft * sizeof(float));
+    fftplug_execute_plan(pd[z]);
+    memcpy(a1, fftplug_get_complex_output(pd[z]), nfft * sizeof(plug_complex_float));
     for (int i = 0; i < nfft; ++i)
     {
         if (i<cfft) {
@@ -254,13 +256,13 @@ void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,f
     }
 }
 #define NPLIM 20 // reset if > 20 JTMS
-void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool imid)
+void HvThr::DestroyPlans(FFT_PLAN *pc,int &cpc,FFT_PLAN *pd,int &cpd,bool imid)
 {
     if (cpc > NPLIM || imid)
     {
         //qDebug()<<"Plans C2C="<<cpc;
         for (int z = 0; z < cpc; ++z)
-            fftwf_destroy_plan(pc[z]);
+            fftplug_free_plan(pc[z]);
         cpc = 0;
         _wait_t_ = SLPAMIN - SLPASTEP;
     }
@@ -268,7 +270,7 @@ void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool im
     {
         //qDebug()<<"Plans D2C="<<cpd;
         for (int z = 0; z < cpd; ++z)
-            fftwf_destroy_plan(pd[z]);
+            fftplug_free_plan(pd[z]);
         cpd = 0;
         _wait_t_ = SLPAMIN - SLPASTEP;
     }
@@ -277,22 +279,22 @@ void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool im
 
 //// class F2A ///
 static int nplan_c2c0 = 0;
-static fftwf_plan plan_c2c0[NPMAX+10];
+static FFT_PLAN plan_c2c0[NPMAX+10];
 static std::complex<float> ca_c2c0[NPAMAX+10];
 static int nplan_c2c1 = 0;
-static fftwf_plan plan_c2c1[NPMAX+10];
+static FFT_PLAN plan_c2c1[NPMAX+10];
 static std::complex<float> ca_c2c1[NPAMAX+10];
 static int nplan_c2c2 = 0;
-static fftwf_plan plan_c2c2[NPMAX+10];
+static FFT_PLAN plan_c2c2[NPMAX+10];
 static std::complex<float> ca_c2c2[NPAMAX+10];
 static int nplan_c2c3 = 0;
-static fftwf_plan plan_c2c3[NPMAX+10];
+static FFT_PLAN plan_c2c3[NPMAX+10];
 static std::complex<float> ca_c2c3[NPAMAX+10];
 static int nplan_c2c4 = 0;
-static fftwf_plan plan_c2c4[NPMAX+10];
+static FFT_PLAN plan_c2c4[NPMAX+10];
 static std::complex<float> ca_c2c4[NPAMAX+10];
 static int nplan_c2c5 = 0;
-static fftwf_plan plan_c2c5[NPMAX+10];
+static FFT_PLAN plan_c2c5[NPMAX+10];
 static std::complex<float> ca_c2c5[NPAMAX+10];
 void F2a::four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int thr)
 {
@@ -304,27 +306,27 @@ void F2a::four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int th
     else if (thr==5) HvThr5.four2a_c2c(a,ca_c2c5,plan_c2c5,nplan_c2c5,nfft,isign,iform);
 }
 static int nplan_d2c0 = 0;
-static fftwf_plan plan_d2c0[NPMAX+10];
+static FFT_PLAN plan_d2c0[NPMAX+10];
 static float da_d2c0[NPAMAX+10];
 static std::complex<float> ca_d2c0[NPAMAX+10];
 static int nplan_d2c1 = 0;
-static fftwf_plan plan_d2c1[NPMAX+10];
+static FFT_PLAN plan_d2c1[NPMAX+10];
 static float da_d2c1[NPAMAX+10];
 static std::complex<float> ca_d2c1[NPAMAX+10];
 static int nplan_d2c2 = 0;
-static fftwf_plan plan_d2c2[NPMAX+10];
+static FFT_PLAN plan_d2c2[NPMAX+10];
 static float da_d2c2[NPAMAX+10];
 static std::complex<float> ca_d2c2[NPAMAX+10];
 static int nplan_d2c3 = 0;
-static fftwf_plan plan_d2c3[NPMAX+10];
+static FFT_PLAN plan_d2c3[NPMAX+10];
 static float da_d2c3[NPAMAX+10];
 static std::complex<float> ca_d2c3[NPAMAX+10];
 static int nplan_d2c4 = 0;
-static fftwf_plan plan_d2c4[NPMAX+10];
+static FFT_PLAN plan_d2c4[NPMAX+10];
 static float da_d2c4[NPAMAX+10];
 static std::complex<float> ca_d2c4[NPAMAX+10];
 static int nplan_d2c5 = 0;
-static fftwf_plan plan_d2c5[NPMAX+10];
+static FFT_PLAN plan_d2c5[NPMAX+10];
 static float da_d2c5[NPAMAX+10];
 static std::complex<float> ca_d2c5[NPAMAX+10];
 void F2a::four2a_d2c(std::complex<double> *a,double *d,int nfft,int isign,int iform,int thr)

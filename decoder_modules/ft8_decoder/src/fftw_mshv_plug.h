@@ -9,10 +9,7 @@ struct FFT_PLAN {
 
 };
 
-struct plug_complex_float {
-    float re;
-    float im;
-};
+typedef float plug_complex_float[2];
 
 extern "C" FFT_PLAN fftplug_allocate_plan_c2c(int nfft, bool forward);
 extern "C" FFT_PLAN fftplug_allocate_plan_r2c(int nfft);
