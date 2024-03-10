@@ -1,13 +1,8 @@
-#include <core.h>
 #include <iostream>
 #include <stdio.h>
 #include <module.h>
 #include <ctm.h>
-#include <utils/wav.h>
-#include <utils/riff.h>
 #include "dsp/types.h"
-#include "dsp/multirate/polyphase_resampler.h"
-#include "dsp/multirate/rational_resampler.h"
 
 #include "ft8_etc/mshv_support.h"
 #include "ft8_etc/mscore.h"
@@ -31,10 +26,6 @@
 #include <utils/strings.h>
 
 namespace ft8 {
-
-
-
-
     enum {
         DMS_FT8 = 11,
         DMS_FT4 = 13
@@ -42,52 +33,56 @@ namespace ft8 {
 
 
     // input stereo samples, nsamples (number of pairs of float)
-    inline void decodeFT8(int threads, const char *mode, int sampleRate, dsp::stereo_t* samples, long long nsamples, std::function<void(int mode, QStringList result)> callback) {
+    void decodeFT8(int threads, const char *mode, int sampleRate, dsp::stereo_t *samples, int nsamples,
+                   std::function<void(int mode, QStringList result)> callback) {
         //
+        // .
         //
-        //
+        char b[10];
+        char *b1 = new char[10];
+        char *b2 = (char*)malloc(10);
+        debugPrintf("# hello here2!, stack=%p new=%p malloc=%p", b, b1, b2);
+        debugPrintf("# mshv init, nsamples=%d samples=%x", nsamples, samples);
         mshv_init();
+        debugPrintf("# mshv init ok, nsamples=%d samples=%x", nsamples, samples);
 
-//        four2a_d2c_cnt = 0;
-
-        std::vector<dsp::stereo_t> resampledV;
+        //        four2a_d2c_cnt = 0;
 
         if (sampleRate != 12000) {
-            long long int outSize = 3 * (nsamples * 12000) / sampleRate;
-            resampledV.resize(outSize);
-            dsp::multirate::RationalResampler<dsp::stereo_t> res;
-            res.init(nullptr, sampleRate, 12000);
-            nsamples = res.process(nsamples, samples, resampledV.data());
-            samples = resampledV.data();
-            printf("Resampled, samples size=2 * %zu\n", resampledV.size()/2);
+            decodeResultOutput("# bad samplerate");
+            return;
         }
-
-
+        decodeResultOutput("# proceed1");
 
         std::vector<short> converted;
-        converted.reserve(nsamples);
+        converted.resize(nsamples);
         for (int q = 0; q < nsamples; q++) {
-            converted.emplace_back(samples[q].l * 16383.52);
+            converted[q] = samples[q].l * 16383.52;
         }
+        decodeResultOutput("# decodeft8 begin");
 
         //    auto core = std::make_shared<MsCore>();
         //    core->ResampleAndFilter(converted.data(), converted.size());
         auto dms = std::make_shared<DecoderMs>();
+        debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
         if (std::string("ft8") == mode) {
+            debugPrintf("# set mode ft8");
             dms->setMode(DMS_FT8);
+            debugPrintf("# set mode ft8 ok ");
         } else if (std::string("ft4") == mode) {
             dms->setMode(DMS_FT4);
         } else {
+            debugPrintf("# invalid mode");
             fprintf(stderr, "ERROR: invalid mode is specified. Valid modes: ft8, ft4\n");
             exit(1);
         }
+        debugPrintf("# call adds, dms=%x", dms.get());
         {
             QStringList ql;
             ql << "CALL";
             ql << "CALL";
             dms->SetWords(ql, 0, 0);
-        }
-        {
+        } {
             QStringList ql;
             ql << "CALL";
             ql << "";
@@ -96,88 +91,61 @@ namespace ft8 {
             ql << "";
             dms->SetCalsHash(ql);
         }
+        decodeResultOutput("# p2");
         dms->SetResultsCallback(callback);
+        decodeResultOutput("# p3");
         dms->SetDecoderDeep(3);
+        decodeResultOutput("# p4");
         dms->SetThrLevel(threads);
 
+        debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
+
         dms->SetDecode(converted.data(), converted.size(), "120000", 0, 4, false, true, false);
+        debugPrintf("# called.");
         while (dms->IsWorking()) {
+            debugPrintf("# waiting.");
             usleep(100000);
         }
+        debugPrintf("# exiting.");
         return;
     }
 
+
+#define INPUT_BUFFER_SIZE 2000000
+    static dsp::stereo_t inputBuffer[INPUT_BUFFER_SIZE] = {0};
+
+    WASM_EXPORT("getFT8InputBuffer")
+
+    void *getFT8InputBuffer() {
+        return inputBuffer;
+    }
+
+    WASM_EXPORT("getFT8InputBufferSize")
+
+    int getFT8InputBufferSize() {
+        return INPUT_BUFFER_SIZE;
+    }
+
+
+    WASM_EXPORT("decodeFT8MainAt12000")
+
+    void decodeFT8MainAt12000(int nsamples) {
+        char b[20000000];
+        debugPrintf("# hello here!, inputBuffer=%x %x, stack=%p new=%p malloc=%p", &inputBuffer[0], inputBuffer, b);
+        decodeFT8(1, "ft8", 12000, &inputBuffer[0], nsamples, [](int, QStringList) {
+        });
+    }
+
+    WASM_EXPORT("decodeFT4MainAt12000")
+    void decodeFT4MainAt12000(int nsamples) {
+        decodeFT8(1, "ft4", 12000, inputBuffer, nsamples, [](int, QStringList) {
+        });
+    }
 }
 
+#ifdef __wasm__
 
-void doDecode(const char *mode, const char *path, int threads, std::function<void(int mode, std::vector<std::string> result)> callback) {
-    mshv_init();
-    FILE *f = fopen(path,"rb");
-    if (!f) {
-        fprintf(stderr,"ERROR Cannot open file %s\n", path);
-        exit(1);
-    }
-    fseek(f, 0, SEEK_END);
-    long long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    uint8_t *buf = (uint8_t *)malloc(size);
-    if (!buf) {
-        fprintf(stderr,"ERROR Cannot alloc %lld\n", size);
-        exit(1);
-    }
-    (void)fread((void *)buf, size, 1, f);
-    fclose(f);
-    riff::ChunkHeader *riffHeader = (riff::ChunkHeader *)(buf);
-    riff::ChunkHeader *fmtHeader = (riff::ChunkHeader *)(buf + 12);
-    wav::FormatHeader *hdr = (wav::FormatHeader *)(buf+12+8); // skip RIFF + WAV
-    riff::ChunkHeader *dta = (riff::ChunkHeader *)(buf+12+8 + sizeof (wav::FormatHeader));
-    auto *data = (float *)((uint8_t *)dta + sizeof(riff::ChunkHeader));
-    printf("Channels: %d\n", hdr->channelCount);
-    printf("SampleRate: %d\n", hdr->sampleRate);
-    printf("BytesPerSample: %d\n", hdr->bytesPerSample);
-    printf("BitDepth: %d\n", hdr->bitDepth);
-    printf("Codec: %d\n", hdr->codec);
-    fflush(stdout);
-    bool handled = hdr->codec == 3 && hdr->bitDepth == 32 && hdr->channelCount == 2;
-    handled |= hdr->codec == 1 && hdr->bitDepth == 16 && hdr->channelCount == 2;
-    if (!handled) {
-        fprintf(stderr,"ERROR Want Codec/BitDepth/channels: 3/32/2 or 1/16/2\n");
-    }
-    int nSamples = ((char*)(buf + size)-(char *)data)/2/(hdr->bitDepth/8);
-    printf("NSamples: %d\n", nSamples);
+WASM_EXPORT("wasmMalloc") void *wasmMalloc(int size) { return malloc(size); }
+WASM_EXPORT("wasmFree") void wasmFree(void *ptr) { free(ptr); }
 
-    std::vector<dsp::stereo_t> converted;
-    if (hdr->codec == 1) {  // short samples
-        auto ptr = (short *)dta;
-        converted.resize(nSamples);
-        float maxx = 0.0f;
-        for(int q=0; q<nSamples; q++) {
-            converted[q].l = ptr[2*q] / 32767.0;
-            converted[q].r = ptr[2*q+1] / 32767.0;
-            maxx = std::max<float>(maxx, converted[q].r);
-            maxx = std::max<float>(maxx, converted[q].l);
-        }
-        data = (float*)converted.data();
-        printf("d0: %f   %f   maxx: %f\n", data[100], data[101], maxx);
-    }
-
-    fflush(stdout);
-    fflush(stderr);
-    try {
-        for(int q=0; q<1; q++) {
-            auto ctm = currentTimeMillis();
-//            spdlog::info("=================================");
-            ft8::decodeFT8(threads, mode, hdr->sampleRate, (dsp::stereo_t*)data, nSamples, [](int mode, QStringList result) {
-
-            });
-            std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
-            std::cout << "DECODE_EOF" << std::endl;
-            std::cout << "DECODE_EOF" << std::endl;
-            fflush(stdout);
-        }
-    } catch (std::runtime_error &e) {
-        fprintf(stderr,"ERROR %s \n", e.what());
-    }
-
-}
-
+#endif

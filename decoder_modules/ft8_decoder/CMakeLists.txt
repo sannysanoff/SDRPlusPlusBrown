@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 project(ft8_decoder)
 
 
+
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c" ../../misc_modules/recorder/src/wav.cpp ../../misc_modules/recorder/src/riff.cpp)
 list(FILTER SRC EXCLUDE REGEX "sdrpp_ft8_mshv_main.cpp")
 #list(FILTER SRC EXCLUDE REGEX "ft8_etc/*" )
@@ -27,20 +28,30 @@ endif ()
 install(TARGETS ft8_decoder DESTINATION lib/sdrpp/plugins)
 
 
-
 #### decoder binary
 
 
-file(GLOB_RECURSE SDRPP_FT8MSHV_SRC src/*.cpp src/*.c ../../core/src/utils/networking.cpp ../../core/src/utils/flog.cpp EXCLUDE main.c)
+#file(GLOB_RECURSE SDRPP_FT8MSHV_SRC src/*.cpp src/*.c ../../core/src/utils/networking.cpp ../../core/src/utils/flog.cpp EXCLUDE main.c)
+file(GLOB_RECURSE SDRPP_FT8MSHV_SRC src/*.cpp src/*.c  ../../core/src/utils/flog.cpp EXCLUDE main.c)
 list(FILTER SDRPP_FT8MSHV_SRC EXCLUDE REGEX "main.c*")
 
 if (MSVC)
     # winmain-type code
     add_executable(sdrpp_ft8_mshv WIN32 "src/sdrpp_ft8_mshv_main.cpp" "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
-elseif (EMSCRIPTEN)
-    add_library(sdrpp_ft8_mshv "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
+elseif (WASM)
+    message("WASM ======")
+    list(FILTER SDRPP_FT8MSHV_SRC EXCLUDE REGEX "sdrpp_ft8_mshv_main.cpp")
+    add_executable(sdrpp_ft8_mshv ${SDRPP_FT8MSHV_SRC})
+    target_include_directories(sdrpp_ft8_mshv PUBLIC "../../core/src")
+    target_compile_definitions(sdrpp_ft8_mshv PRIVATE WASM=1)
+    target_compile_options(sdrpp_ft8_mshv PUBLIC "-fno-exceptions")
+    set_target_properties(sdrpp_ft8_mshv PROPERTIES LINK_FLAGS "-Wl,--initial-memory=800063488,--max-memory=800063488")
+    message("WASM2 ======")
 else ()
+    message("DEFAULT ======")
     add_executable(sdrpp_ft8_mshv "src/sdrpp_ft8_mshv_main.cpp" "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
+    target_compile_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
+    target_link_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
 endif ()
 
 target_include_directories(sdrpp_ft8_mshv PUBLIC "../../core/src")
@@ -73,7 +84,7 @@ elseif (ANDROID)
             android log
             )
 
-elseif (EMSCRIPTEN)
+elseif (WASM)
     find_package(PkgConfig)
     pkg_check_modules(FFTW3 REQUIRED fftw3f)
 
@@ -98,8 +109,34 @@ else ()
             ${FFTW3_LIBRARIES}
             ${VOLK_LIBRARIES}
             )
+    target_compile_options(sdrpp_ft8_mshv PRIVATE $<$<CONFIG:Debug>:-O0 -g -fno-limit-debug-info>)
 
 endif ()
+
+
+if (EXISTS ${CMAKE_BINARY_DIR}/wasmer)
+    message("Not downloading wasmerr.")
+else ()
+    message("Downloading wasmer.")
+    if (APPLE)
+        file(DOWNLOAD https://github.com/sannysanoff/wasmer-prebuilt/releases/download/main/wasmer-arm64.tar.gz ${CMAKE_BINARY_DIR}/wasmer.tar.gz)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xfz wasmer.tar.gz WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    elseif (WASM)
+        message("Ignoring.")
+    else()
+        message(FATAL_ERROR "Not yet implemented wasmer here on nonmac")
+    endif ()
+endif ()
+if (APPLE)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${CMAKE_BINARY_DIR}/wasmer/libwasmer.a)
+    target_include_directories(sdrpp_ft8_mshv PUBLIC  ${CMAKE_BINARY_DIR}/wasmer)
+    find_library(SystemConfiguration SystemConfiguration)
+    find_library(CoreFoundation CoreFoundation)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${SystemConfiguration})
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${CoreFoundation})
+endif ()
+
+
 
 #target_link_options(test0 PUBLIC -fsanitize=memory)
 
@@ -117,7 +154,11 @@ foreach (TGT IN LISTS TARGETS)
     if (MSVC)
         target_compile_options(${TGT} PRIVATE /std:c++17 /EHsc)
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(${TGT} PRIVATE -std=c++17 -O3 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            target_compile_options(${TGT} PRIVATE -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+        else()
+            target_compile_options(${TGT} PRIVATE -std=c++17 -O3 -Wno-unused-command-line-argument -undefined dynamic_lookup)
+        endif ()
     else ()
         target_compile_options(${TGT} PRIVATE -std=c++17 -O3)
     endif ()

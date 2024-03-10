@@ -82,6 +82,7 @@ std::string complexToString(const std::complex<float>& c) {
     return s;
 }
 
+#ifndef __wasm__
 // write string s to file fn
 bool writeStringToFile(const std::string& text, const std::string& filename) {
     std::ofstream outfile(filename);
@@ -94,6 +95,7 @@ bool writeStringToFile(const std::string& text, const std::string& filename) {
         return false;
     }
 }
+#endif
 
 #define NPAMAX 1441000  //q65 max=1440000 PI4 max 768000
 #define NSMALL 16384
@@ -673,7 +675,9 @@ void PomAll::cshift1(std::complex<double> *a,int cou_a,int ish)
 
     //std::complex<double> t[cou_a];  //garmi hv v1.42
     //std::complex<double> t[cou_a*2+ish+50];  //garmi hv v1.43 ok
-    std::complex<double> *t = new std::complex<double>[cou_a+100]; //garmi pri goliam count hv v1.43 correct ok
+    debugPrintf("            cshift1: %d", cou_a);
+    std::complex<double> *t = (std::complex<double> *)malloc(sizeof(std::complex<double>) * (cou_a+100)); //garmi pri goliam count hv v1.43 correct ok
+    debugPrintf("            cshift1: %x %x", t, a);
     for (int i=0; i< cou_a; i++)
         t[i]=a[i];
 

@@ -2161,7 +2161,9 @@ void *DecoderMs::ThreadDecode(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDecode();
     pthread_detach(pt->th); // inportant delete thread memory
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 /*void DecoderMs::SetDecodetTextFt(QStringList list)
@@ -2281,7 +2283,7 @@ void DecoderMs::SetDecodetTextFtQ65(QStringList list)//2.66
     bool forme = false;
     if (abs((int)s_nfqso_all-(int)f1)<=10 || fmyc)
     {
-        EmitDecodetTextRxFreq(list,true,true);//1.60= true no emit other infos from decode list2 s_fopen
+        EmitDecodedTextRxFreq(list,true,true);//1.60= true no emit other infos from decode list2 s_fopen
         forme = true;
     }
     if (allq65) forme = true;
@@ -2440,7 +2442,9 @@ void *DecoderMs::ThrDec0(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec0();
     pthread_detach(pt->th0);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec1(void *argom)
@@ -2448,7 +2452,9 @@ void *DecoderMs::ThrDec1(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec1();
     pthread_detach(pt->th1);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec2(void *argom)
@@ -2456,7 +2462,9 @@ void *DecoderMs::ThrDec2(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec2();
     pthread_detach(pt->th2);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec3(void *argom)
@@ -2464,7 +2472,9 @@ void *DecoderMs::ThrDec3(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec3();
     pthread_detach(pt->th3);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec4(void *argom)
@@ -2472,7 +2482,9 @@ void *DecoderMs::ThrDec4(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec4();
     pthread_detach(pt->th4);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec5(void *argom)
@@ -2480,7 +2492,9 @@ void *DecoderMs::ThrDec5(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec5();
     pthread_detach(pt->th5);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 
@@ -2783,7 +2797,8 @@ void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int 
     {
         have_dec0_ = false;
         //2.56 stop thr_only_one_color = true;
-        pthread_create(&th,NULL,DecoderMs::ThreadDecode,(void*)this);
+        this->StrtDecode();
+        // pthread_create(&th,NULL,DecoderMs::ThreadDecode,(void*)this);
         //pthread_attr_destroy(&thread_attr);
     }
     else
@@ -2861,12 +2876,14 @@ void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int 
             //qDebug()<<"D6="<<_f05_<<_f06_<<_f06_-_f05_;
         }
         //2.41 important to be here for slow speed PCs
+        debugPrintf("Pthread create....");
         pthread_create(&th0,NULL,DecoderMs::ThrDec0,(void*)this);
         pthread_create(&th1,NULL,DecoderMs::ThrDec1,(void*)this);
         if (nthr>2) pthread_create(&th2,NULL,DecoderMs::ThrDec2,(void*)this);
         if (nthr>3) pthread_create(&th3,NULL,DecoderMs::ThrDec3,(void*)this);
         if (nthr>4) pthread_create(&th4,NULL,DecoderMs::ThrDec4,(void*)this);
         if (nthr>5) pthread_create(&th5,NULL,DecoderMs::ThrDec5,(void*)this);
+        debugPrintf("Pthread crete end");
     }
 }
 

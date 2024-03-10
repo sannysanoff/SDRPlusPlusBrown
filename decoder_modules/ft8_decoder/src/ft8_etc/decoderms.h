@@ -172,7 +172,7 @@ public:
     void ft4_decode(double *dd,double f0a,double f0b,double,double,double fqso,bool &f);
 
 //signals:
-    void EmitDecodetTextFt(QStringList lst) {
+    void EmitDecodedTextFt(QStringList lst) {
         char buf[1000] ="";
         snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), "FT4_OUT\t%lld\t%02d", currentTimeMillis(), outCount++);
         for(int i=0; i<lst.count(); i++) {
@@ -182,6 +182,7 @@ public:
         strcat(buf,"\n");
         fwrite(buf, 1, strlen(buf), stdout);
         fflush(stdout);
+        decodeResultOutput(buf);
 //        if (resultsCallback) {
 //            resultsCallback(11, lst);
 //        }
@@ -363,7 +364,7 @@ public:
     void EmitAvgSaves(int,int,int,int) {abort();};
     void EmitAvgSavesPi4(int,int) {abort();};
     void EmitAvgSavesQ65(int,int) {abort();};
-    void EmitDecodetTextRxFreq(QStringList,bool,bool) {abort();};
+    void EmitDecodedTextRxFreq(QStringList,bool,bool) {abort();};
     void EmitTimeElapsed(float) {abort();};//2.33
     bool IsWorking();
 

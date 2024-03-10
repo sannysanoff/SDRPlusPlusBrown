@@ -1678,7 +1678,7 @@ c10:
                         <<QString("%1").arg(qual,0,'f',1)
                         <<QString("%1").arg((int)f1);
 
-                        EmitDecodetTextFt(list);//1.27 psk rep   fopen bool true    false no file open
+                        EmitDecodedTextFt(list);//1.27 psk rep   fopen bool true    false no file open
                         have_dec = true;
 
                         /*//if (abs((int)s_nfqso65-(int)f1)<=10 || list.at(4).contains(s_MyCall))

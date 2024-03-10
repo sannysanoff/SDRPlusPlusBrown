@@ -2,12 +2,14 @@
 #pragma once
 
 
+#include "../fftw_mshv_plug.h"
+
+#include "wasm_defines.h"
+
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <vector>
 #include <string>
-
-#include "../fftw_mshv_plug.h"
 
 #include <complex.h>
 //#define complex		_Complex
@@ -336,7 +338,8 @@ struct QString {
 
     QChar &operator[](int index) const {
         if (index >= str->length()) {
-            throw std::runtime_error("string index[] error");
+            fprintf(stderr, "string index[] error, index=%d length=%d  str=%s\n", index, str->length(), str->c_str());
+            abort();
         }
         QChar *p = (QChar *)str->data()+index;
         return *p;
@@ -445,3 +448,20 @@ void mshv_init();
     std::vector<typ> name##0(size); \
     auto name = (name##0).data();
 
+
+#ifdef __wasm__
+WASM_IMPORT("decodeResultOutput") void decodeResultOutput(const char *line);
+#else
+inline void decodeResultOutput(const char *line) { printf("%s\n", line); }
+#endif
+
+void debugPrintf(const char *fmt, ...);
+
+std::string arrayToString(const char *name, const float *arr, int len);
+std::string arrayToStringD(const char *name, const double *arr, int len);
+std::string arrayToStringC(const char *name, const plug_complex_float *arr, int len);
+std::string arrayToStringSCD(const char *name, const std::complex<double> *arr, int len);
+void printArray(const char *name, const float *arr, int len);
+void printArrayC(const char *name, const plug_complex_float *arr, int len);
+void printArrayD(const char *name, const double *arr, int len);
+void printArraySCD(const char *name, const std::complex<double> *arr, int len);

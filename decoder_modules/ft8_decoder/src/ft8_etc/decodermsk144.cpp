@@ -586,7 +586,7 @@ void DecoderMs::SetDecodetTextMsk2DL(QStringList list)//2.46
     {
         if (tlist.at(x)==s_MyBaseCall || tlist.at(x)==s_MyCall)
         {
-            EmitDecodetTextRxFreq(list,true,true);
+            EmitDecodedTextRxFreq(list,true,true);
             break;
         }
     }
