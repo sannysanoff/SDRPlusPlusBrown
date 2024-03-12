@@ -86,6 +86,19 @@ struct WasmerFT8Decoder {
             }
         }
 
+        void write_i64(size_t offset, int64_t value) {
+            if (offset + sizeof(int64_t) <= limit) {
+                mem[offset] = (uint8_t) (value & 0xFF);
+                mem[offset + 1] = (uint8_t) ((value >> 8) & 0xFF);
+                mem[offset + 2] = (uint8_t) ((value >> 16) & 0xFF);
+                mem[offset + 3] = (uint8_t) ((value >> 24) & 0xFF);
+                mem[offset + 4] = (uint8_t) ((value >> 32) & 0xFF);
+                mem[offset + 5] = (uint8_t) ((value >> 40) & 0xFF);
+                mem[offset + 6] = (uint8_t) ((value >> 48) & 0xFF);
+                mem[offset + 7] = (uint8_t) ((value >> 56) & 0xFF);
+            }
+        }
+
         void put_string(size_t offset, const char *str) {
             if (offset + strlen(str) + 1 <= limit) {
                 strcpy(mem + offset, str);
@@ -96,7 +109,7 @@ struct WasmerFT8Decoder {
             static char buf[10000];
             buf[0] = 0;
             for(int q=0;q < 32; q++) {
-                sprintf(buf + strlen(buf),"%02x ", mem[offset+q]);
+                snprintf(buf + strlen(buf), 1000,"%02x ", mem[offset+q]);
             }
             return buf;
         }
@@ -564,8 +577,34 @@ struct WasmerFT8Decoder {
     }
 
     static wasm_trap_t *clock_time_get_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        printf("Callback!!\n");
-        abort();
+        auto *thiz = (WasmerFT8Decoder *) env;
+        auto clockId = args->data[0].of.i32;
+        auto prec = args->data[0].of.i64;
+        auto destPtr = args->data[0].of.i32;
+        long long rv;
+
+
+        switch (clockId) {
+            case 1: // __WASI_CLOCKID_MONOTONIC:
+            {
+                auto now = std::chrono::steady_clock::now().time_since_epoch();
+                rv = duration_cast<std::chrono::nanoseconds>(now).count();
+                break;
+            }
+            case 0: // __WASI_CLOCKID_REALTIME:
+            {
+                auto now = std::chrono::system_clock::now().time_since_epoch();
+                rv = duration_cast<std::chrono::nanoseconds>(now).count();
+                break;
+            }
+            default: {
+                results->data[0] = WASM_I32_VAL(EINVAL);
+                return nullptr;
+            }
+        }
+        results->data[0] = WASM_I32_VAL(0);
+        thiz->memory.write_i64(destPtr, rv);
+        return nullptr;
     }
 
     static wasm_trap_t *sched_yield_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
@@ -705,40 +744,7 @@ struct WasmerFT8Decoder {
     }
 
 
-    static errno_t clock_time_get(
-        int32_t clock_id,
-        uint64_t precision,
-        int32_t destptr
-    ) {
-        using namespace std::chrono;
 
-        if (destptr == 0) {
-            return EINVAL;
-        }
-
-        /*
-
-        switch (clock_id) {
-            case 1: // __WASI_CLOCKID_MONOTONIC:
-            {
-                auto now = steady_clock::now().time_since_epoch();
-                *time = duration_cast<nanoseconds>(now).count();
-                break;
-            }
-            case 0: // __WASI_CLOCKID_REALTIME:
-            {
-                auto now = system_clock::now().time_since_epoch();
-                *time = duration_cast<nanoseconds>(now).count();
-                break;
-            }
-            default:
-                return EINVAL;
-        }
-
-        */
-
-        return 0;
-    }
 
     void decodeFT8(int threads, const char *mode, int sampleRate, dsp::stereo_t *samples, long long nsamples,
                    const std::function<void(const char *)> &dest) { {

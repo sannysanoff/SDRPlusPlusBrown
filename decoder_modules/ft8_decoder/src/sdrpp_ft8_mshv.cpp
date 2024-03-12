@@ -39,20 +39,16 @@ namespace ft8 {
         // .
         //
         char b[10];
-        char *b1 = new char[10];
-        char *b2 = (char*)malloc(10);
-        debugPrintf("# hello here2!, stack=%p new=%p malloc=%p", b, b1, b2);
-        debugPrintf("# mshv init, nsamples=%d samples=%x", nsamples, samples);
+        // debugPrintf("# hello here 2!, inputBuffer=%x, stack var =%p ", &samples[0], b);
         mshv_init();
-        debugPrintf("# mshv init ok, nsamples=%d samples=%x", nsamples, samples);
 
         //        four2a_d2c_cnt = 0;
 
         if (sampleRate != 12000) {
-            decodeResultOutput("# bad samplerate");
+            // decodeResultOutput("# bad samplerate");
             return;
         }
-        decodeResultOutput("# proceed1");
+        // decodeResultOutput("# proceed1");
 
         std::vector<short> converted;
         converted.resize(nsamples);
@@ -64,19 +60,18 @@ namespace ft8 {
         //    auto core = std::make_shared<MsCore>();
         //    core->ResampleAndFilter(converted.data(), converted.size());
         auto dms = std::make_shared<DecoderMs>();
-        debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
+        // debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
         if (std::string("ft8") == mode) {
-            debugPrintf("# set mode ft8");
+            // debugPrintf("# set mode ft8");
             dms->setMode(DMS_FT8);
-            debugPrintf("# set mode ft8 ok ");
+            // debugPrintf("# set mode ft8 ok ");
         } else if (std::string("ft4") == mode) {
             dms->setMode(DMS_FT4);
         } else {
-            debugPrintf("# invalid mode");
             fprintf(stderr, "ERROR: invalid mode is specified. Valid modes: ft8, ft4\n");
             exit(1);
         }
-        debugPrintf("# call adds, dms=%x", dms.get());
+        // debugPrintf("# call adds, dms=%x", dms.get());
         {
             QStringList ql;
             ql << "CALL";
@@ -98,15 +93,12 @@ namespace ft8 {
         decodeResultOutput("# p4");
         dms->SetThrLevel(threads);
 
-        debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
+        // debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
 
         dms->SetDecode(converted.data(), converted.size(), "120000", 0, 4, false, true, false);
-        debugPrintf("# called.");
         while (dms->IsWorking()) {
-            debugPrintf("# waiting.");
             usleep(100000);
         }
-        debugPrintf("# exiting.");
         return;
     }
 
@@ -131,7 +123,7 @@ namespace ft8 {
 
     void decodeFT8MainAt12000(int nsamples) {
         char b[20000000];
-        debugPrintf("# hello here!, inputBuffer=%x %x, stack=%p new=%p malloc=%p", &inputBuffer[0], inputBuffer, b);
+        // debugPrintf("# hello here!, inputBuffer=%x %x, stack var=%p", &inputBuffer[0], inputBuffer, b);
         decodeFT8(1, "ft8", 12000, &inputBuffer[0], nsamples, [](int, QStringList) {
         });
     }

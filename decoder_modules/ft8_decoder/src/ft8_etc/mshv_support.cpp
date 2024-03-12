@@ -79,6 +79,10 @@ QString::QString(const char* init) {
     initWithConstChar(init, strlen(init));
     verify();
 }
+QString::QString(const char* init, int len) {
+    initWithConstChar(init, len);
+    verify();
+}
 QString::QString(char init) {
     initWithConstChar("", 0);
     append(init);
@@ -283,7 +287,7 @@ std::string arrayToStringC(const char *name, const plug_complex_float *arr, int 
     dbg[0] = 0;
     int ix = 0;
     for(int q=0; q<len;q++) {
-        ix += sprintf(dbg+ix, "%s[%d] = %f %f*i\n", name, q, arr[q][0], arr[q][1]);
+        ix += snprintf(dbg+ix, rv.size()-ix, "%s[%d] = %f %f*i\n", name, q, arr[q][0], arr[q][1]);
     }
     rv.resize(strlen(dbg));
     return rv;

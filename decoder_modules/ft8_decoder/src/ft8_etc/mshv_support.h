@@ -140,6 +140,7 @@ struct QString {
     void initWithConstChar(const char *init, int len);
 
     QString(const char *init);
+    QString(const char *init, int len);
 
     explicit QString(char init);
 
@@ -338,7 +339,7 @@ struct QString {
 
     QChar &operator[](int index) const {
         if (index >= str->length()) {
-            fprintf(stderr, "string index[] error, index=%d length=%d  str=%s\n", index, str->length(), str->c_str());
+            fprintf(stderr, "string index[] error, index=%d length=%zu  str=%s\n", index, str->length(), str->c_str());
             abort();
         }
         QChar *p = (QChar *)str->data()+index;

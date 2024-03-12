@@ -132,8 +132,8 @@ void GenFt8::make_c77_i4tone_codeword(bool *c77,int *i4tone,bool *codeword)//,bo
 }
 void GenFt8::make_c77_i4tone(bool *c77,int *i4tone)//,bool f_gen,bool f_addc
 {
-    const int icos7_77 [7]={3,1,4,0,6,5,2}; 
-    const int graymap77[8]={0,1,3,2,5,6,4,7}; 
+    static int icos7_77 [7]={3,1,4,0,6,5,2};
+    static int graymap77[8]={0,1,3,2,5,6,4,7};
     
     bool codeword[180];//3*58+5   linux subtract error
 	//bool *codeword = new bool[180];//3*58+5   full=174
@@ -146,7 +146,9 @@ void GenFt8::make_c77_i4tone(bool *c77,int *i4tone)//,bool f_gen,bool f_addc
     	codeword[i] = 0;
    	} 
 
-    genPomFt.encode174_91(cc77,codeword); 
+    // debugPrintf("        call .encode174_91..");
+    genPomFt.encode174_91(cc77,codeword);
+    // debugPrintf("        called .encode174_91.");
 
     for (int i= 0; i < 100; ++i) i4tone[i] = 0;      
     //! Message structure: S7 D29 S7 D29 S7

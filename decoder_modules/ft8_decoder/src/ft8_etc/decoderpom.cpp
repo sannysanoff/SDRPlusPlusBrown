@@ -675,9 +675,9 @@ void PomAll::cshift1(std::complex<double> *a,int cou_a,int ish)
 
     //std::complex<double> t[cou_a];  //garmi hv v1.42
     //std::complex<double> t[cou_a*2+ish+50];  //garmi hv v1.43 ok
-    debugPrintf("            cshift1: %d", cou_a);
+    // debugPrintf("            cshift1: %d", cou_a);
     std::complex<double> *t = (std::complex<double> *)malloc(sizeof(std::complex<double>) * (cou_a+100)); //garmi pri goliam count hv v1.43 correct ok
-    debugPrintf("            cshift1: %x %x", t, a);
+    // debugPrintf("            cshift1: %x %x", t, a);
     for (int i=0; i< cou_a; i++)
         t[i]=a[i];
 
@@ -1551,7 +1551,8 @@ void PomFt::encode174_91_nocrc(bool *message910,bool *codeword)
         {
             for (int j = 0; j < 23; ++j)
             {
-                QString temp = g_ft8_174_91[i].substr(j,1);
+                QString temp;
+                temp.append(g_ft8_174_91[i][j]);
                 bool ok;
                 int istr = toInt(temp.str->c_str(), ok, 16);
                 for (int jj = 0; jj < 4; ++jj)

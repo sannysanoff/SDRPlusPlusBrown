@@ -2876,14 +2876,14 @@ void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int 
             //qDebug()<<"D6="<<_f05_<<_f06_<<_f06_-_f05_;
         }
         //2.41 important to be here for slow speed PCs
-        debugPrintf("Pthread create....");
+        // debugPrintf("Pthread create....");
         pthread_create(&th0,NULL,DecoderMs::ThrDec0,(void*)this);
         pthread_create(&th1,NULL,DecoderMs::ThrDec1,(void*)this);
         if (nthr>2) pthread_create(&th2,NULL,DecoderMs::ThrDec2,(void*)this);
         if (nthr>3) pthread_create(&th3,NULL,DecoderMs::ThrDec3,(void*)this);
         if (nthr>4) pthread_create(&th4,NULL,DecoderMs::ThrDec4,(void*)this);
         if (nthr>5) pthread_create(&th5,NULL,DecoderMs::ThrDec5,(void*)this);
-        debugPrintf("Pthread crete end");
+        // debugPrintf("Pthread crete end");
     }
 }
 

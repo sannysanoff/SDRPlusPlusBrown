@@ -8,7 +8,7 @@
 //character*22 g(87)
 //integer colorder(N) !parity generator matrix for (174,91) code
 //int K=87
-static const std::string g_ft8_174_91[83] =
+static const char *g_ft8_174_91[83] =
     {
         "8329ce11bf31eaf509f27fc",
         "761c264e25c259335493132",
