@@ -46,6 +46,7 @@ elseif (WASM)
     target_compile_definitions(sdrpp_ft8_mshv PRIVATE WASM=1)
     target_compile_options(sdrpp_ft8_mshv PUBLIC "-fno-exceptions")
     set_target_properties(sdrpp_ft8_mshv PROPERTIES LINK_FLAGS "-Wl,--initial-memory=800063488,--max-memory=800063488")
+    set_target_properties(sdrpp_ft8_mshv PROPERTIES LINK_FLAGS "-mexec-model=reactor")
     message("WASM2 ======")
 else ()
     message("DEFAULT ======")
@@ -136,7 +137,11 @@ if (APPLE)
     target_link_libraries(sdrpp_ft8_mshv PUBLIC ${CoreFoundation})
 endif ()
 
-
+if (APPLE)
+    set(WASMEDGE /Users/san/Fun/WasmEdge/build)
+    target_include_directories(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/include/api" )
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/lib/api/libwasmedge.dylib")
+endif ()
 
 #target_link_options(test0 PUBLIC -fsanitize=memory)
 

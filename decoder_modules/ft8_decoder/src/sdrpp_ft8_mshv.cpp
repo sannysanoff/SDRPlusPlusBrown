@@ -55,8 +55,6 @@ namespace ft8 {
         for (int q = 0; q < nsamples; q++) {
             converted[q] = samples[q].l * 16383.52;
         }
-        decodeResultOutput("# decodeft8 begin");
-
         //    auto core = std::make_shared<MsCore>();
         //    core->ResampleAndFilter(converted.data(), converted.size());
         auto dms = std::make_shared<DecoderMs>();
@@ -86,11 +84,8 @@ namespace ft8 {
             ql << "";
             dms->SetCalsHash(ql);
         }
-        decodeResultOutput("# p2");
         dms->SetResultsCallback(callback);
-        decodeResultOutput("# p3");
         dms->SetDecoderDeep(3);
-        decodeResultOutput("# p4");
         dms->SetThrLevel(threads);
 
         // debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
@@ -122,14 +117,23 @@ namespace ft8 {
     WASM_EXPORT("decodeFT8MainAt12000")
 
     void decodeFT8MainAt12000(int nsamples) {
+#ifdef __wasm__
+        // dont delete 2 lines in wasm
         char b[20000000];
-        // debugPrintf("# hello here!, inputBuffer=%x %x, stack var=%p", &inputBuffer[0], inputBuffer, b);
+        debugPrintf("# hello here!, inputBuffer=%x %x, stack var=%p", &inputBuffer[0], inputBuffer, b);
+#endif
+
         decodeFT8(1, "ft8", 12000, &inputBuffer[0], nsamples, [](int, QStringList) {
         });
     }
 
     WASM_EXPORT("decodeFT4MainAt12000")
     void decodeFT4MainAt12000(int nsamples) {
+#ifdef __wasm__
+        // dont delete 2 lines in wasm
+        char b[20000000];
+        debugPrintf("# hello here!, inputBuffer=%x %x, stack var=%p", &inputBuffer[0], inputBuffer, b);
+#endif
         decodeFT8(1, "ft4", 12000, inputBuffer, nsamples, [](int, QStringList) {
         });
     }

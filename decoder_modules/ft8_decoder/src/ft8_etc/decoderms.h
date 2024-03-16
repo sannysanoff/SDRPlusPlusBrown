@@ -180,8 +180,8 @@ public:
             //        std::cout << "{" << i << "}" << lst[i].str->c_str() << " ";
         }
         strcat(buf,"\n");
-        fwrite(buf, 1, strlen(buf), stdout);
-        fflush(stdout);
+        // fwrite(buf, 1, strlen(buf), stdout);
+        // fflush(stdout);
         decodeResultOutput(buf);
 //        if (resultsCallback) {
 //            resultsCallback(11, lst);

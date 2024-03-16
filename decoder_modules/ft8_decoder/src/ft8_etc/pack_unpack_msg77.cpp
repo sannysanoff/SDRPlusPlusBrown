@@ -48,13 +48,15 @@ static int nzhash_pos_writeg = 0;
 void PackUnpackMsg77::initPackUnpack77(bool f_dec_gen)//f_dec_gen -> dec=true gen=false
 {
 
-    // debugPrintf("c_77_04 len = %d", c_77_04.count());
-     c_77_04=" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";
-     c_77_txt =" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?";
-     a1_28 = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-     a2_28 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-     a3_28 = "0123456789";
-     a4_28 = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    if (c_77_04.count() < 10) {
+         // debugPrintf("c_77_04 len = %d", c_77_04.count());
+         c_77_04=" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";
+         c_77_txt =" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?";
+         a1_28 = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+         a2_28 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+         a3_28 = "0123456789";
+         a4_28 = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    }
 
     //qDebug()<<f_dec_gen;
     sf_dec_gen = f_dec_gen;

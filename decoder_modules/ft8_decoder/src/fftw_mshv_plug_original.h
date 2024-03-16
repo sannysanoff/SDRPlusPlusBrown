@@ -111,26 +111,36 @@ inline void Fftplug_execute_plan(PlanStorage &s, FFT_PLAN plan) {
     fftwf_plan fplan;
     fftwf_complex *cfrom;
     fftwf_complex *cto;
-    float *ffrom;
-    float *fto;
     int nfft;
-    static int execCount = 0;
-    static int execN = 0;
     {
         std::lock_guard g(s.plansLock);
         auto pi = &s.allPlans[plan.handle];
         cfrom = pi->inputC;
         cto = pi->outputC;
-        ffrom = pi->inputF;
-        fto = pi->outputF;
         nfft = pi->nfft;
         fplan = pi->plan;
     }
-    printf("***[%d, %d] exec plan %d: n=%d in c/f: %p %p  out c/f %p %p\n", execCount, execN, plan.handle, nfft, cfrom, ffrom, cto, fto);
-    execCount++;
-    execN+=nfft;
+    if(plan.handle != 0) {
+        // printf("*** exec plan %d\n", plan.handle);
+    }
     if (cfrom && cto) {
-        fftwf_execute_dft(fplan, cfrom, cto);
+        char dbg[102400];
+        dbg[0] = 0;
+        /*
+        for(int q=0; q<nfft;q++) {
+            sprintf(dbg+strlen(dbg), "in[%d] = %f %f\n", q, cfrom[q][0], cfrom[q][1]);
+            if (isnan(cfrom[q][0]) || isnan(cfrom[q][1])) {
+                cfrom[q][0] = 0;
+                cfrom[q][1] = 0;
+            }
+        }
+        printf("%s", dbg);
+        */
+        // fftwf_execute_dft(fplan, cfrom, cto);
+        fftwf_execute(fplan);
+        if(plan.handle != 0) {
+            // printf("*** exec plan c2c(%d) done %d\n", nfft, plan.handle);
+        }
     } else {
         fftwf_execute(fplan);
     }

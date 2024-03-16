@@ -17,16 +17,8 @@ public:
     void four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,FFT_PLAN *pd,int &cpd,
                     int nfft,int isign,int iform);
 
-    void four2a_c2c(std::complex<double> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform) {
-        std::vector<std::complex<float>> buf(nfft);
-        for (int i = 0; i < nfft; ++i) {
-            buf[i] = a[i];
-        }
-        four2a_c2c(buf.data(),a1, pc, cpc, nfft, isign, iform);
-        for (int i = 0; i < nfft; ++i) {
-            a[i] = buf[i];
-        }
-    }
+    void four2a_c2c(std::complex<double> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform);
+
     void four2a_d2c(std::complex<double> *a,std::complex<float> *a1,double *d,float *d1,FFT_PLAN *pd,int &cpd,
                     int nfft,int isign,int iform) {
         std::vector<std::complex<float>> outbuf(nfft);

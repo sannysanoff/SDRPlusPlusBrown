@@ -21,7 +21,9 @@
 
 namespace flog {
 
+#ifndef __wasm__
     std::mutex outMtx;
+#endif
     std::vector<LogRec> logRecords;
 
     const char* TYPE_STR[_TYPE_COUNT] = {
@@ -152,7 +154,9 @@ namespace flog {
 
         // Write to output
         {
+#ifndef __wasm__
             std::lock_guard<std::mutex> lck(outMtx);
+#endif
 #if defined(_WIN32)
             // Get output handle and return if invalid
             int wOutStream = (type == TYPE_ERROR) ? STD_ERROR_HANDLE  : STD_OUTPUT_HANDLE;
