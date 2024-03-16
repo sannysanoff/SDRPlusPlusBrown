@@ -884,6 +884,14 @@ struct WasmedgeFT8Decoder {
 
         memory.put(inputBufferOffset, (const char*)samples, nsamples * sizeof(dsp::stereo_t));
 
+        {
+            WasmEdge_Value args[1] = {WasmEdge_ValueGenI32(nsamples), };
+            WasmEdge_Value results[1] = {};
+
+            res = WasmEdge_ExecutorInvoke(executor, decodeFT8MainFunction, args, 1, results, 1);
+            CHECK_RESULT(res);
+        }
+
 
         printf("Ok\n");
     }
