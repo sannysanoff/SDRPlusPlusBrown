@@ -1689,6 +1689,7 @@ void doDecode(const char *mode, const char *path, int threads,
     fflush(stdout);
     fflush(stderr);
     try {
+        sleep(30);
         for (int q = 0; q < 1; q++) {
             //            spdlog::info("=================================");
 
@@ -1719,7 +1720,7 @@ void doDecode(const char *mode, const char *path, int threads,
             } else {
                 if (WasmedgeFT8Decoder::setupModule(
                     "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv")) {
-                    for (int q = 0; q < 5; q++) {
+                    for (int q = 0; q < 500; q++) {
                         auto ctm = currentTimeMillis();
                         WasmedgeFT8Decoder wd;
                         wd.wasmDecodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](const char *line) {
