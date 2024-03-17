@@ -53,5 +53,8 @@ extern "C" {
 
 }
 
+long long planAllocTime;
+long long planExecTime;
+
 
 #endif

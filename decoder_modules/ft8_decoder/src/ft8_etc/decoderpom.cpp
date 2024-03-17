@@ -39,10 +39,10 @@ static bool _block_th_all_ = false;        //need to be static for all
 static int _wait_t_ = SLPAMIN - SLPASTEP;  //need to be static for all
 static int setup_c2c_d2c_(bool &wait,FFT_PLAN &p,std::complex<float> *a,int nfft,int isign,int iform,float *d = 0)
 {
-    debugPrintf("setup_c2c_d2c_ begin isign %d iform %d sizeof(p)=%d, &p=%p", isign, iform, sizeof(p), &p);
+    // debugPrintf("setup_c2c_d2c_ begin isign %d iform %d sizeof(p)=%d, &p=%p", isign, iform, sizeof(p), &p);
     if (_block_th_all_ || !wait)
     {
-        debugPrintf("setup_c2c_d2c_ ret: %d %d ", _block_th_all_, wait);
+        // debugPrintf("setup_c2c_d2c_ ret: %d %d ", _block_th_all_, wait);
         _wait_t_ += SLPASTEP;
         wait = true; //retr++; qDebug()<<"retry---->"<<retr<<_wait_t_;
         return _wait_t_;
@@ -61,9 +61,9 @@ static int setup_c2c_d2c_(bool &wait,FFT_PLAN &p,std::complex<float> *a,int nfft
         p = fftplug_allocate_plan_c2c(nfft, false);
         //p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_BACKWARD, flag);
     else if (isign==-1 && iform==0) {
-        debugPrintf("before fftplug_allocate_plan_r2c");
+        // debugPrintf("before fftplug_allocate_plan_r2c");
         auto zz = fftplug_allocate_plan_r2c(nfft);
-        debugPrintf("Returned from native, zz = %d", zz.handle);
+        //debugPrintf("Returned from native, zz = %d", zz.handle);
         p = zz;
     }
         //p=fftwf_plan_dft_r2c_1d(nfft, d,(fftwf_complex *)a, flag);
@@ -71,7 +71,7 @@ static int setup_c2c_d2c_(bool &wait,FFT_PLAN &p,std::complex<float> *a,int nfft
         //p=fftwf_plan_dft_c2r_1d(nfft,(fftwf_complex *)a,d, flag);
             abort();
         //p = fftplug_allocate_plan_c2r(nfft);
-    debugPrintf("setup_c2c_d2c_ ok");
+    //debugPrintf("setup_c2c_d2c_ ok");
     _block_th_all_ = false;
     return 0;
 }
@@ -2063,5 +2063,7 @@ void initDecoderPom() {
     memset(&da_d2c0, 0, sizeof(da_d2c0));
 }
 
-//// END POMFT ///
+//// END POMFT ////
+
+
 

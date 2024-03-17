@@ -2001,7 +2001,7 @@ void DecoderMs::StrtDecode() {
     int nforce = 1; // force_decode
     bool pick;
 
-    debugPrintf("StrtDecode ok");
+    //debugPrintf("StrtDecode ok");
 
     if ((s_mod != 0 && s_mod != 7 && s_mod != 8 && s_mod != 9 && s_mod != 10 && s_mod != 11 && s_mod != 12 &&
          s_mod != 13 && !allq65) &&

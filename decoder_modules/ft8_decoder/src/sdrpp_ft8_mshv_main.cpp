@@ -434,22 +434,23 @@ struct WasmedgeFT8Decoder {
         return WasmEdge_Result_Success; // To keep the compiler happy, should not reach here.
     }
 
-    float *arrayAllocatorFloat(int count) {
-        return (float *) callWasmMalloc(count * sizeof(float));
-    }
+    // float *arrayAllocatorFloat(int count) {
+    //     return (float *) callWasmMalloc(count * sizeof(float));
+    // }
+    //
+    // fftwf_complex *arrayAllocatorComplex(int count) {
+    //     return (fftwf_complex *) callWasmMalloc(count * sizeof(fftwf_complex));
+    // }
+    //
+    // void deallocatorFloat(float *f) {
+    //     return callWasmFree(f);
+    // }
+    //
+    // void deallocatorComplex(fftwf_complex *f) {
+    //     return callWasmFree(f);
+    // }
 
-    fftwf_complex *arrayAllocatorComplex(int count) {
-        return (fftwf_complex *) callWasmMalloc(count * sizeof(fftwf_complex));
-    }
-
-    void deallocatorFloat(float *f) {
-        return callWasmFree(f);
-    }
-
-    void deallocatorComplex(fftwf_complex *f) {
-        return callWasmFree(f);
-    }
-
+    /*
     void callWasmFree(void *ptr) {
         WasmEdge_Value args[1] = {WasmEdge_ValueGenI32(((int8_t *)ptr) - (int8_t *)memory.ptr(0, 8))};
         WasmEdge_Value results[0];
@@ -475,6 +476,7 @@ struct WasmedgeFT8Decoder {
         }
     }
 
+    */
     void registerWASIFunctions(WasmEdge_ModuleInstanceContext *envModuleInstance) {
         ::WasmEdge_ValType ParamList[4];
         ::WasmEdge_ValType ReturnList[1];
@@ -725,9 +727,9 @@ struct WasmedgeFT8Decoder {
     WasmEdge_FunctionInstanceContext *decodeFT4MainFunction;
     WasmEdge_FunctionInstanceContext *getFT8InputBufferSizeFunction;
     WasmEdge_FunctionInstanceContext *getFT8InputBufferFunction;
-    WasmEdge_FunctionInstanceContext *wasmMallocFunction;
+    // WasmEdge_FunctionInstanceContext *wasmMallocFunction;
     WasmEdge_FunctionInstanceContext *testPrintFunction;
-    WasmEdge_FunctionInstanceContext *wasmFreeFunction;
+    // WasmEdge_FunctionInstanceContext *wasmFreeFunction;
     WasmEdge_FunctionInstanceContext *wasmInitializeFunction;
     WasmEdge_ModuleInstanceContext *executableModule;
     WasmEdge_ExecutorContext *executor;
@@ -783,18 +785,18 @@ struct WasmedgeFT8Decoder {
             WasmEdge_FunctionInstanceContext *function = WasmEdge_ModuleInstanceFindFunction(
                 executableModule, FuncNames[i]);
             if (function) {
-                if (stringEquals(FuncNames[i], "wasmMalloc")) {
-                    wasmMallocFunction = function;
-                    continue;
-                }
+                // if (stringEquals(FuncNames[i], "wasmMalloc")) {
+                //     wasmMallocFunction = function;
+                //     continue;
+                // }
                 if (stringEquals(FuncNames[i], "testPrint")) {
                     testPrintFunction = function;
                     continue;
                 }
-                if (stringEquals(FuncNames[i], "wasmFree")) {
-                    wasmFreeFunction = function;
-                    continue;
-                }
+                // if (stringEquals(FuncNames[i], "wasmFree")) {
+                //     wasmFreeFunction = function;
+                //     continue;
+                // }
                 if (stringEquals(FuncNames[i], "_initialize")) {
                     wasmInitializeFunction = function;
                     continue;
@@ -981,8 +983,8 @@ struct WasmerFT8Decoder {
     wasm_func_t *getFT8InputBufferSizeFunction;
     wasm_func_t *getFT8InputBufferFunction;
     wasm_func_t *wasiThreadStartFunction;
-    wasm_func_t *wasmMallocFunction;
-    wasm_func_t *wasmFreeFunction;
+    // wasm_func_t *wasmMallocFunction;
+    // wasm_func_t *wasmFreeFunction;
     wasm_func_t *wasmInitializeFunction;
 
     wasm_store_t *store;
@@ -1295,14 +1297,14 @@ struct WasmerFT8Decoder {
                 checkStaticInitFunction = wasm_extern_as_func(iexterns.data[q]);
                 continue;
             }
-            if ((nm == "wasmMalloc")) {
-                wasmMallocFunction = wasm_extern_as_func(iexterns.data[q]);
-                continue;
-            }
-            if ((nm == "wasmFree")) {
-                wasmFreeFunction = wasm_extern_as_func(iexterns.data[q]);
-                continue;
-            }
+            // if ((nm == "wasmMalloc")) {
+            //     wasmMallocFunction = wasm_extern_as_func(iexterns.data[q]);
+            //     continue;
+            // }
+            // if ((nm == "wasmFree")) {
+            //     wasmFreeFunction = wasm_extern_as_func(iexterns.data[q]);
+            //     continue;
+            // }
             if ((nm == "_initialize")) {
                 wasmInitializeFunction = wasm_extern_as_func(iexterns.data[q]);
                 continue;
@@ -1525,52 +1527,52 @@ struct WasmerFT8Decoder {
         return nullptr;
     }
 
-    float *arrayAllocatorFloat(int count) {
-        return (float *) callWasmMalloc(count * sizeof(float));
-    }
+    // float *arrayAllocatorFloat(int count) {
+    //     return (float *) callWasmMalloc(count * sizeof(float));
+    // }
+    //
+    // fftwf_complex *arrayAllocatorComplex(int count) {
+    //     return (fftwf_complex *) callWasmMalloc(count * sizeof(fftwf_complex));
+    // }
 
-    fftwf_complex *arrayAllocatorComplex(int count) {
-        return (fftwf_complex *) callWasmMalloc(count * sizeof(fftwf_complex));
-    }
+    // void deallocatorFloat(float *f) {
+    //     return callWasmFree(f);
+    // }
+    //
+    // void deallocatorComplex(fftwf_complex *f) {
+    //     return callWasmFree(f);
+    // }
+    //
 
-    void deallocatorFloat(float *f) {
-        return callWasmFree(f);
-    }
-
-    void deallocatorComplex(fftwf_complex *f) {
-        return callWasmFree(f);
-    }
-
-
-    void callWasmFree(void *ptr) {
-        auto bptr = (byte_t *) ptr;
-        auto offset = bptr - memory.mem;
-        wasm_val_t args_val[1] = {WASM_I32_VAL((int)offset)};
-        wasm_val_t results_val[] = {};
-        wasm_val_vec_t args = WASM_ARRAY_VEC(args_val);
-        wasm_val_vec_t results = WASM_ARRAY_VEC(results_val);
-
-        if (auto trap = wasm_func_call(wasmFreeFunction, &args, &results)) {
-            print_trap(trap);
-        }
-    }
-
-    void *callWasmMalloc(int size) {
-        wasm_val_t args_val[1] = {WASM_I32_VAL(size)};
-        wasm_val_t results_val[1] = {WASM_I32_VAL(0)};
-        wasm_val_vec_t args = WASM_ARRAY_VEC(args_val);
-        wasm_val_vec_t results = WASM_ARRAY_VEC(results_val);
-
-        if (auto trap = wasm_func_call(wasmMallocFunction, &args, &results)) {
-            print_trap(trap);
-            return nullptr;
-        }
-        auto valu = results.data[0].of.i32;
-        if (!valu) {
-            abort();
-        }
-        return memory.mem + valu;
-    }
+    // void callWasmFree(void *ptr) {
+    //     auto bptr = (byte_t *) ptr;
+    //     auto offset = bptr - memory.mem;
+    //     wasm_val_t args_val[1] = {WASM_I32_VAL((int)offset)};
+    //     wasm_val_t results_val[] = {};
+    //     wasm_val_vec_t args = WASM_ARRAY_VEC(args_val);
+    //     wasm_val_vec_t results = WASM_ARRAY_VEC(results_val);
+    //
+    //     if (auto trap = wasm_func_call(wasmFreeFunction, &args, &results)) {
+    //         print_trap(trap);
+    //     }
+    // }
+    //
+    // void *callWasmMalloc(int size) {
+    //     wasm_val_t args_val[1] = {WASM_I32_VAL(size)};
+    //     wasm_val_t results_val[1] = {WASM_I32_VAL(0)};
+    //     wasm_val_vec_t args = WASM_ARRAY_VEC(args_val);
+    //     wasm_val_vec_t results = WASM_ARRAY_VEC(results_val);
+    //
+    //     if (auto trap = wasm_func_call(wasmMallocFunction, &args, &results)) {
+    //         print_trap(trap);
+    //         return nullptr;
+    //     }
+    //     auto valu = results.data[0].of.i32;
+    //     if (!valu) {
+    //         abort();
+    //     }
+    //     return memory.mem + valu;
+    // }
 
     void wasmDecodeFT8(int threads, const char *mode, int sampleRate, dsp::stereo_t *samples, long long nsamples,
                        const std::function<void(const char *)> &dest) { {
@@ -1689,7 +1691,6 @@ void doDecode(const char *mode, const char *path, int threads,
     fflush(stdout);
     fflush(stderr);
     try {
-        sleep(30);
         for (int q = 0; q < 1; q++) {
             //            spdlog::info("=================================");
 
@@ -1712,7 +1713,7 @@ void doDecode(const char *mode, const char *path, int threads,
 
             sampleRate = 12000;
 
-            if (true) {
+            if (false) {
                 auto ctm = currentTimeMillis();
                 ft8::decodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](int mode, QStringList result) {
                 });
@@ -1720,7 +1721,9 @@ void doDecode(const char *mode, const char *path, int threads,
             } else {
                 if (WasmedgeFT8Decoder::setupModule(
                     "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv")) {
-                    for (int q = 0; q < 500; q++) {
+                    for(int q=0; q<5; q++) {
+                        planAllocTime = 0;
+                        planExecTime = 0;
                         auto ctm = currentTimeMillis();
                         WasmedgeFT8Decoder wd;
                         wd.wasmDecodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](const char *line) {
@@ -1728,7 +1731,8 @@ void doDecode(const char *mode, const char *path, int threads,
                             fflush(stdout);
                         });
                         std::cout << "DECODE_EOF" << std::endl;
-                    std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
+                        std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
+                        std::cout << "PlanAllocTime: " << planAllocTime << " ms, Plan ExecTime:" << planExecTime << " ms" << std::endl;
                     }
                 }
             }

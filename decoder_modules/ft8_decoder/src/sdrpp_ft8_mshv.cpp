@@ -41,8 +41,6 @@ namespace ft8 {
         //
         char b[10];
         debugPrintf("# hello here 2!, inputBuffer=%x, stack var =%p heap=%p", &samples[0], b, malloc(8));
-        auto z = fftplug_allocate_plan_r2c(1024);
-        debugPrintf("allocated: %d", z.handle);
         mshv_init();
 
         //        four2a_d2c_cnt = 0;
@@ -61,18 +59,18 @@ namespace ft8 {
         //    auto core = std::make_shared<MsCore>();
         //    core->ResampleAndFilter(converted.data(), converted.size());
         auto dms = std::make_shared<DecoderMs>();
-        debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
+        //debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
         if (std::string("ft8") == mode) {
-            debugPrintf("# set mode ft8");
+          //  debugPrintf("# set mode ft8");
             dms->setMode(DMS_FT8);
-            debugPrintf("# set mode ft8 ok ");
+            //debugPrintf("# set mode ft8 ok ");
         } else if (std::string("ft4") == mode) {
             dms->setMode(DMS_FT4);
         } else {
             fprintf(stderr, "ERROR: invalid mode is specified. Valid modes: ft8, ft4\n");
             exit(1);
         }
-        debugPrintf("# call adds, dms=%x", dms.get());
+        //debugPrintf("# call adds, dms=%x", dms.get());
         {
             QStringList ql;
             ql << "CALL";
@@ -150,11 +148,11 @@ namespace ft8 {
 
 #ifdef __wasm__
 
-WASM_EXPORT("wasmMalloc") void *wasmMalloc(int size) {
-    auto rv=  malloc(size);
-    debugPrintf("wasmMalloc: returns %p", rv);
-    return rv;
-}
-WASM_EXPORT("wasmFree") void wasmFree(void *ptr) { free(ptr); }
+// WASM_EXPORT("wasmMalloc") void *wasmMalloc(int size) {
+//     auto rv=  malloc(size);
+//     debugPrintf("wasmMalloc: returns %p", rv);
+//     return rv;
+// }
+// WASM_EXPORT("wasmFree") void wasmFree(void *ptr) { free(ptr); }
 
 #endif

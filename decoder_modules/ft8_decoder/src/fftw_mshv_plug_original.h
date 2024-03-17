@@ -3,6 +3,9 @@
 #include <fftw3.h>
 #include "fftw_mshv_plug.h"
 #include <vector>
+#include <unordered_map>
+#include <memory>
+#include <ctm.h>
 #include <utils/flog.h>
 
 struct FFT_PLAN_IMPL {
@@ -15,6 +18,9 @@ struct FFT_PLAN_IMPL {
     int nfft;
     bool alive = false;
 };
+
+extern long long planAllocTime;
+extern long long planExecTime;
 
 struct PlanStorage {
     std::vector<FFT_PLAN_IMPL> allPlans;
@@ -51,7 +57,10 @@ FFT_PLAN Fftplug_allocate_plan_c2c(PlanStorage &s, int nfft, bool forward, Alloc
     p.inputC = true;
     p.outputC = true;
     p.nfft = nfft;
+    auto t1 = currentTimeMillis();
     p.plan = fftwf_plan_dft_1d(nfft, nullptr, nullptr, forward ? FFTW_FORWARD: FFTW_BACKWARD, FFTW_ESTIMATE_PATIENT);
+    t1 = currentTimeMillis() - t1;
+    planAllocTime += t1;
     return FFT_PLAN {ix};
 }
 
@@ -60,10 +69,13 @@ FFT_PLAN Fftplug_allocate_plan_r2c(PlanStorage &s, int nfft,  Allocs &allocs) {
     std::lock_guard g(s.plansLock);
     int ix = s.allocatePlan();
     auto &p = s.allPlans[ix];
-    p.inputF = allocs.arrayAllocatorFloat(nfft);
-    p.outputC = allocs.arrayAllocatorComplex(nfft);
+    p.inputF = true;
+    p.outputC = true;
     p.nfft = nfft;
+    auto t1 = currentTimeMillis();
     p.plan = fftwf_plan_dft_r2c_1d(nfft, nullptr, nullptr, FFTW_ESTIMATE_PATIENT);
+    t1 = currentTimeMillis() - t1;
+    planAllocTime += t1;
     return FFT_PLAN {ix};
 }
 
@@ -86,19 +98,14 @@ inline void Fftplug_execute_plan(PlanStorage &s, FFT_PLAN plan, void *source, in
         nfft = pi->nfft;
         fplan = pi->plan;
     }
-    if(plan.handle != 0) {
-        // printf("*** exec plan %d\n", plan.handle);
-    }
+    auto t1 = currentTimeMillis();
     if (cfrom && cto) {
-        char dbg[102400];
-        dbg[0] = 0;
         fftwf_execute_dft(fplan, (fftwf_complex *)source, (fftwf_complex *)dest);
-        if(plan.handle != 0) {
-            // printf("*** exec plan c2c(%d) done %d\n", nfft, plan.handle);
-        }
     } else {
         fftwf_execute_dft_r2c(fplan, (float*)source, (fftwf_complex*)dest);
     }
+    t1 = currentTimeMillis() - t1;
+    planExecTime += t1;
 }
 
 
