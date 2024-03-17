@@ -252,9 +252,9 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
             if (i < NMAX) x[i]=dd[i]*0.01;
             else x[i]=0.0;
         }
-        // debugPrintf("            four2a_d2c...");
+        debugPrintf("            four2a_d2c...");
         f2a.four2a_d2c(cx_ft8,x.data(),NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)             //!r2c FFT to freq domain
-        // debugPrintf("            four2a_d2c.");
+        debugPrintf("            four2a_d2c.");
         // printArraySCD("cx", cx_ft8, NFFT1);
         newdat=false;
     }
@@ -1889,6 +1889,7 @@ void DecoderFt8::get_spectrum_baseline(double *dd,int nfa,int nfb,double *sbase)
 void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nfqso,
                        double s_[402][1970],double candidate[2][620],int &ncand,double *sbase)
 {
+    debugPrintf("  sync8 begin.");
     const int NSPS=1920;
     int NSTEP=NSPS/4;//=480
     const int NFFT1=2*NSPS;
@@ -1913,6 +1914,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     double x[NFFT1+20];//=3840     //real x(NFFT1)
     //double *x = new double[NFFT1+20];
     std::complex<double> cx[NFFT1+20]; //2.09 error-> cx[NH1+20];       //complex cx(0:NH1)
+    debugPrintf("  cx ok.");
 
     // old 76 double sync2d[1920+50][76+20];  //real sync2d(NH1,-JZ:JZ) -JZ=-38 JZ=+38 = 76
     // old 76 double (*sync2d)[76+20]=new double[1920+50][76+20];
@@ -1935,6 +1937,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     double candidate0[3][max_c0+10];//2.00 HV no inaf ->200+5 need 300
     //double savg[NH1+10];
     //pomAll.zero_double_beg_end(savg,0,NH1+2);
+    debugPrintf("  candidate0.");
 
     int ia =0;
     //int ib =0;
@@ -1952,11 +1955,14 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         //if (((NHSYM-1)*NSTEP+NSPS-1)>180000) qDebug()<<(NHSYM-1)*NSTEP+NSPS-1;
         for (int z = NSPS; z < NFFT1+1; ++z)
             x[z]=0.0;            //x(NSPS+1:)=0.
+        // debugPrintf("  f2a.four2a_d2c: %d, stack=%p .. %p", j, &dd, &sbase);
         f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        // debugPrintf("  f2a.four2a_d2c ok: %d", j);
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1
             s_[j][i]=pomAll.ps_hv(cx[i]);    //s(i,j)=real(cx(i))**2 + aimag(cx(i))**2
             if (isnan(s_[j][i])) {
+                debugPrintf("  nan. abort.");
                 abort();
             }
             //if(j==150)
@@ -1968,6 +1974,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         //qDebug()<<"sync_abc<<sync_bc"<<s_[j][100];
     }
 
+    debugPrintf("  1975");
     int nfa1 = (int)nfa;
     int nfb1 = (int)nfb;
     if ((nfb-nfa)<2000.0) //2000 HV correction
@@ -2002,6 +2009,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     int nssy=NSPS/NSTEP;   //! # steps per symbol =4
     int nfos=NFFT1/NSPS;   //! # frequency bin oversampling factor =2
     int jstrt=0.5/tstep;
+    debugPrintf("  2010");
 
     int k = 0;
     for (int i = 0; i < 3; ++i)
@@ -2727,7 +2735,7 @@ void DecoderFt8::PrintMsg(QString tmm,int nsnr,double xdt,double f1,QString mess
 void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqso,bool &have_dec,
                             int id3dec,double w_f00,double w_f01)//,int /*npts no need*/)
 {
-    // debugPrintf("DecoderFt8::ft8_decode");
+    debugPrintf("DecoderFt8::ft8_decode");
     outCount = 0;
     have_dec = false;
     int cont_type = 0;
@@ -2990,7 +2998,7 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
 
     for (int ipass = 1; ipass <= npass; ++ipass)
     {
-        // debugPrintf("ft8_decode  Start======================================== %d %d", ipass, ndepth);
+        debugPrintf("ft8_decode  Start======================================== %d %d", ipass, ndepth);
         int ndeep=ndepth;
         bool newdat=true;  //! Is this a problem? I hijacked newdat.
         double syncmin = 1.3;//1.5; syncmin=1.3
@@ -3045,8 +3053,9 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
         int ncand = 0;
         //qDebug()<<"sync8  Start=========xxxxxxxxxx"<<ipass<<nfa<<nfb<<syncmin;
 
-        // debugPrintf("sync8");
+        debugPrintf("sync8");
         sync8(dd,nfa,nfb,syncmin,nfqso,s_,candidate,ncand,sbase);
+        debugPrintf("sync8.");
         //qDebug()<<"sync8  Stop================="<<npass<<ipass<<ncand;
 
         //hv corr v1

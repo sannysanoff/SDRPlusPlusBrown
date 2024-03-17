@@ -60,7 +60,8 @@ struct WasmedgeFT8Decoder {
         }
 
         uint8_t *ptr(int offset, int length) {
-            return WasmEdge_MemoryInstanceGetPointer(memctx, offset, length);
+            auto wasm_edge_memory_instance_get_pointer = WasmEdge_MemoryInstanceGetPointer(memctx, offset, length);
+            return wasm_edge_memory_instance_get_pointer;
 
         }
 
@@ -148,25 +149,34 @@ struct WasmedgeFT8Decoder {
         /* Create the VM context. */
 
         WasmEdge_Result result;
-
         auto aotPath = wasmPath + ".aot";
-        if (isFileNewer(aotPath, wasmPath)) {
-            // don't
-        } else {
-            WasmEdge_CompilerContext *CompilerCxt = WasmEdge_CompilerCreate(NULL);
-            result = WasmEdge_CompilerCompile(CompilerCxt, wasmPath.c_str(), aotPath.c_str());
-            if (!WasmEdge_ResultOK(result)) {
-                printf("Error loading WASM module: %s\n", WasmEdge_ResultGetMessage(result));
-                return false;
+
+        bool interpreter = false;
+
+        if (!interpreter) {
+            if (isFileNewer(aotPath, wasmPath)) {
+                // don't
+            } else {
+                WasmEdge_CompilerContext *CompilerCxt = WasmEdge_CompilerCreate(NULL);
+                result = WasmEdge_CompilerCompile(CompilerCxt, wasmPath.c_str(), aotPath.c_str());
+                if (!WasmEdge_ResultOK(result)) {
+                    printf("Error loading WASM module: %s\n", WasmEdge_ResultGetMessage(result));
+                    return false;
+                }
             }
         }
+
 
         // Load and validate WASM module
         auto cfgContext = WasmEdge_ConfigureCreate();
         auto loaderContext = WasmEdge_LoaderCreate(cfgContext);
 
 
-        result = WasmEdge_LoaderParseFromFile(loaderContext, &astModuleContext, aotPath.c_str());
+        if (!interpreter) {
+            result = WasmEdge_LoaderParseFromFile(loaderContext, &astModuleContext, aotPath.c_str());
+        } else {
+            result = WasmEdge_LoaderParseFromFile(loaderContext, &astModuleContext, wasmPath.c_str());
+        }
         if (!WasmEdge_ResultOK(result)) {
             printf("Error loading WASM module: %s\n", WasmEdge_ResultGetMessage(result));
             return false;
@@ -188,7 +198,7 @@ struct WasmedgeFT8Decoder {
         int nfft = WasmEdge_ValueGetI32(In[0]);
         int forward = WasmEdge_ValueGetI32(In[1]);
         auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = Fftplug_allocate_plan_c2c(nativeStorage, nfft, forward, *thiz);
+        FFT_PLAN plan = Fftplug_allocate_plan_c2c(*nativeStorage, nfft, forward, *thiz);
         // Assuming Data can be used similarly to env in Wasmer
         Out[0] = WasmEdge_ValueGenI32(plan.handle);
         return WasmEdge_Result_Success;
@@ -202,71 +212,41 @@ struct WasmedgeFT8Decoder {
         return WasmEdge_Result_Success;
     }
 
-    static WasmEdge_Result fftplug_allocate_plan_c2r_host(
-        void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt, const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        int nfft = WasmEdge_ValueGetI32(In[0]);
-        auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = Fftplug_allocate_plan_c2r(nativeStorage, nfft, *thiz);
-        Out[0] = WasmEdge_ValueGenI32(plan.handle);
-        return WasmEdge_Result_Success;
-    }
-
+    // static WasmEdge_Result fftplug_allocate_plan_c2r_host(
+    //     void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt, const WasmEdge_Value *In, WasmEdge_Value *Out) {
+    //     int nfft = WasmEdge_ValueGetI32(In[0]);
+    //     auto *thiz = (WasmedgeFT8Decoder *) env;
+    //     FFT_PLAN plan = Fftplug_allocate_plan_c2r(*nativeStorage, nfft, *thiz);
+    //     Out[0] = WasmEdge_ValueGenI32(plan.handle);
+    //     return WasmEdge_Result_Success;
+    // }
+    //
     static WasmEdge_Result fftplug_allocate_plan_r2c_host(
         void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt, const WasmEdge_Value *In, WasmEdge_Value *Out) {
         int nfft = WasmEdge_ValueGetI32(In[0]);
         auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = Fftplug_allocate_plan_r2c(nativeStorage, nfft, *thiz);
+        FFT_PLAN plan = Fftplug_allocate_plan_r2c(*nativeStorage, nfft, *thiz);
         Out[0] = WasmEdge_ValueGenI32(plan.handle);
         return WasmEdge_Result_Success;
     }
 
-    static WasmEdge_Result fftplug_get_complex_input_host(
-        void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt, const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        auto *ptr = (uint8_t *) Fftplug_get_complex_input(nativeStorage, plan);
-        Out[0] = WasmEdge_ValueGenI32((int) (ptr - thiz->memory.ptr(0, 1)));
-        return WasmEdge_Result_Success;
-    }
-
-    static WasmEdge_Result fftplug_get_complex_output_host(
-        void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt, const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        auto *ptr = (uint8_t *) Fftplug_get_complex_output(nativeStorage, plan);
-        Out[0] = WasmEdge_ValueGenI32((int) (ptr - thiz->memory.ptr(0, 1)));
-        return WasmEdge_Result_Success;
-    }
-
-    static WasmEdge_Result fftplug_get_float_output_host(void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt,
-                                                         const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        auto *ptr = (uint8_t *) Fftplug_get_float_output(nativeStorage, plan);
-        Out[0] = WasmEdge_ValueGenI32((int) (ptr - thiz->memory.ptr(0, 1)));
-        return WasmEdge_Result_Success;
-    }
-
-    static WasmEdge_Result fftplug_get_float_input_host(void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt,
-                                                        const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        auto *thiz = (WasmedgeFT8Decoder *) env;
-        FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        auto *ptr = (uint8_t *) Fftplug_get_float_input(nativeStorage, plan);
-        Out[0] = WasmEdge_ValueGenI32((int) (ptr - thiz->memory.ptr(0, 1)));
-        return WasmEdge_Result_Success;
-    }
 
     static WasmEdge_Result fftplug_free_plan_host(void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt,
                                                   const WasmEdge_Value *In, WasmEdge_Value *Out) {
         FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        Fftplug_free_plan(nativeStorage, plan);
+        Fftplug_free_plan(*nativeStorage, plan);
         return WasmEdge_Result_Success;
     }
 
     static WasmEdge_Result fftplug_execute_plan_host(void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt,
                                                      const WasmEdge_Value *In, WasmEdge_Value *Out) {
         FFT_PLAN plan = {WasmEdge_ValueGetI32(In[0])};
-        Fftplug_execute_plan(nativeStorage, plan);
+        auto *thiz = (WasmedgeFT8Decoder *) env;
+        auto sourcePtr = WasmEdge_ValueGetI32(In[1]);
+        auto destPtr = WasmEdge_ValueGetI32(In[3]);
+        auto sourcePtrSize = WasmEdge_ValueGetI32(In[2]);
+        auto destPtrSize = WasmEdge_ValueGetI32(In[4]);
+        Fftplug_execute_plan(*nativeStorage, plan, thiz->memory.ptr(sourcePtr, 8), sourcePtrSize, thiz->memory.ptr(destPtr, 8), destPtrSize);
         return WasmEdge_Result_Success;
     }
 
@@ -387,10 +367,10 @@ struct WasmedgeFT8Decoder {
 
     static WasmEdge_Result poll_oneoff_host(void *env, const WasmEdge_CallingFrameContext *CallingFrameCxt,
                                             const WasmEdge_Value *In, WasmEdge_Value *Out) {
-        // This function typically waits for one or more events to happen.
-        // The actual implementation would involve setting up and managing poll events.
-        printf("poll_oneoff is a complex function and needs a detailed implementation.\n");
-        abort();
+        auto *thiz = (WasmedgeFT8Decoder *) env;
+        auto neventsPtr = WasmEdge_ValueGetI32(In[3]);
+        thiz->memory.write_i32(neventsPtr, 0);
+        Out[0] = WasmEdge_ValueGenI32(0);
         return WasmEdge_Result_Success; // To keep the compiler happy, should not reach here.
     }
 
@@ -402,6 +382,7 @@ struct WasmedgeFT8Decoder {
         abort();
         return WasmEdge_Result_Success; // To keep the compiler happy, should not reach here.
     }
+
 
     static WasmEdge_Result fd_write_host(void *Data, const WasmEdge_CallingFrameContext *Frame,
                                          const WasmEdge_Value *In, WasmEdge_Value *Out) {
@@ -487,7 +468,8 @@ struct WasmedgeFT8Decoder {
 
         auto res = WasmEdge_ExecutorInvoke(executor, wasmMallocFunction, args, 1, results, 1);
         if (WasmEdge_ResultOK(res)) {
-            return memory.ptr(WasmEdge_ValueGetI32(results[1]), 8);
+            int32_t offset = WasmEdge_ValueGetI32(results[0]);
+            return memory.ptr(offset, 8);
         } else {
             return nullptr;
         }
@@ -648,7 +630,7 @@ struct WasmedgeFT8Decoder {
     }
 
     void registerEnvFunctions(WasmEdge_ModuleInstanceContext *envModuleInstance) {
-        ::WasmEdge_ValType ParamList[4];
+        ::WasmEdge_ValType ParamList[5];
         ::WasmEdge_ValType ReturnList[1];
         WasmEdge_FunctionTypeContext *HostFType;
         WasmEdge_FunctionInstanceContext *HostFunc;
@@ -685,15 +667,15 @@ struct WasmedgeFT8Decoder {
         WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
         WasmEdge_StringDelete(HostFuncName);
 
-        // fftplug_allocate_plan_c2r
-        ParamList[0] = WasmEdge_ValTypeGenI32();
-        ReturnList[0] = WasmEdge_ValTypeGenI32();
-        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 1);
-        HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_allocate_plan_c2r_host, this, 0);
-        WasmEdge_FunctionTypeDelete(HostFType);
-        HostFuncName = WasmEdge_StringCreateByCString("fftplug_allocate_plan_c2r");
-        WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
-        WasmEdge_StringDelete(HostFuncName);
+        // // fftplug_allocate_plan_c2r
+        // ParamList[0] = WasmEdge_ValTypeGenI32();
+        // ReturnList[0] = WasmEdge_ValTypeGenI32();
+        // HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 1);
+        // HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_allocate_plan_c2r_host, this, 0);
+        // WasmEdge_FunctionTypeDelete(HostFType);
+        // HostFuncName = WasmEdge_StringCreateByCString("fftplug_allocate_plan_c2r");
+        // WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
+        // WasmEdge_StringDelete(HostFuncName);
 
         // fftplug_allocate_plan_r2c
         ParamList[0] = WasmEdge_ValTypeGenI32();
@@ -702,36 +684,6 @@ struct WasmedgeFT8Decoder {
         HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_allocate_plan_r2c_host, this, 0);
         WasmEdge_FunctionTypeDelete(HostFType);
         HostFuncName = WasmEdge_StringCreateByCString("fftplug_allocate_plan_r2c");
-        WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
-        WasmEdge_StringDelete(HostFuncName);
-
-        // fftplug_get_complex_input
-        ParamList[0] = WasmEdge_ValTypeGenI32();
-        ReturnList[0] = WasmEdge_ValTypeGenI32();
-        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 1);
-        HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_get_complex_input_host, this, 0);
-        WasmEdge_FunctionTypeDelete(HostFType);
-        HostFuncName = WasmEdge_StringCreateByCString("fftplug_get_complex_input");
-        WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
-        WasmEdge_StringDelete(HostFuncName);
-
-        // fftplug_get_complex_output
-        ParamList[0] = WasmEdge_ValTypeGenI32();
-        ReturnList[0] = WasmEdge_ValTypeGenI32();
-        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 1);
-        HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_get_complex_output_host, this, 0);
-        WasmEdge_FunctionTypeDelete(HostFType);
-        HostFuncName = WasmEdge_StringCreateByCString("fftplug_get_complex_output");
-        WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
-        WasmEdge_StringDelete(HostFuncName);
-
-        // fftplug_get_float_input
-        ParamList[0] = WasmEdge_ValTypeGenI32();
-        ReturnList[0] = WasmEdge_ValTypeGenI32();
-        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 1);
-        HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_get_float_input_host, this, 0);
-        WasmEdge_FunctionTypeDelete(HostFType);
-        HostFuncName = WasmEdge_StringCreateByCString("fftplug_get_float_input");
         WasmEdge_ModuleInstanceAddFunction(envModuleInstance, HostFuncName, HostFunc);
         WasmEdge_StringDelete(HostFuncName);
 
@@ -746,7 +698,11 @@ struct WasmedgeFT8Decoder {
 
         // fftplug_execute_plan
         ParamList[0] = WasmEdge_ValTypeGenI32();
-        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 1, ReturnList, 0);
+        ParamList[1] = WasmEdge_ValTypeGenI32();
+        ParamList[2] = WasmEdge_ValTypeGenI32();
+        ParamList[3] = WasmEdge_ValTypeGenI32();
+        ParamList[4] = WasmEdge_ValTypeGenI32();
+        HostFType = WasmEdge_FunctionTypeCreate(ParamList, 5, ReturnList, 0);
         HostFunc = WasmEdge_FunctionInstanceCreate(HostFType, fftplug_execute_plan_host, this, 0);
         WasmEdge_FunctionTypeDelete(HostFType);
         HostFuncName = WasmEdge_StringCreateByCString("fftplug_execute_plan");
@@ -770,6 +726,7 @@ struct WasmedgeFT8Decoder {
     WasmEdge_FunctionInstanceContext *getFT8InputBufferSizeFunction;
     WasmEdge_FunctionInstanceContext *getFT8InputBufferFunction;
     WasmEdge_FunctionInstanceContext *wasmMallocFunction;
+    WasmEdge_FunctionInstanceContext *testPrintFunction;
     WasmEdge_FunctionInstanceContext *wasmFreeFunction;
     WasmEdge_FunctionInstanceContext *wasmInitializeFunction;
     WasmEdge_ModuleInstanceContext *executableModule;
@@ -830,6 +787,10 @@ struct WasmedgeFT8Decoder {
                     wasmMallocFunction = function;
                     continue;
                 }
+                if (stringEquals(FuncNames[i], "testPrint")) {
+                    testPrintFunction = function;
+                    continue;
+                }
                 if (stringEquals(FuncNames[i], "wasmFree")) {
                     wasmFreeFunction = function;
                     continue;
@@ -838,11 +799,11 @@ struct WasmedgeFT8Decoder {
                     wasmInitializeFunction = function;
                     continue;
                 }
-                if (stringEquals(FuncNames[i], "decodeFT8Main")) {
+                if (stringEquals(FuncNames[i], "decodeFT8MainAt12000")) {
                     decodeFT8MainFunction = function;
                     continue;
                 }
-                if (stringEquals(FuncNames[i], "decodeFT4Main")) {
+                if (stringEquals(FuncNames[i], "decodeFT4MainAt12000")) {
                     decodeFT4MainFunction = function;
                     continue;
                 }
@@ -854,6 +815,7 @@ struct WasmedgeFT8Decoder {
                     getFT8InputBufferFunction = function;
                     continue;
                 }
+                printf("Unknown export: %s\n", FuncNames[i].Buf);
             }
         }
 
@@ -884,9 +846,12 @@ struct WasmedgeFT8Decoder {
 
         memory.put(inputBufferOffset, (const char*)samples, nsamples * sizeof(dsp::stereo_t));
 
+        res = WasmEdge_ExecutorInvoke(executor, testPrintFunction, args, 0, results, 0);
+        CHECK_RESULT(res);
+
         {
             WasmEdge_Value args[1] = {WasmEdge_ValueGenI32(nsamples), };
-            WasmEdge_Value results[1] = {};
+            WasmEdge_Value results[1] = {WasmEdge_ValueGenI32(0)};
 
             res = WasmEdge_ExecutorInvoke(executor, decodeFT8MainFunction, args, 1, results, 1);
             CHECK_RESULT(res);
@@ -1081,6 +1046,18 @@ struct WasmerFT8Decoder {
         wasm_store_delete(store);
     }
 
+    static wasm_functype_t* wasm_functype_new_5_0(
+       wasm_valtype_t* p1,  wasm_valtype_t* p2,  wasm_valtype_t* p3, wasm_valtype_t* p4,  wasm_valtype_t* p5
+    ) {
+        wasm_valtype_t* ps[5] = {p1, p2, p3, p4, p5};
+        wasm_valtype_vec_t params, results;
+        wasm_valtype_vec_new(&params, 5, ps);
+        wasm_valtype_vec_new_empty(&results);
+        return wasm_functype_new(&params, &results);
+    }
+
+
+
     WasmerFT8Decoder() {
         std::vector<wasm_extern_t *> externs;
         std::unordered_map<std::string, wasm_func_t *> exported;
@@ -1138,30 +1115,6 @@ struct WasmerFT8Decoder {
                 externs.emplace_back(wasm_func_as_extern(fun));
                 continue;
             }
-            if (nm == "fftplug_allocate_plan_c2r") {
-                auto t1 = wasm_functype_new_1_1(wasm_valtype_new_i32(), wasm_valtype_new_i32());
-                auto fun = wasm_func_new_with_env(store, t1, fftplug_allocate_plan_c2r_host, this, nullptr);
-                externs.emplace_back(wasm_func_as_extern(fun));
-                continue;
-            }
-            if (nm == "fftplug_get_complex_input") {
-                auto t1 = wasm_functype_new_1_1(wasm_valtype_new_i32(), wasm_valtype_new_i32());
-                auto fun = wasm_func_new_with_env(store, t1, fftplug_get_complex_input_host, this, nullptr);
-                externs.emplace_back(wasm_func_as_extern(fun));
-                continue;
-            }
-            if (nm == "fftplug_get_complex_output") {
-                auto t1 = wasm_functype_new_1_1(wasm_valtype_new_i32(), wasm_valtype_new_i32());
-                auto fun = wasm_func_new_with_env(store, t1, fftplug_get_complex_output_host, this, nullptr);
-                externs.emplace_back(wasm_func_as_extern(fun));
-                continue;
-            }
-            if ((nm == "fftplug_get_float_input")) {
-                auto t1 = wasm_functype_new_1_1(wasm_valtype_new_i32(), wasm_valtype_new_i32());
-                auto fun = wasm_func_new_with_env(store, t1, fftplug_get_float_input_host, this, nullptr);
-                externs.emplace_back(wasm_func_as_extern(fun));
-                continue;
-            }
             if ((nm == "fftplug_free_plan")) {
                 auto t1 = wasm_functype_new_1_0(wasm_valtype_new_i32());
                 auto fun = wasm_func_new_with_env(store, t1, fftplug_free_plan_host, this, nullptr);
@@ -1169,7 +1122,7 @@ struct WasmerFT8Decoder {
                 continue;
             }
             if ((nm == "fftplug_execute_plan")) {
-                auto t1 = wasm_functype_new_1_0(wasm_valtype_new_i32());
+                auto t1 = wasm_functype_new_5_0(wasm_valtype_new_i32(), wasm_valtype_new_i32(), wasm_valtype_new_i32(), wasm_valtype_new_i32(), wasm_valtype_new_i32());
                 auto fun = wasm_func_new_with_env(store, t1, fftplug_execute_plan_host, this, nullptr);
                 externs.emplace_back(wasm_func_as_extern(fun));
                 continue;
@@ -1370,15 +1323,7 @@ struct WasmerFT8Decoder {
         auto *thiz = (WasmerFT8Decoder *) env;
         auto nfft = args->data[0].of.i32;
         auto forward = args->data[1].of.i32;
-        FFT_PLAN plan = Fftplug_allocate_plan_c2c(nativeStorage, nfft, forward, *thiz);
-        results->data[0] = WASM_I32_VAL(plan.handle);
-        return nullptr;
-    }
-
-    static wasm_trap_t *fftplug_allocate_plan_c2r_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        auto *thiz = (WasmerFT8Decoder *) env;
-        auto nfft = args->data[0].of.i32;
-        FFT_PLAN plan = Fftplug_allocate_plan_c2r(nativeStorage, nfft, *thiz);
+        FFT_PLAN plan = Fftplug_allocate_plan_c2c(*nativeStorage, nfft, forward, *thiz);
         results->data[0] = WASM_I32_VAL(plan.handle);
         return nullptr;
     }
@@ -1386,53 +1331,25 @@ struct WasmerFT8Decoder {
     static wasm_trap_t *fftplug_allocate_plan_r2c_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
         auto *thiz = (WasmerFT8Decoder *) env;
         auto nfft = args->data[0].of.i32;
-        FFT_PLAN plan = Fftplug_allocate_plan_r2c(nativeStorage, nfft, *thiz);
+        FFT_PLAN plan = Fftplug_allocate_plan_r2c(*nativeStorage, nfft, *thiz);
         results->data[0] = WASM_I32_VAL(plan.handle);
-        return nullptr;
-    }
-
-    static wasm_trap_t *fftplug_get_complex_input_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        auto *thiz = (WasmerFT8Decoder *) env;
-        FFT_PLAN plan = {args->data[0].of.i32};
-        auto *ptr = (byte_t *) Fftplug_get_complex_input(nativeStorage, plan);
-        results->data[0] = WASM_I32_VAL((int)(ptr - thiz->memory.mem));
-        return nullptr;
-    }
-
-    static wasm_trap_t *
-    fftplug_get_complex_output_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        auto *thiz = (WasmerFT8Decoder *) env;
-        FFT_PLAN plan = {args->data[0].of.i32};
-        auto *ptr = (byte_t *) Fftplug_get_complex_output(nativeStorage, plan);
-        results->data[0] = WASM_I32_VAL((int)(ptr - thiz->memory.mem));
-        return nullptr;
-    }
-
-    static wasm_trap_t *fftplug_get_float_output_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        auto *thiz = (WasmerFT8Decoder *) env;
-        FFT_PLAN plan = {args->data[0].of.i32};
-        auto *ptr = (byte_t *) Fftplug_get_float_output(nativeStorage, plan);
-        results->data[0] = WASM_I32_VAL((int)(ptr - thiz->memory.mem));
-        return nullptr;
-    }
-
-    static wasm_trap_t *fftplug_get_float_input_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
-        auto *thiz = (WasmerFT8Decoder *) env;
-        FFT_PLAN plan = {args->data[0].of.i32};
-        auto *ptr = (byte_t *) Fftplug_get_float_input(nativeStorage, plan);
-        results->data[0] = WASM_I32_VAL((int)(ptr - thiz->memory.mem));
         return nullptr;
     }
 
     static wasm_trap_t *fftplug_free_plan_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
         FFT_PLAN plan = {args->data[0].of.i32};
-        Fftplug_free_plan(nativeStorage, plan);
+        Fftplug_free_plan(*nativeStorage, plan);
         return nullptr;
     }
 
     static wasm_trap_t *fftplug_execute_plan_host(void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results) {
         FFT_PLAN plan = {args->data[0].of.i32};
-        Fftplug_execute_plan(nativeStorage, plan);
+        auto srcPtr = args->data[1].of.i32;
+        auto srcSize = args->data[2].of.i32;
+        auto destPtr = args->data[3].of.i32;
+        auto destSize = args->data[4].of.i32;
+        auto *thiz = (WasmerFT8Decoder *) env;
+        Fftplug_execute_plan(*nativeStorage, plan, thiz->memory.mem+srcPtr, srcSize, thiz->memory.mem+destPtr, destSize);
         return nullptr;
     }
 
@@ -1794,9 +1711,11 @@ void doDecode(const char *mode, const char *path, int threads,
 
             sampleRate = 12000;
 
-            if (false) {
+            if (true) {
+                auto ctm = currentTimeMillis();
                 ft8::decodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](int mode, QStringList result) {
                 });
+                std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
             } else {
                 if (WasmedgeFT8Decoder::setupModule(
                     "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv")) {
@@ -1807,8 +1726,8 @@ void doDecode(const char *mode, const char *path, int threads,
                             fprintf(stdout, "%s", line);
                             fflush(stdout);
                         });
-                        std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
                         std::cout << "DECODE_EOF" << std::endl;
+                    std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
                     }
                 }
             }

@@ -21,14 +21,14 @@ public:
 
     void four2a_d2c(std::complex<double> *a,std::complex<float> *a1,double *d,float *d1,FFT_PLAN *pd,int &cpd,
                     int nfft,int isign,int iform) {
-        std::vector<std::complex<float>> outbuf(nfft);
-        std::vector<float> buf(nfft);
+        // std::vector<std::complex<float>> outbuf(nfft);
+        // std::vector<float> buf(nfft);
         for (int i = 0; i < nfft; ++i) {
-            buf[i] = d[i];
+            d1[i] = d[i];
         }
-        four2a_d2c(outbuf.data(),a1, buf.data(),d1, pd, cpd, nfft, isign, iform);
+        four2a_d2c(a1,a1, d1,d1, pd, cpd, nfft, isign, iform);
         for (int i = 0; i < nfft; ++i) {
-            a[i] = outbuf[i];
+            a[i] = a1[i];
         }
     }
 

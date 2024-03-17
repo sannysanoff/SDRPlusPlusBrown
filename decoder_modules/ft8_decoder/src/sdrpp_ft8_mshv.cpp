@@ -7,6 +7,7 @@
 #include "ft8_etc/mshv_support.h"
 #include "ft8_etc/mscore.h"
 #include "ft8_etc/decoderms.h"
+#include "fftw_mshv_plug.h"
 
 #ifdef __linux__
 #include <unistd.h>
@@ -39,7 +40,9 @@ namespace ft8 {
         // .
         //
         char b[10];
-        // debugPrintf("# hello here 2!, inputBuffer=%x, stack var =%p ", &samples[0], b);
+        debugPrintf("# hello here 2!, inputBuffer=%x, stack var =%p heap=%p", &samples[0], b, malloc(8));
+        auto z = fftplug_allocate_plan_r2c(1024);
+        debugPrintf("allocated: %d", z.handle);
         mshv_init();
 
         //        four2a_d2c_cnt = 0;
@@ -58,18 +61,18 @@ namespace ft8 {
         //    auto core = std::make_shared<MsCore>();
         //    core->ResampleAndFilter(converted.data(), converted.size());
         auto dms = std::make_shared<DecoderMs>();
-        // debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
+        debugPrintf("#\ndms\n=\n%x\n]]]", dms.get());
         if (std::string("ft8") == mode) {
-            // debugPrintf("# set mode ft8");
+            debugPrintf("# set mode ft8");
             dms->setMode(DMS_FT8);
-            // debugPrintf("# set mode ft8 ok ");
+            debugPrintf("# set mode ft8 ok ");
         } else if (std::string("ft4") == mode) {
             dms->setMode(DMS_FT4);
         } else {
             fprintf(stderr, "ERROR: invalid mode is specified. Valid modes: ft8, ft4\n");
             exit(1);
         }
-        // debugPrintf("# call adds, dms=%x", dms.get());
+        debugPrintf("# call adds, dms=%x", dms.get());
         {
             QStringList ql;
             ql << "CALL";
@@ -88,7 +91,7 @@ namespace ft8 {
         dms->SetDecoderDeep(3);
         dms->SetThrLevel(threads);
 
-        // debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
+        debugPrintf("# calling decode: conv size=%u data=%x", converted.size(), converted.data());
 
         dms->SetDecode(converted.data(), converted.size(), "120000", 0, 4, false, true, false);
         while (dms->IsWorking()) {
@@ -111,6 +114,12 @@ namespace ft8 {
 
     int getFT8InputBufferSize() {
         return INPUT_BUFFER_SIZE;
+    }
+
+    WASM_EXPORT("testPrint")
+
+    void testPrint() {
+        decodeResultOutput("Hello from wasm");
     }
 
 
@@ -141,7 +150,11 @@ namespace ft8 {
 
 #ifdef __wasm__
 
-WASM_EXPORT("wasmMalloc") void *wasmMalloc(int size) { return malloc(size); }
+WASM_EXPORT("wasmMalloc") void *wasmMalloc(int size) {
+    auto rv=  malloc(size);
+    debugPrintf("wasmMalloc: returns %p", rv);
+    return rv;
+}
 WASM_EXPORT("wasmFree") void wasmFree(void *ptr) { free(ptr); }
 
 #endif
