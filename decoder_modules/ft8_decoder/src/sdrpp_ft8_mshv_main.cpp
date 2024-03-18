@@ -872,14 +872,15 @@ WasmEdge_ASTModuleContext *WasmedgeFT8Decoder::astModuleContext;
 struct WasmerFT8Decoder {
     static wasm_module_t *module;
 
-    static void setupModule(const std::string &wasmPath) {
+    static bool setupModule(const std::string &wasmPath) {
         if (!wasmEngine) {
             wasmEngine = wasm_engine_new();
             wasmEngineStore = wasm_store_new(wasmEngine);
         }
         FILE *file = fopen(wasmPath.c_str(), "rb");
         if (!file) {
-            abort();
+            printf("> Cannot open wasm!\n");
+            return false;
         }
         fseek(file, 0L, SEEK_END);
         size_t file_size = ftell(file);
@@ -888,13 +889,15 @@ struct WasmerFT8Decoder {
         wasm_byte_vec_new_uninitialized(&binary, file_size);
         if (fread(binary.data, file_size, 1, file) != 1) {
             printf("> Error loading module!\n");
-            return;
+            return false;
         }
         fclose(file);
         module = wasm_module_new(wasmEngineStore, &binary);
         if (!module) {
             printf("> Error compiling module!\n");
+            return false;
         }
+        return true;
     }
 
     static inline wasm_functype_t *wasm_functype_new_4_1(
@@ -986,6 +989,7 @@ struct WasmerFT8Decoder {
     // wasm_func_t *wasmMallocFunction;
     // wasm_func_t *wasmFreeFunction;
     wasm_func_t *wasmInitializeFunction;
+    wasm_func_t *testPrintFunction;
 
     wasm_store_t *store;
 
@@ -1307,6 +1311,10 @@ struct WasmerFT8Decoder {
             // }
             if ((nm == "_initialize")) {
                 wasmInitializeFunction = wasm_extern_as_func(iexterns.data[q]);
+                continue;
+            }
+            if ((nm == "testPrint")) {
+                testPrintFunction = wasm_extern_as_func(iexterns.data[q]);
                 continue;
             }
             printf("Unknown exported function, go away: %s\n", nm.c_str());
@@ -1719,13 +1727,13 @@ void doDecode(const char *mode, const char *path, int threads,
                 });
                 std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
             } else {
-                if (WasmedgeFT8Decoder::setupModule(
+                if (WasmerFT8Decoder::setupModule(
                     "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv")) {
                     for(int q=0; q<5; q++) {
                         planAllocTime = 0;
                         planExecTime = 0;
                         auto ctm = currentTimeMillis();
-                        WasmedgeFT8Decoder wd;
+                        WasmerFT8Decoder wd;
                         wd.wasmDecodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](const char *line) {
                             fprintf(stdout, "%s", line);
                             fflush(stdout);
