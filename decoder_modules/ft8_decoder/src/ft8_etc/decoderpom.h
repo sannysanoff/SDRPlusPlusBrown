@@ -42,9 +42,67 @@ private:
     int nf_d2c[NPMAX+10];
 };
 
+#define NPAMAX 1441000  //q65 max=1440000 PI4 max 768000
+
 class F2a
 {
+
+    int nplan_d2c0 = 0;
+    FFT_PLAN plan_d2c0[NPMAX+10];
+    float da_d2c0[NPAMAX+10];
+    std::complex<float> ca_d2c0[NPAMAX+10];
+    int nplan_d2c1 = 0;
+    FFT_PLAN plan_d2c1[NPMAX+10];
+    float da_d2c1[NPAMAX+10];
+    std::complex<float> ca_d2c1[NPAMAX+10];
+    int nplan_d2c2 = 0;
+    FFT_PLAN plan_d2c2[NPMAX+10];
+    float da_d2c2[NPAMAX+10];
+    std::complex<float> ca_d2c2[NPAMAX+10];
+    int nplan_d2c3 = 0;
+    FFT_PLAN plan_d2c3[NPMAX+10];
+    float da_d2c3[NPAMAX+10];
+    std::complex<float> ca_d2c3[NPAMAX+10];
+    int nplan_d2c4 = 0;
+    FFT_PLAN plan_d2c4[NPMAX+10];
+    float da_d2c4[NPAMAX+10];
+    std::complex<float> ca_d2c4[NPAMAX+10];
+    int nplan_d2c5 = 0;
+    FFT_PLAN plan_d2c5[NPMAX+10];
+    float da_d2c5[NPAMAX+10];
+    std::complex<float> ca_d2c5[NPAMAX+10];
+
+
+    int nplan_c2c0 = 0;
+    FFT_PLAN plan_c2c0[NPMAX+10];
+    std::complex<float> ca_c2c0[NPAMAX+10];
+    int nplan_c2c1 = 0;
+    FFT_PLAN plan_c2c1[NPMAX+10];
+    std::complex<float> ca_c2c1[NPAMAX+10];
+    int nplan_c2c2 = 0;
+    FFT_PLAN plan_c2c2[NPMAX+10];
+    std::complex<float> ca_c2c2[NPAMAX+10];
+    int nplan_c2c3 = 0;
+    FFT_PLAN plan_c2c3[NPMAX+10];
+    std::complex<float> ca_c2c3[NPAMAX+10];
+    int nplan_c2c4 = 0;
+    FFT_PLAN plan_c2c4[NPMAX+10];
+    std::complex<float> ca_c2c4[NPAMAX+10];
+    int nplan_c2c5 = 0;
+    FFT_PLAN plan_c2c5[NPMAX+10];
+    std::complex<float> ca_c2c5[NPAMAX+10];
+
+
 public:
+
+    F2a() {
+        memset(&ca_d2c0, 0, sizeof(ca_d2c0));
+        memset(&da_d2c0, 0, sizeof(da_d2c0));
+
+    }
+
+    ~F2a() {
+    }
     void four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int thr = 0);
     void four2a_d2c(std::complex<double> *a,double *d,int nfft,int isign,int iform,int thr = 0);
 

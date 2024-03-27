@@ -234,6 +234,10 @@ namespace server {
         client->readAsync(sizeof(PacketHeader), rbuf, _packetHandler, NULL);
     }
 
+    auto lastSend = currentTimeMillis();
+    auto sentPackets = 0;
+    auto sentBytes = 0;
+
     void _testServerHandler(uint8_t* data, int count, void* ctx) {
         // Compress data if needed and fill out header fields
         if (compression) {
@@ -246,6 +250,13 @@ namespace server {
             memcpy(&bbuf[sizeof(PacketHeader)], data, count);
         }
 
+        sentBytes += bb_pkt_hdr->size;
+        sentPackets ++;
+        auto ctm = currentTimeMillis();
+        if (ctm > lastSend + 1000) {
+            lastSend = ctm;
+            flog::info("sent {} bytes {} packets", sentBytes, sentPackets);
+        }
         // Write to network
         if (client && client->isOpen()) { client->write(bb_pkt_hdr->size, bbuf); }
     }

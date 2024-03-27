@@ -149,7 +149,7 @@ double DecoderMs::msdf(std::complex<double> *cdat,int npts,int t2,int nfft1,doub
         c[i]=0.0+0.0*complex_i;
     }
 
-    f2a.four2a_c2c(c,nfft1,-1,1);
+    f2a->four2a_c2c(c,nfft1,-1,1);
 
     //! In the "doubled-frequencies" spectrum of squared cdat:
     double fa=2.0*(f0-400.0);

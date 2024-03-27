@@ -63,8 +63,9 @@ DecoderQ65::DecoderQ65()
     xdtnd = 0.01;
     max_drift = 0;
 }
-DecoderQ65::~DecoderQ65()
-{}
+DecoderQ65::~DecoderQ65() {
+    delete TGenQ65;
+}
 void DecoderQ65::SetStMultiAnswerMod(bool f)//2.65
 {
     f_multi_answer_modq65 = f;
@@ -469,7 +470,7 @@ void DecoderQ65::q65_symspec(double *iwave,int iz,int jz,double s1_[800][7000])
             k++;
         }
         for (int z = 0; z < 16100 ; ++z) c0[z]=0.0+0.0*complex_i;//c0(k+1:)=0.
-        f2a.four2a_d2c(c0,dc0,nfft,-1,0); //call four2a(c0,nfft,1,-1,0) / !r2c FFT  f2a.four2a_d2c(cx_ft8,x,NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)
+        f2a->four2a_d2c(c0,dc0,nfft,-1,0); //call four2a(c0,nfft,1,-1,0) / !r2c FFT  f2a.four2a_d2c(cx_ft8,x,NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)
         for (int i = 0; i < iz ; ++i)
         {//do i=1,iz
             s1_[j][i]=(creal(c0[i])*creal(c0[i]) + cimag(c0[i])*cimag(c0[i]));//s1(i,j)=real(c0(i))**2 + aimag(c0(i))**2
@@ -1949,10 +1950,10 @@ void DecoderQ65::ana64(double *iwave,int npts,std::complex<double> *c0)
     //double df1=12000.0/nfft1;
     double fac=(2.0/(32767.0*(double)nfft1))*0.01;// hv correction duble
     for (int i=0; i<npts ; ++i) c0[i]=fac*iwave[i];//c0(0:npts-1)=fac*iwave(1:npts)
-    f2a.four2a_c2c(c0,nfft1,-1,1);//four2a(c0,nfft1,1,-1,1) //!Forward c2c FFT
+    f2a->four2a_c2c(c0,nfft1,-1,1);//four2a(c0,nfft1,1,-1,1) //!Forward c2c FFT
     for (int i=nfft2/2; i<nfft2; ++i) c0[i]=0.0+0.0*complex_i;//c0(nfft2/2+1:nfft2-1)=0.
     c0[0]=0.5*c0[0];// //c0(0)=0.5*c0(0)
-    f2a.four2a_c2c(c0,nfft2,1,1); //call four2a(c0,nfft2,1,1,1)              //!Inverse c2c FFT; c0 is analytic sig
+    f2a->four2a_c2c(c0,nfft2,1,1); //call four2a(c0,nfft2,1,1,1)              //!Inverse c2c FFT; c0 is analytic sig
 }
 void DecoderQ65::twkfreq(std::complex<double> *c3,std::complex<double> *c4,int npts,double fsample,double *a)
 {
@@ -2007,7 +2008,7 @@ void DecoderQ65::spec64(std::complex<double> *c0,int nsps,int jpk,float *s3f,int
         //nz=jb-ja
         for (int x = 0; x < nfft; ++x) cs[x]=c0[x+ja];//cs(0:nfft-1)=c0(ja:jb) cs(0:nz)=c0(ja:jb)
         //for (int x = nfft; x < 20736; ++x) cs[x]=0.0;//if(nz.lt.nfft-1) cs(nz+1:)=0.
-        f2a.four2a_c2c(cs,nsps,-1,1);//four2a(cs,nsps,1,-1,1)             //!c2c FFT to frequency
+        f2a->four2a_c2c(cs,nsps,-1,1);//four2a(cs,nsps,1,-1,1)             //!c2c FFT to frequency
         for (int ii = 0; ii < LL; ++ii)//192 - 640 //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
         {//do ii=1,LL    i1=i0+ipk-64 + mode_q65
             int i=ii-64+mode_q65;//hv=64<-tested=?? old -65;    i=ii-65+mode_q65   //-65=?? !mode_q65 = 1 2 4 8 16 for Q65 A B C D E

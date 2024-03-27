@@ -58,7 +58,7 @@ public:
     }
 
 private:
-	F2a f2a;
+	std::shared_ptr<F2a> f2a;
 	PomAll pomAll;
     GenQ65 *TGenQ65;
     q65subs q65S;

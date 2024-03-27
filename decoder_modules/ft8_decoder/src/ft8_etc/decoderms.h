@@ -28,16 +28,15 @@
 #include <functional>
 #include <atomic>
 
-extern std::atomic_int outCount;
-
 // #include "../HvMsPlayer/libsound/HvGenFt8/gen_ft8.h"
 //#include <QObject> //2.53
 #define ALL_MSG_SNR 120 //2.63 from 100 to 120
 #define MAXDEC 120
 class DecoderFt8
 {
+    int outCount = 0;
 public:
-    explicit DecoderFt8(int id);
+    explicit DecoderFt8(int id, std::shared_ptr<F2a> f2a);
     ~DecoderFt8();
     void SetStMultiAnswerMod(bool f);
     void SetStWords(QString,QString,int,int);
@@ -66,7 +65,7 @@ private:
     int decid;
     std::function<void(int mode, QStringList result)> resultsCallback;
 
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     PomFt pomFt;
     GenFt8 *TGenFt8;
@@ -155,8 +154,10 @@ private:
 class DecoderFt4
 {
 
+    int outCount;
+
 public:
-    explicit DecoderFt4(int id);
+    explicit DecoderFt4(int id, std::shared_ptr<F2a> f2a);
     ~DecoderFt4();
     void SetStTxFreq(double f);
     void SetStMultiAnswerMod(bool f);
@@ -193,7 +194,7 @@ public:
 
 private:
     int decid;
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     PomFt pomFt;
     GenFt4 *TGenFt4;
@@ -385,7 +386,7 @@ private:
     bool is_thrTime;
     void CreateStartTimerthr();
 //    QElapsedTimer *thrTime;
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     //PomFt pomFt;
     void EndRtdPeriod();

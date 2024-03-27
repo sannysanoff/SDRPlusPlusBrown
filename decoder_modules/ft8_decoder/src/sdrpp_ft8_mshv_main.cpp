@@ -1,6 +1,7 @@
 #include <core.h>
 #include <iostream>
 #include <stdio.h>
+#include <chrono>
 #include <module.h>
 #include <ctm.h>
 #include <fftw3.h>
@@ -9,8 +10,13 @@
 #include "dsp/types.h"
 #include "dsp/multirate/rational_resampler.h"
 
+#define DO_WASMER
+
 #include "ft8_etc/mshv_support.h"
+#ifdef DO_WASMER
 #include <wasmer.h>
+#include <wasm.h>
+#endif
 #include <sys/fcntl.h>
 
 #include "fftw_mshv_plug.h"
@@ -38,9 +44,6 @@ namespace ft8 {
     void decodeFT8(int threads, const char *mode, int sampleRate, dsp::stereo_t *samples, int nsamples,
                    std::function<void(int mode, QStringList result)> callback);
 }
-
-wasm_engine_t *wasmEngine;
-wasm_store_t *wasmEngineStore;
 
 struct WasmedgeFT8Decoder {
     static WasmEdge_ModuleInstanceContext *module;
@@ -112,7 +115,7 @@ struct WasmedgeFT8Decoder {
             static char buf[10000];
             buf[0] = 0;
             for (int q = 0; q < 32; q++) {
-                sprintf(buf + strlen(buf), "%02x ", read_i8(offset + q));
+                snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%02x ", read_i8(offset + q));
             }
             return buf;
         }
@@ -152,6 +155,9 @@ struct WasmedgeFT8Decoder {
         auto aotPath = wasmPath + ".aot";
 
         bool interpreter = false;
+#ifdef __ANDROID__
+        interpreter = true;
+#endif
 
         if (!interpreter) {
             if (isFileNewer(aotPath, wasmPath)) {
@@ -199,7 +205,6 @@ struct WasmedgeFT8Decoder {
         int forward = WasmEdge_ValueGetI32(In[1]);
         auto *thiz = (WasmedgeFT8Decoder *) env;
         FFT_PLAN plan = Fftplug_allocate_plan_c2c(*nativeStorage, nfft, forward, *thiz);
-        // Assuming Data can be used similarly to env in Wasmer
         Out[0] = WasmEdge_ValueGenI32(plan.handle);
         return WasmEdge_Result_Success;
     }
@@ -868,13 +873,41 @@ WasmEdge_ModuleInstanceContext *WasmedgeFT8Decoder::module;
 WasmEdge_VMContext *WasmedgeFT8Decoder::VMCxt;
 WasmEdge_ASTModuleContext *WasmedgeFT8Decoder::astModuleContext;
 
+#ifdef DO_WASMER
+
+wasm_engine_t *wasmEngine;
+wasm_store_t *wasmEngineStore;
 
 struct WasmerFT8Decoder {
     static wasm_module_t *module;
 
     static bool setupModule(const std::string &wasmPath) {
         if (!wasmEngine) {
-            wasmEngine = wasm_engine_new();
+            wasm_config_t *config = wasm_config_new();
+#ifdef __ANDROID__
+            char *triple = "aarch64-unknown-linux";
+#endif
+#ifdef __arm64__
+            const char *triple = "aarch64-unknown-linux";
+#endif
+            auto tripleOverride = getenv("WASMER_TRIPLE");
+            if (tripleOverride) {
+                triple = tripleOverride;
+            }
+            wasm_name_t tripleName;
+            printf("name-from-string: %s ...\n", triple);
+            wasm_name_new_from_string(&tripleName, triple);
+            printf("triple new...\n");
+            auto tripleObj = wasmer_triple_new(&tripleName);
+            printf("target new... triple=%p\n", tripleObj);
+            auto cpuf = wasmer_cpu_features_new();
+            wasmer_target_t  *target = wasmer_target_new(tripleObj, cpuf);
+            printf("set target target...\n");
+            wasm_config_set_target(config, target);
+
+            printf("new engine...\n");
+            wasmEngine = wasm_engine_new_with_config(config);
+            printf("new store...\n");
             wasmEngineStore = wasm_store_new(wasmEngine);
         }
         FILE *file = fopen(wasmPath.c_str(), "rb");
@@ -959,7 +992,7 @@ struct WasmerFT8Decoder {
             static char buf[10000];
             buf[0] = 0;
             for (int q = 0; q < 32; q++) {
-                sprintf(buf + strlen(buf), "%02x ", mem[offset + q]);
+                snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%02x ", mem[offset + q]);
             }
             return buf;
         }
@@ -1411,13 +1444,13 @@ struct WasmerFT8Decoder {
             case 1: // __WASI_CLOCKID_MONOTONIC:
             {
                 auto now = std::chrono::steady_clock::now().time_since_epoch();
-                rv = duration_cast<std::chrono::nanoseconds>(now).count();
+                rv = (long long)duration_cast<std::chrono::nanoseconds>(now).count();
                 break;
             }
             case 0: // __WASI_CLOCKID_REALTIME:
             {
                 auto now = std::chrono::system_clock::now().time_since_epoch();
-                rv = duration_cast<std::chrono::nanoseconds>(now).count();
+                rv = (long long)duration_cast<std::chrono::nanoseconds>(now).count();
                 break;
             }
             default: {
@@ -1628,6 +1661,9 @@ struct WasmerFT8Decoder {
 
 wasm_module_t *WasmerFT8Decoder::module;
 
+#endif
+
+
 
 void doDecode(const char *mode, const char *path, int threads,
               std::function<void(int mode, std::vector<std::string> result)> callback) {
@@ -1640,17 +1676,13 @@ void doDecode(const char *mode, const char *path, int threads,
     fseek(f, 0, SEEK_END);
     long long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    uint8_t *buf = (uint8_t *) malloc(size);
-    if (!buf) {
-        fprintf(stderr, "ERROR Cannot alloc %lld\n", size);
-        exit(1);
-    }
-    (void) fread((void *) buf, size, 1, f);
+    std::vector<uint8_t> buf(size, 0);
+    (void) fread((void *) buf.data(), size, 1, f);
     fclose(f);
-    riff::ChunkHeader *riffHeader = (riff::ChunkHeader *) (buf);
-    riff::ChunkHeader *fmtHeader = (riff::ChunkHeader *) (buf + 12);
-    wav::FormatHeader *hdr = (wav::FormatHeader *) (buf + 12 + 8); // skip RIFF + WAV
-    riff::ChunkHeader *dta = (riff::ChunkHeader *) (buf + 12 + 8 + sizeof(wav::FormatHeader));
+    riff::ChunkHeader *riffHeader = (riff::ChunkHeader *) (buf.data());
+    riff::ChunkHeader *fmtHeader = (riff::ChunkHeader *) (buf.data() + 12);
+    wav::FormatHeader *hdr = (wav::FormatHeader *) (buf.data() + 12 + 8); // skip RIFF + WAV
+    riff::ChunkHeader *dta = (riff::ChunkHeader *) (buf.data() + 12 + 8 + sizeof(wav::FormatHeader));
     auto *data = (float *) ((uint8_t *) dta + sizeof(riff::ChunkHeader));
     printf("Channels: %d\n", hdr->channelCount);
     printf("SampleRate: %d\n", hdr->sampleRate);
@@ -1664,7 +1696,7 @@ void doDecode(const char *mode, const char *path, int threads,
         fprintf(stderr, "ERROR Want Codec/BitDepth/channels: 3/32/2 or 1/16/2\n");
         return;
     }
-    int nSamples = ((char *) (buf + size) - (char *) data) / 2 / (hdr->bitDepth / 8);
+    int nSamples = ((char *) (buf.data() + size) - (char *) data) / 2 / (hdr->bitDepth / 8);
     printf("NSamples: %d\n", nSamples);
 
     std::vector<dsp::stereo_t> converted;
@@ -1721,14 +1753,27 @@ void doDecode(const char *mode, const char *path, int threads,
 
             sampleRate = 12000;
 
-            if (false) {
-                auto ctm = currentTimeMillis();
-                ft8::decodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](int mode, QStringList result) {
-                });
-                std::cout << "Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
+            if (true) {
+                for (auto t = 0; t<12; t++) {
+                    std::thread x([=]() {
+                        for(int q=0; q<1000; q++) {
+                            usleep((rand() % 5) * 1000000);
+                            auto ctm = currentTimeMillis();
+                            ft8::decodeFT8(threads, mode, sampleRate, stereoData, nSamples, [](int mode, QStringList result) {
+                            });
+                            std::cout << "["<<t<<"]Time taken: " << currentTimeMillis() - ctm << " ms" << std::endl;
+                        }
+
+                    });
+                    x.detach();
+                }
+                sleep(100000);
             } else {
-                if (WasmerFT8Decoder::setupModule(
-                    "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv")) {
+                std::string wasmPath = "/Users/san/Fun/SDRPlusPlus/decoder_modules/ft8_decoder/wasm/sdrpp_ft8_mshv";
+                if (auto override = getenv("FT8WASM")) {
+                    wasmPath = override;
+                }
+                if (WasmerFT8Decoder::setupModule(wasmPath)) {
                     for(int q=0; q<5; q++) {
                         planAllocTime = 0;
                         planExecTime = 0;
@@ -1749,6 +1794,24 @@ void doDecode(const char *mode, const char *path, int threads,
         fprintf(stderr, "ERROR %s \n", e.what());
     }
 }
+
+
+#ifdef __ANDROID__
+#ifdef DO_WASMER
+
+
+extern "C" {
+    void *__errno_location() {
+        return &errno;
+    }
+    char * __xpg_strerror_r(int errnum, char * buf, size_t buflen) {
+        snprintf(buf, buflen, "system__error %d", errnum);
+    }
+
+}
+#endif
+#endif
+
 
 
 static void help(const char *cmd) {

@@ -263,7 +263,7 @@ std::string arrayToString(const char *name, const float *arr, int len) {
     auto dbg = rv.data();
     dbg[0] = 0;
     for(int q=0; q<len;q++) {
-        sprintf(dbg+strlen(dbg), "%s[%d] = %f\n", name, q, arr[q]);
+        snprintf(dbg+strlen(dbg), rv.size() - strlen(dbg), "%s[%d] = %f\n", name, q, arr[q]);
     }
     rv.resize(strlen(dbg));
     return rv;
@@ -275,7 +275,7 @@ std::string arrayToStringD(const char *name, const double *arr, int len) {
     dbg[0] = 0;
     int ix = 0;
     for(int q=0; q<len;q++) {
-        ix += sprintf(dbg+ix, "%s[%d] = %f\n", name, q, arr[q]);
+        ix += snprintf(dbg+ix, rv.size() - ix, "%s[%d] = %f\n", name, q, arr[q]);
     }
     rv.resize(strlen(dbg));
     return rv;

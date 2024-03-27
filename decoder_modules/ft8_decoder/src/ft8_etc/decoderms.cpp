@@ -21,7 +21,6 @@ using namespace std; // zaradi max(
 static const double DEC_SAMPLE_RATE_11025 = 11025.0;
 static const double DEC_SAMPLE_RATE_12000 = 12000.0;
 
-std::atomic_int outCount = 0;
 //#include <QtGui>
 
 #define MAXDUPMSGTHR 120 //2.63 from 100 to 120
@@ -29,6 +28,7 @@ std::atomic_int outCount = 0;
 DecoderMs::DecoderMs()//QObject *parent
 //: QObject(parent)
 {
+    f2a = std::make_shared<F2a>();
 	pomAll.initPomAll();//2.66 for pctile_shell in jt65 and pi4
     for (int i = 0; i <  MAXDUPMSGTHR; ++i)
     {
@@ -46,22 +46,22 @@ DecoderMs::DecoderMs()//QObject *parent
     //f_multi_answer_mod = false;
     //s_ncontest_ft8_2 = 0;
     /////////// FT4 ///////////////////////////////////////////////////////////
-    DecFt4_0 = new DecoderFt4(0);
+    DecFt4_0 = new DecoderFt4(0, f2a);
 //    connect(DecFt4_0, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_0, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_1 = new DecoderFt4(1);
+    DecFt4_1 = new DecoderFt4(1, f2a);
 //    connect(DecFt4_1, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_1, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_2 = new DecoderFt4(2);
+    DecFt4_2 = new DecoderFt4(2, f2a);
 //    connect(DecFt4_2, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_2, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_3 = new DecoderFt4(3);
+    DecFt4_3 = new DecoderFt4(3, f2a);
 //    connect(DecFt4_3, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_3, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_4 = new DecoderFt4(4);
+    DecFt4_4 = new DecoderFt4(4, f2a);
 //    connect(DecFt4_4, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_4, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_5 = new DecoderFt4(5);
+    DecFt4_5 = new DecoderFt4(5, f2a);
 //    connect(DecFt4_5, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_5, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
     /////////// FT4 END ///////////////////////////////////////////////////////
@@ -75,31 +75,16 @@ DecoderMs::DecoderMs()//QObject *parent
     is_stat_ftb[1] = false;
     is_ftBuff = false;
 
-    DecFt8_0 = new DecoderFt8(0);
-//    connect(DecFt8_0, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_0, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_1 = new DecoderFt8(1);
-//    connect(DecFt8_1, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_1, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_2 = new DecoderFt8(2);
-//    connect(DecFt8_2, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_2, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_3 = new DecoderFt8(3);
-//    connect(DecFt8_3, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_3, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_4 = new DecoderFt8(4);
-//    connect(DecFt8_4, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_4, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_5 = new DecoderFt8(5);
-//    connect(DecFt8_5, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_5, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
+    DecFt8_0 = new DecoderFt8(0, f2a);
+    DecFt8_1 = new DecoderFt8(1, f2a);
+    DecFt8_2 = new DecoderFt8(2, f2a);
+    DecFt8_3 = new DecoderFt8(3, f2a);
+    DecFt8_4 = new DecoderFt8(4, f2a);
+    DecFt8_5 = new DecoderFt8(5, f2a);
     /////////// END FT8 ///////////////////////////////////////////////////////////
 
     allq65 = false;
     DecQ65 = new DecoderQ65();
-//    connect(DecQ65, SIGNAL(EmitDecodetText(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecQ65, SIGNAL(EmitBackColor()), this, SLOT(SetBackColorQ65()));
-//    connect(DecQ65, SIGNAL(EmitAvgSavesQ65(int,int)), this, SIGNAL(EmitAvgSavesQ65(int,int)));
 
     /////////// PI4 ///////////////////////////////////////////////////////////
     first_pi4 = true;
@@ -272,6 +257,23 @@ DecoderMs::DecoderMs()//QObject *parent
 DecoderMs::~DecoderMs()
 {
     //qDebug()<<"DELETE";
+    delete DecFt8_5;
+    delete DecFt8_4;
+    delete DecFt8_3;
+    delete DecFt8_2;
+    delete DecFt8_1;
+    delete DecFt8_0;
+
+    delete DecFt4_5;
+    delete DecFt4_4;
+    delete DecFt4_3;
+    delete DecFt4_2;
+    delete DecFt4_1;
+    delete DecFt4_0;
+
+    delete TGenMsk;
+    delete TGen65;
+    delete DecQ65;
 }
 void DecoderMs::SetMaxDrift(bool f)
 {
@@ -638,7 +640,7 @@ void DecoderMs::setMode(int ident)
         DEC_SAMPLE_RATE = DEC_SAMPLE_RATE_12000;
 
     is_new_rpt_msk = false;//reset s_list_rpt_msk QStringList
-    f2a.DestroyPlansAll(true);//2.09  true inidiatly
+    f2a->DestroyPlansAll(true);//2.09  true inidiatly
 
     if (prev_mod == 14 || prev_mod == 15 || prev_mod == 16 || prev_mod == 17) DecQ65->SetClearAvgQ65all();
     prev_mod = ident;
@@ -656,7 +658,7 @@ void DecoderMs::analytic(double *d,int d_count_begin,int npts,int nfft,double *s
     for (int j = npts; j<nfft; j++)
         c[j]=0.0;
 
-    f2a.four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
+    f2a->four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
 
     for (int x = 0; x<nh; x++)
         //s[x]=real(c[x])**2 + aimag(c[x])**2
@@ -668,7 +670,7 @@ void DecoderMs::analytic(double *d,int d_count_begin,int npts,int nfft,double *s
     for (int y = nh+1; y<nfft; y++)
         c[y]=complex_zero;
 
-    f2a.four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
+    f2a->four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
 
     //c[1] = 4.9+6*I;
     //c[2] = 6.7+6*I;
@@ -757,7 +759,7 @@ void DecoderMs::xfft(std::complex<double> *c,double *d,int nfft)
 {
     //! Real-to-complex FFT.
     //four2a((std::complex<double>*)x,nfft,1,-1,0);
-    f2a.four2a_d2c(c,d,nfft,-1,0);
+    f2a->four2a_d2c(c,d,nfft,-1,0);
 }
 void DecoderMs::zero_int_beg_end(int*d,int begin,int end)
 {
@@ -1676,7 +1678,7 @@ c10:
         //c(nh+2-i)=conjg(c(i))
         c[nh+1-i]=conj(c[i]);
 
-    f2a.four2a_d2c(c,x,nh,1,-1);
+    f2a->four2a_d2c(c,x,nh,1,-1);
     double fac=(double)1.0/nfft;
     for (int i = 0; i<jz/nadd; i++)
     {
@@ -2135,7 +2137,7 @@ void DecoderMs::StrtDecode() {
 
 
 c900:
-    f2a.DestroyPlansAll(false);
+    f2a->DestroyPlansAll(false);
     EmitDecodeInProgresPskRep(false);
     //qDebug()<<"1-DestroyPlansAll";
 c990:  //2.40
@@ -2336,7 +2338,7 @@ void DecoderMs::ResetDupThr()
         DecFt8_4->SetNewP(true);
         DecFt8_5->SetNewP(true);
 
-        f2a.DestroyPlansAll(false);
+        f2a->DestroyPlansAll(false);
         EmitDecodeInProgresPskRep(false);
         have_decALL3_ = false;
         //qDebug()<<"END-DestroyPlansAll";

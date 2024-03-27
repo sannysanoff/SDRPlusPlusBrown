@@ -39,8 +39,6 @@ namespace ft8 {
         //
         // .
         //
-        char b[10];
-        debugPrintf("# hello here 2!, inputBuffer=%x, stack var =%p heap=%p", &samples[0], b, malloc(8));
         mshv_init();
 
         //        four2a_d2c_cnt = 0;
@@ -95,6 +93,7 @@ namespace ft8 {
         while (dms->IsWorking()) {
             usleep(100000);
         }
+        dms.reset();
         return;
     }
 

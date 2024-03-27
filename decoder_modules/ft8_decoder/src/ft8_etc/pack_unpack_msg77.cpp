@@ -19,12 +19,6 @@
 // #include "../../../config_str_exc.h"
 
 //static const QString c_77_04(){return " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";}//for the future [-Wclazy-non-pod-global-static]
-static  QString c_77_04 = "X"; // static init in wasm did not work here.
-static  QString c_77_txt;
-static  QString a1_28;
-static  QString a2_28;
-static  QString a3_28;
-static  QString a4_28;
 
 //// static decoders array ////////////////////////
 static bool inicialize_static_arrays = false;

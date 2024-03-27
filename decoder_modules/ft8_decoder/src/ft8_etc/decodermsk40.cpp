@@ -216,7 +216,7 @@ void DecoderMs::detectmsk40(std::complex<double> *cbig,int n,double s_istart)
         mplay_dca_dca_dca(ctmp,0,NFFT,ctmp,0,ctmp,0,1);//ctmp=ctmp**2
         mplay_dca_dca_da(ctmp,0,12,ctmp,0,rcw_msk40,0,1);//ctmp(1:12)=ctmp(1:12)*rcw
         mplay_dca_dca_da(ctmp,NPTS-12,NPTS,ctmp,NPTS-12,rcw_msk40,11,-1);// ctmp(NPTS-11:NPTS)=ctmp(NPTS-11:NPTS)*rcw(12:1:-1)
-        f2a.four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
+        f2a->four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
         mplay_da_absdca_absdca(tonespec,NFFT,ctmp,ctmp);//tonespec=abs(ctmp)**2
 
         int ihpk = pomAll.maxloc_da_beg_to_end(tonespec,ihlo_msk40,ihhi_msk40);//! high tone search window
@@ -1355,7 +1355,7 @@ void DecoderMs::msk40spd(std::complex<double> *cbig,int n,int &nsuccess,QString 
         mplay_dca_dca_dca(ctmp,0,NFFT,ctmp,0,ctmp,0,1);//ctmp=ctmp**2
         mplay_dca_dca_da(ctmp,0,12,ctmp,0,rcw_msk40,0,1);//ctmp(1:12)=ctmp(1:12)*rcw
         mplay_dca_dca_da(ctmp,NSPM-12,NSPM,ctmp,NSPM-12,rcw_msk40,11,-1);//ctmp(NSPM-11:NSPM)=ctmp(NSPM-11:NSPM)*rcw(12:1:-1)
-        f2a.four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
+        f2a->four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
         mplay_da_absdca_absdca(tonespec,NFFT,ctmp,ctmp);//tonespec=abs(ctmp)**2
 
         int ihpk = pomAll.maxloc_da_beg_to_end(tonespec,ihlo_msk40,ihhi_msk40);//! high tone search window
@@ -1760,8 +1760,8 @@ void DecoderMs::msk144signalquality(std::complex<double> *cframe,double snr,doub
         std::complex<double> canalytic[1024+10];
         analytic_msk144_2(d,0,npts,nfft,canalytic,pcoeffs,false,false);
         tweak1(canalytic,nfft,-freq,cmodel);//call tweak1(canalytic,nfft,-freq,cmodel)
-        f2a.four2a_c2c(cframe,NSPM,-1,1);//call four2a(cframe(1:864),864,1,-1,1)
-        f2a.four2a_c2c(cmodel,NSPM,-1,1);//call four2a(cmodel(1:864),864,1,-1,1)
+        f2a->four2a_c2c(cframe,NSPM,-1,1);//call four2a(cframe(1:864),864,1,-1,1)
+        f2a->four2a_c2c(cmodel,NSPM,-1,1);//call four2a(cmodel(1:864),864,1,-1,1)
 
         //qDebug()<<-freq;
         //! Cross spectra from different messages can be averaged

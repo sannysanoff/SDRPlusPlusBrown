@@ -51,8 +51,8 @@ elseif (WASM)
 else ()
     message("DEFAULT ======")
     add_executable(sdrpp_ft8_mshv "src/sdrpp_ft8_mshv_main.cpp" "src/sdrpp_ft8_mshv.cpp" ${SDRPP_FT8MSHV_SRC})
-    target_compile_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
-    target_link_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
+#    target_compile_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
+#    target_link_options(sdrpp_ft8_mshv PUBLIC "-fsanitize=address")
 endif ()
 
 target_include_directories(sdrpp_ft8_mshv PUBLIC "../../core/src")
@@ -115,6 +115,7 @@ else ()
 endif ()
 
 
+#[[
 if (EXISTS ${CMAKE_BINARY_DIR}/wasmer)
     message("Not downloading wasmerr.")
 else ()
@@ -137,10 +138,21 @@ if (APPLE)
     target_link_libraries(sdrpp_ft8_mshv PUBLIC ${CoreFoundation})
 endif ()
 
+]]
+
 if (APPLE)
     set(WASMEDGE /Users/san/Fun/WasmEdge/build)
     target_include_directories(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/include/api" )
     target_link_libraries(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/lib/api/libwasmedge.dylib")
+
+    set(WASMER /Users/san/Fun/wasitest/tmp/wasmer-c389b8851460db542e9448b0e828c71842051144)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${WASMER}/target/debug/libwasmer.a)
+    target_include_directories(sdrpp_ft8_mshv PUBLIC  ${WASMER}/lib/c-api)
+    find_library(SystemConfiguration SystemConfiguration)
+    find_library(CoreFoundation CoreFoundation)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${SystemConfiguration})
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC ${CoreFoundation})
+
 endif ()
 
 #target_link_options(test0 PUBLIC -fsanitize=memory)
@@ -148,6 +160,17 @@ endif ()
 install(TARGETS sdrpp_ft8_mshv DESTINATION lib)
 
 if (ANDROID)
+
+    set(WASMEDGE /Users/san/Fun/wasmEdge/build)
+    target_include_directories(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/include/api" )
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC "${WASMEDGE}/../aarch64-ok/libwasmedge.so")
+
+    set(WASMER /Users/san/Fun/wasmer-aarch64)
+    target_link_libraries(sdrpp_ft8_mshv PUBLIC /Users/san/Fun/wasitest/tmp/wasmer-c389b8851460db542e9448b0e828c71842051144/target.arm/aarch64-linux-android/release/libwasmer.a)
+
+    target_include_directories(sdrpp_ft8_mshv PUBLIC  ${WASMER}/include)
+
+
     # this script will copy the binary to the android project. and gradle will pack it with other libs.
     add_custom_command(TARGET sdrpp_ft8_mshv POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E time ${CMAKE_CURRENT_LIST_DIR}/android_pack.sh $<TARGET_FILE:sdrpp_ft8_mshv> ${CMAKE_CURRENT_LIST_DIR}

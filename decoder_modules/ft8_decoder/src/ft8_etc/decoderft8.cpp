@@ -47,7 +47,7 @@ static const int naptypes_2[6][4]=
         {1,2,0,0},{2,3,0,0},{2,3,0,0},{3,4,5,6},{3,4,5,6},{3,1,2,0}
     };
 
-DecoderFt8::DecoderFt8(int id)
+DecoderFt8::DecoderFt8(int id, std::shared_ptr<F2a> f2a) : f2a(f2a)
 {
     pomFt.initPomFt();
     pomAll.initPomAll();//2.66 for pctile_shell
@@ -93,8 +93,9 @@ DecoderFt8::DecoderFt8(int id)
         }
     }
 }
-DecoderFt8::~DecoderFt8()
-{}
+DecoderFt8::~DecoderFt8() {
+    delete TGenFt8;
+}
 static bool f_multi_answer_mod8 = false;
 void DecoderFt8::SetStMultiAnswerMod(bool f)
 {
@@ -253,7 +254,7 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
             else x[i]=0.0;
         }
         // debugPrintf("            four2a_d2c...");
-        f2a.four2a_d2c(cx_ft8,x.data(),NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)             //!r2c FFT to freq domain
+        f2a->four2a_d2c(cx_ft8,x.data(),NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)             //!r2c FFT to freq domain
         // debugPrintf("            four2a_d2c.");
         // printArraySCD("cx", cx_ft8, NFFT1);
         newdat=false;
@@ -306,7 +307,7 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
     // printArraySCD("c1-c", c1, c_c1);
     // debugPrintf("            cshift. next c1=%p", c1);
 
-    f2a.four2a_c2c(c1,NFFT2,1,1,decid); //call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
+    f2a->four2a_c2c(c1,NFFT2,1,1,decid); //call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
     // printArraySCD("c1-d", c1, NFFT2);
     // debugPrintf("            four2a_c2c.");
     /*
@@ -410,10 +411,10 @@ double DecoderFt8::BestIdtft8(double *dd,double f0,double dt,double idt,std::com
     for (int i = NFRAME; i < 180010; ++i)
         cfilt[i]=0.0;//cfilt(nframe+1:)=0.0
 
-    f2a.four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
+    f2a->four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
     for (int i = 0; i < NFFT; ++i)
         cfilt[i]*=cw_subs[i];//cfilt(1:nfft)=cfilt(1:nfft)*cw(1:nfft)
-    f2a.four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
+    f2a->four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
 
     for (int i = 0; i < NFILT/4; ++i)//hv NFILT/2+1
         cfilt[i]*=endcorr[i];//cfilt(1:NFILT/2+1)=cfilt(1:NFILT/2+1)*endcorrection
@@ -464,7 +465,7 @@ double DecoderFt8::BestIdtft8(double *dd,double f0,double dt,double idt,std::com
     if (j<0) j=0;//2.40 protection
     for (int i = j; i < NMAX; ++i) 	xdd[i]=0.0;*/
 
-    f2a.four2a_d2c(cx,xdd,NFFT,-1,0,decid);   //!Forward FFT, r2c
+    f2a->four2a_d2c(cx,xdd,NFFT,-1,0,decid);   //!Forward FFT, r2c
     double df=12000.0/(double)NFFT;
 
     //int ia=((f0-1.05*6.25)/df);//ia=(f0-1.5*6.25)/df
@@ -542,7 +543,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
             }
         }
 
-        f2a.four2a_c2c(cw_subsft8,NFFT,-1,1,decid);//four2a(cw,nfft,1,-1,1)
+        f2a->four2a_c2c(cw_subsft8,NFFT,-1,1,decid);//four2a(cw,nfft,1,-1,1)
 
         cw_subsft8[0] = mk_complex(1, 0);   // otherwise valgrind says its uninitialized
 
@@ -600,7 +601,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
         for (int i = NFRAME; i < 180010; ++i)
             cfilt[i]=0.0;//cfilt(nframe+1:)=0.0
 
-        f2a.four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
+        f2a->four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
         for (int i = 0; i < NFFT; ++i) {
 //            std::cout << "subtract 1 i=" << i << std::endl;
 //            std::cout << "before read cwsubs real" << std::endl;
@@ -617,7 +618,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
 //            std::cout << "end" << std::endl;
             cfilt[i] *= cw_subsft8[i]; // cfilt(1:nfft)=cfilt(1:nfft)*cw(1:nfft)
         }
-        f2a.four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
+        f2a->four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
 
         for (int i = 0; i < NFILT/4; ++i)//hv NFILT/2+1
             cfilt[i]*=endcorrectionft8[i];//cfilt(1:NFILT/2+1)=cfilt(1:NFILT/2+1)*endcorrection
@@ -781,7 +782,7 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
             for (int z = 0; z < 32; ++z)
                 csymb[z]=cd0[i1+z];
         }
-        f2a.four2a_c2c(csymb,32,-1,1,decid);
+        f2a->four2a_c2c(csymb,32,-1,1,decid);
         for (int z = 0; z < 8; ++z)
         {
             cs_[k][z]=csymb[z]*0.001;//1000.0;//cs(0:7,k)=csymb(1:8)/1e3
@@ -1581,7 +1582,7 @@ void DecoderFt8::get_spectrum_baseline(double *dd,int nfa,int nfb,double *sbase)
             x[z]=dd[ia+z]*window_ft8sbl[z]; //x=dd(ia:ib)*window
         //if (ia+NFFT1-1>178000) qDebug()<<ia+NFFT1-1;
         //qDebug()<<x[10]<<x[1000]<<x[2000]<<x[3000];
-        f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        f2a->four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1
             //ss_[j][i]=cabs(cx[i])*cabs(cx[i]);//fin s(1:NH1,j)=abs(cx(1:NH1))**2
@@ -1956,7 +1957,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         for (int z = NSPS; z < NFFT1+1; ++z)
             x[z]=0.0;            //x(NSPS+1:)=0.
         // debugPrintf("  f2a.four2a_d2c: %d, stack=%p .. %p", j, &dd, &sbase);
-        f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        f2a->four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
         // debugPrintf("  f2a.four2a_d2c ok: %d", j);
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1

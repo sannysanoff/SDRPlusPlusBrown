@@ -104,11 +104,10 @@ bool writeStringToFile(const std::string& text, const std::string& filename) {
 }
 #endif
 
-#define NPAMAX 1441000  //q65 max=1440000 PI4 max 768000
 #define NSMALL 16384
 void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform)
 {
-    static std::complex<double> aa[NSMALL+10];
+    std::vector<std::complex<double>> aa(NSMALL+10);
 
     if (cpc>NPMAX || nfft>NPAMAX) return;
 
@@ -316,24 +315,6 @@ void HvThr::DestroyPlans(FFT_PLAN *pc,int &cpc,FFT_PLAN *pd,int &cpd,bool imid)
 //// END class HvThr ///
 
 //// class F2A ///
-static int nplan_c2c0 = 0;
-static FFT_PLAN plan_c2c0[NPMAX+10];
-static std::complex<float> ca_c2c0[NPAMAX+10];
-static int nplan_c2c1 = 0;
-static FFT_PLAN plan_c2c1[NPMAX+10];
-static std::complex<float> ca_c2c1[NPAMAX+10];
-static int nplan_c2c2 = 0;
-static FFT_PLAN plan_c2c2[NPMAX+10];
-static std::complex<float> ca_c2c2[NPAMAX+10];
-static int nplan_c2c3 = 0;
-static FFT_PLAN plan_c2c3[NPMAX+10];
-static std::complex<float> ca_c2c3[NPAMAX+10];
-static int nplan_c2c4 = 0;
-static FFT_PLAN plan_c2c4[NPMAX+10];
-static std::complex<float> ca_c2c4[NPAMAX+10];
-static int nplan_c2c5 = 0;
-static FFT_PLAN plan_c2c5[NPMAX+10];
-static std::complex<float> ca_c2c5[NPAMAX+10];
 void F2a::four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int thr)
 {
     // debugPrintf("F2a::four2a_c2c enter, thr=%d", thr);
@@ -345,30 +326,8 @@ void F2a::four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int th
     else if (thr==5) HvThr5.four2a_c2c(a,ca_c2c5,plan_c2c5,nplan_c2c5,nfft,isign,iform);
     // debugPrintf("F2a::four2a_c2c exit, thr=%d", thr);
 }
-static int nplan_d2c0 = 0;
-static FFT_PLAN plan_d2c0[NPMAX+10];
-static float da_d2c0[NPAMAX+10];
-static std::complex<float> ca_d2c0[NPAMAX+10];
-static int nplan_d2c1 = 0;
-static FFT_PLAN plan_d2c1[NPMAX+10];
-static float da_d2c1[NPAMAX+10];
-static std::complex<float> ca_d2c1[NPAMAX+10];
-static int nplan_d2c2 = 0;
-static FFT_PLAN plan_d2c2[NPMAX+10];
-static float da_d2c2[NPAMAX+10];
-static std::complex<float> ca_d2c2[NPAMAX+10];
-static int nplan_d2c3 = 0;
-static FFT_PLAN plan_d2c3[NPMAX+10];
-static float da_d2c3[NPAMAX+10];
-static std::complex<float> ca_d2c3[NPAMAX+10];
-static int nplan_d2c4 = 0;
-static FFT_PLAN plan_d2c4[NPMAX+10];
-static float da_d2c4[NPAMAX+10];
-static std::complex<float> ca_d2c4[NPAMAX+10];
-static int nplan_d2c5 = 0;
-static FFT_PLAN plan_d2c5[NPMAX+10];
-static float da_d2c5[NPAMAX+10];
-static std::complex<float> ca_d2c5[NPAMAX+10];
+
+
 void F2a::four2a_d2c(std::complex<double> *a,double *d,int nfft,int isign,int iform,int thr)
 {
     if 		(thr==0) HvThr0.four2a_d2c(a,ca_d2c0,d,da_d2c0,plan_d2c0,nplan_d2c0,nfft,isign,iform);
@@ -2059,8 +2018,6 @@ c998:
 }
 
 void initDecoderPom() {
-    memset(&ca_d2c0, 0, sizeof(ca_d2c0));
-    memset(&da_d2c0, 0, sizeof(da_d2c0));
 }
 
 //// END POMFT ////
