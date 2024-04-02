@@ -237,6 +237,7 @@ namespace server {
     auto lastSend = currentTimeMillis();
     auto sentPackets = 0;
     auto sentBytes = 0;
+    auto sendErrors = 0;
 
     void _testServerHandler(uint8_t* data, int count, void* ctx) {
         // Compress data if needed and fill out header fields
@@ -255,10 +256,17 @@ namespace server {
         auto ctm = currentTimeMillis();
         if (ctm > lastSend + 1000) {
             lastSend = ctm;
-            flog::info("sent {} bytes {} packets", sentBytes, sentPackets);
+            flog::info("sent bytes: {} packets: {} errors: {} ", sentBytes, sentPackets, sendErrors);
+            sentBytes = 0;
+            sentPackets = 0;
+            sendErrors = 0;
         }
         // Write to network
-        if (client && client->isOpen()) { client->write(bb_pkt_hdr->size, bbuf); }
+        if (client && client->isOpen()) {
+            if (!client->write(bb_pkt_hdr->size, bbuf)) {
+                sendErrors++;
+            }
+        }
     }
 
     void setInput(dsp::stream<dsp::complex_t>* stream) {

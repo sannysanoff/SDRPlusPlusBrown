@@ -181,6 +181,7 @@ struct HL2Device {
     }
 
     void setFrequency(long long frequency) { // RX freq
+        flog::info("HL2: set center frequency: {}", std::to_string(frequency));
         deviceControl[0x02].C1 = frequency >> 24;
         deviceControl[0x02].C2 = frequency >> 16;
         deviceControl[0x02].C3 = frequency >> 8;

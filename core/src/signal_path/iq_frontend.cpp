@@ -261,7 +261,8 @@ void IQFrontEnd::handler(dsp::complex_t* data, int count, void* ctx) {
     IQFrontEnd* _this = (IQFrontEnd*)ctx;
 
     // Apply window
-    volk_32fc_32f_multiply_32fc((lv_32fc_t*)_this->fftPlan->getInput()->data(), (lv_32fc_t*)data, _this->fftWindowBuf, _this->_nzFFTSize);
+    lv_32fc_t *inputData = (lv_32fc_t *) _this->fftPlan->getInput()->data();
+    volk_32fc_32f_multiply_32fc(inputData, (lv_32fc_t*)data, _this->fftWindowBuf, _this->_nzFFTSize);
 
     // Execute FFT
     dsp::arrays::npfftfft(_this->fftPlan->getInput(), _this->fftPlan);
