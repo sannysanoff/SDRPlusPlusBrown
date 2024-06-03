@@ -36,7 +36,7 @@ public:
 
         // Define protocols
         protocols.define("POCSAG", PROTOCOL_POCSAG);
-        protocols.define("FLEX", PROTOCOL_FLEX);
+        //protocols.define("FLEX", PROTOCOL_FLEX);
 
         // Initialize VFO with default values
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 12500, 24000, 12500, 12500, true);
@@ -153,7 +153,7 @@ private:
 MOD_EXPORT void _INIT_() {
     // Create default recording directory
     json def = json({});
-    config.setPath(core::args["root"].s() + "/pager_decoder_config.json");
+    config.setPath(std::string(core::getRoot()) + "/pager_decoder_config.json");
     config.load(def);
     config.enableAutoSave();
 }

@@ -30,7 +30,7 @@ namespace SmGui {
         DRAW_STEP_INPUT_TEXT,
         DRAW_STEP_TEXT,
         DRAW_STEP_TEXT_COLORED,
-        DRAW_STEP_OPEN_POPUP,
+        DRAW_STEP_OPEN_POPUP,   // 0x90
         DRAW_STEP_BEGIN_POPUP,
         DRAW_STEP_END_POPUP,
         DRAW_STEP_BEGIN_TABLE,
@@ -39,7 +39,8 @@ namespace SmGui {
         DRAW_STEP_TABLE_SET_COLUMN_INDEX,
         DRAW_STEP_SET_NEXT_ITEM_WIDTH,
         DRAW_STEP_POP_STYLE_COLOR,
-        DRAW_STEP_PUSH_STYLE_COLOR
+        DRAW_STEP_PUSH_STYLE_COLOR,
+        DRAW_STEP_COLLAPSING_HEADER,
     };
 
     enum DrawListElemType {
@@ -72,7 +73,14 @@ namespace SmGui {
         FMT_STR_FLOAT_DB_NO_DECIMAL,
         FMT_STR_FLOAT_DB_ONE_DECIMAL,
         FMT_STR_FLOAT_DB_TWO_DECIMAL,
-        FMT_STR_FLOAT_DB_THREE_DECIMAL
+        FMT_STR_FLOAT_DB_THREE_DECIMAL,
+
+        FMT_STR_WATTS_INT,
+        FMT_STR_PLUS_INT_PERCENT,
+        FMT_STR_TEN_POWER_FLOAT,
+
+
+
     };
 
     extern std::map<FormatString, const char*> fmtStr;
@@ -96,7 +104,7 @@ namespace SmGui {
         static int getItemSize(DrawListElem& elem);
         int getSize();
         bool checkTypes(int firstId, int n, ...);
-        bool validate();
+        bool validate(std::string &step);
 
         std::vector<DrawListElem> elements;
     };
@@ -145,6 +153,8 @@ namespace SmGui {
     void SetNextItemWidth(float item_width);
     void PushStyleColor(ImGuiCol idx, const ImVec4& col);
     void PopStyleColor(int count = 1);
+
+    bool CollapsingHeader(const char *label);
 
     // Config configs
     void ForceSyncForNext();

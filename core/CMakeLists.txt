@@ -22,9 +22,13 @@ file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c"
 
 add_definitions(-DSDRPP_IS_CORE)
 add_definitions(-DFLOG_ANDROID_TAG="SDR++")
-if (MSVC)
+
+if(MSVC)
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-endif ()
+    add_compile_options(/wd4996)
+else()
+    add_compile_options(-Wno-deprecated-declarations)
+endif()
 
 # Configure backend sources
 if (OPT_BACKEND_GLFW)
@@ -39,6 +43,7 @@ endif (OPT_BACKEND_ANDROID)
 add_library(sdrpp_core SHARED ${SRC} ${BACKEND_SRC})
 
 if(APPLE)
+    target_link_libraries(sdrpp_core PUBLIC "-framework CoreFoundation")
     target_link_libraries(sdrpp_core PUBLIC "-framework Accelerate")
 endif()
 
@@ -152,6 +157,8 @@ else()
     pkg_check_modules(VOLK REQUIRED volk)
     pkg_check_modules(GLFW3 REQUIRED glfw3)
     pkg_check_modules(LIBZSTD REQUIRED libzstd)
+
+    message(STATUS "VOLK=${VOLK_INCLUDE_DIRS}")
 
 
     target_include_directories(sdrpp_core PUBLIC

@@ -333,7 +333,7 @@ private:
     }
 
     std::map<int, const char*> radioModeToString = {
-        { RADIO_IFACE_MODE_NFM, "NFM" },
+        { RADIO_IFACE_MODE_NFM, "FM" },
         { RADIO_IFACE_MODE_WFM, "WFM" },
         { RADIO_IFACE_MODE_AM,  "AM"  },
         { RADIO_IFACE_MODE_DSB, "DSB" },
@@ -706,7 +706,7 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    config.setPath(core::args["root"].s() + "/rigctl_server_config.json");
+    config.setPath(std::string(core::getRoot()) + "/rigctl_server_config.json");
     config.load(json::object());
     config.enableAutoSave();
 }

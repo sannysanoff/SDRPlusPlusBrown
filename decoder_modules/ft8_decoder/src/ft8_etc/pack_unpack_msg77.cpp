@@ -19,12 +19,6 @@
 // #include "../../../config_str_exc.h"
 
 //static const QString c_77_04(){return " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";}//for the future [-Wclazy-non-pod-global-static]
-static const QString c_77_04=" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";
-static const QString c_77_txt =" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?";
-static const QString a1_28 = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static const QString a2_28 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static const QString a3_28 = "0123456789";
-static const QString a4_28 = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 //// static decoders array ////////////////////////
 static bool inicialize_static_arrays = false;
@@ -47,6 +41,17 @@ static int nzhash_pos_writeg = 0;
 
 void PackUnpackMsg77::initPackUnpack77(bool f_dec_gen)//f_dec_gen -> dec=true gen=false
 {
+
+    if (c_77_04.count() < 10) {
+         // debugPrintf("c_77_04 len = %d", c_77_04.count());
+         c_77_04=" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/";
+         c_77_txt =" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?";
+         a1_28 = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+         a2_28 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+         a3_28 = "0123456789";
+         a4_28 = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    }
+
     //qDebug()<<f_dec_gen;
     sf_dec_gen = f_dec_gen;
     if (inicialize_static_arrays) return;
@@ -296,11 +301,13 @@ void PackUnpackMsg77::unpack28(int n28_0,QString &c13,bool &success)
     int n,i1,i2,i3,i4,i5,i6;
     //QString c13p;
 
+    // debugPrintf("           call unpack28 begin");
     success=true;
     int n28=n28_0;
     if (n28<NTOKENS) //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
     {
         //! Special tokens DE, QRZ, CQ, CQ_nnn, CQ_aaaa
+        // debugPrintf("           n28=%d", n28);
         if (n28==0) c13="DE";
         if (n28==1) c13="QRZ";
         if (n28==2) c13="CQ";
@@ -334,9 +341,11 @@ void PackUnpackMsg77::unpack28(int n28_0,QString &c13,bool &success)
         }
     }
     n28=n28-NTOKENS; //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
+    // debugPrintf("           n28_2=%d", n28);
     //qDebug()<<c13<<n28<<MAX22;
     if (n28<MAX22)
     {
+        // debugPrintf("           hash..");
         //! This is a 22-bit hash of a callsign
         int n22=n28;
         hash22(n22,c13);     //!Retrieve callsign from hash table
@@ -359,6 +368,7 @@ void PackUnpackMsg77::unpack28(int n28_0,QString &c13,bool &success)
     //c13=c1(i1+1:i1+1)//c2(i2+1:i2+1)//c3(i3+1:i3+1)//c4(i4+1:i4+1)//     &
     //c4(i5+1:i5+1)//c4(i6+1:i6+1)//'       '
     //c13=adjustl(c13)
+    // debugPrintf("           append..");
     c13.append(a1_28[i1]);
     c13.append(a2_28[i2]);
     c13.append(a3_28[i3]);
@@ -366,7 +376,9 @@ void PackUnpackMsg77::unpack28(int n28_0,QString &c13,bool &success)
     c13.append(a4_28[i5]);
     c13.append(a4_28[i6]);
     //c13p = c13.leftJustified(6,' ');
+    // debugPrintf("           trimmed");
     c13 = c13.trimmed();
+    // debugPrintf("           trimmed2");
     //c13.append(" ");
 c900:  //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
     //int i0=c13.indexOf(" ");            //i0=index(c13,' ');
@@ -378,7 +390,9 @@ c900:  //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
     c13.append("  ");
     int i0=c13.indexOf(" ")+1;//qDebug()<<c13;*/
     //qDebug()<<c13;
+    // debugPrintf("           trimmed3...");
     c13 = c13.trimmed(); //qDebug()<<c13;
+    // debugPrintf("           trimmed3");
     if (c13.contains(" "))
     {
         c13="QU1RK";
@@ -434,6 +448,7 @@ bool PackUnpackMsg77::to_grid6(int n,QString &grid6)
 QString PackUnpackMsg77::unpack77(bool *c77,bool &unpk77_success)
 {
     //QString aaa = "A4A";   qDebug()<<aaa.count();
+    // debugPrintf("         unpack77 begin");
     int MAXGRID4 = 32400;
     QString call_1,call_2,call_3;
     QString msg = "";
@@ -459,6 +474,7 @@ QString PackUnpackMsg77::unpack77(bool *c77,bool &unpk77_success)
 
     if (i3==0 && n3==0)//if(i3.eq.0 .and. n3.eq.0) then
     {
+        // debugPrintf("         free text");
         //! 0.0  Free text
         unpacktext77(c77,msg);     
         //msg(14:)='                        '
@@ -473,7 +489,8 @@ QString PackUnpackMsg77::unpack77(bool *c77,bool &unpk77_success)
     }
     else if (i3==0 && n3==1)
     {
-        //! 0.1  K1ABC RR73; W9XYZ <KH1/KH7Z> -11   28 28 10 5       71   DXpedition Mode
+        // debugPrintf("         i3==0 n3==1");
+                //! 0.1  K1ABC RR73; W9XYZ <KH1/KH7Z> -11   28 28 10 5       71   DXpedition Mode
         //   read(c77,1010) n28a,n28b,n10,n5
         //1010 format(2b28,b10,b5)
         int n28a = BinToInt32(c77,0,28);
@@ -484,6 +501,7 @@ QString PackUnpackMsg77::unpack77(bool *c77,bool &unpk77_success)
         //QString crpt = QString("%1").arg(irpt,3,10,QChar('0'));    //write(crpt,1012) irpt 1012 format(i3.2)
         //if (irpt>=0) crpt.prepend("+"); //qDebug()<<crpt; //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
         QString crpt;
+        // debugPrintf("         crpt.");
         if (irpt>-1)
             crpt="+"+QString("%1").arg(irpt,2,10,QChar('0'));
         else
@@ -1480,7 +1498,7 @@ void PackUnpackMsg77::pack77_03(int nwords,QString *w,int &i3,int &n3,bool *c77)
     QString test = w[nwords-1].mid(0,3);
     for (int i = 0; i<NSEC; ++i)
     {//do i=1,NSEC
-        if (csec_77[i]==test)
+        if (test==csec_77[i])
         {
             isec=i+1;//HV +1
             break;//exit
@@ -1718,7 +1736,7 @@ void PackUnpackMsg77::pack77_3(int nwords,QString *w,int &i3,int &n3,bool *c77)
         for (int i = 0; i<NUSCAN; ++i)
         {//do i=1,NUSCAN
             //qDebug()<<cmult_77[i]<<i;
-            if (cmult_77[i]==w[nwords-1].mid(0,3))
+            if (w[nwords-1].mid(0,3) == cmult_77[i])
             {
                 imult=i+1;
                 mult=cmult_77[i];

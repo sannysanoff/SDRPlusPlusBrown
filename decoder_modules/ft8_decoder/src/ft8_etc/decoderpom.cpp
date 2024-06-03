@@ -37,30 +37,41 @@
 #define SLPASTEP 1000 //1000 importent SLPAMIN > SLPASTEP
 static bool _block_th_all_ = false;        //need to be static for all
 static int _wait_t_ = SLPAMIN - SLPASTEP;  //need to be static for all
-static int setup_c2c_d2c_(bool &wait,fftwf_plan &p,std::complex<float> *a,int nfft,int isign,int iform,float *d = 0)
+static int setup_c2c_d2c_(bool &wait,FFT_PLAN &p,std::complex<float> *a,int nfft,int isign,int iform,float *d = 0)
 {
+    // debugPrintf("setup_c2c_d2c_ begin isign %d iform %d sizeof(p)=%d, &p=%p", isign, iform, sizeof(p), &p);
     if (_block_th_all_ || !wait)
     {
+        // debugPrintf("setup_c2c_d2c_ ret: %d %d ", _block_th_all_, wait);
         _wait_t_ += SLPASTEP;
         wait = true; //retr++; qDebug()<<"retry---->"<<retr<<_wait_t_;
         return _wait_t_;
     }
     _block_th_all_ = true; //if (cplu == 0) qDebug()<<"----------------------"; cplu++; qDebug()<<"PLANS="<<cplu<<nfft;
 
-    unsigned int flag = FFTW_ESTIMATE_PATIENT;
+    //unsigned int flag = FFTW_ESTIMATE_PATIENT;
 //    unsigned int flag = FFTW_ESTIMATE;
 //    if (nfft > 6000) {
 //        flag = FFTW_ESTIMATE;
 //    }
-    if 		(isign==-1 && iform==1)
-        p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_FORWARD, flag);
+    if (isign==-1 && iform==1)
+            p = fftplug_allocate_plan_c2c(nfft, true);
+        // p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_FORWARD, flag);
     else if (isign==1 && iform==1)
-        p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_BACKWARD, flag);
-    else if (isign==-1 && iform==0)
-        p=fftwf_plan_dft_r2c_1d(nfft, d,(fftwf_complex *)a, flag);
+        p = fftplug_allocate_plan_c2c(nfft, false);
+        //p=fftwf_plan_dft_1d(nfft,(fftwf_complex *)a,(fftwf_complex *)a,FFTW_BACKWARD, flag);
+    else if (isign==-1 && iform==0) {
+        // debugPrintf("before fftplug_allocate_plan_r2c");
+        auto zz = fftplug_allocate_plan_r2c(nfft);
+        //debugPrintf("Returned from native, zz = %d", zz.handle);
+        p = zz;
+    }
+        //p=fftwf_plan_dft_r2c_1d(nfft, d,(fftwf_complex *)a, flag);
     else if (isign==1 && iform==-1)
-        p=fftwf_plan_dft_c2r_1d(nfft,(fftwf_complex *)a,d, flag);
-
+        //p=fftwf_plan_dft_c2r_1d(nfft,(fftwf_complex *)a,d, flag);
+            abort();
+        //p = fftplug_allocate_plan_c2r(nfft);
+    //debugPrintf("setup_c2c_d2c_ ok");
     _block_th_all_ = false;
     return 0;
 }
@@ -78,6 +89,7 @@ std::string complexToString(const std::complex<float>& c) {
     return s;
 }
 
+#ifndef __wasm__
 // write string s to file fn
 bool writeStringToFile(const std::string& text, const std::string& filename) {
     std::ofstream outfile(filename);
@@ -90,12 +102,12 @@ bool writeStringToFile(const std::string& text, const std::string& filename) {
         return false;
     }
 }
+#endif
 
-#define NPAMAX 1441000  //q65 max=1440000 PI4 max 768000
 #define NSMALL 16384
-void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan *pc,int &cpc,int nfft,int isign,int iform)
+void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,FFT_PLAN *pc,int &cpc,int nfft,int isign,int iform)
 {
-    static std::complex<double> aa[NSMALL+10];
+    std::vector<std::complex<double>> aa(NSMALL+10);
 
     if (cpc>NPMAX || nfft>NPAMAX) return;
 
@@ -131,7 +143,7 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
         bool wait = false; //if (nthreads==1) wait = false; ??? hv
         while (slpp!=0)
         {
-            usleep(slpp);
+            // usleep(slpp);
             slpp = setup_c2c_d2c_(wait,pc[z],a1,nfft,isign,iform);
         }
         cpc++;  //qDebug()<<"c2c====="<<cpc<<nfft;
@@ -145,8 +157,11 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
             a1[i]=aa[i];
     }
 
-    fftwf_execute(pc[z]);
+    // memcpy(fftplug_get_complex_input(pc[z]), a1, nfft * sizeof(plug_complex_float));
+    fftplug_execute_plan(pc[z], a1, nfft * sizeof(plug_complex_float), a1, nfft * sizeof(plug_complex_float));
+    // memcpy(a1, fftplug_get_complex_output(pc[z]), nfft * sizeof(plug_complex_float));
     for (int i = 0; i < nfft; ++i) {
+#if 0
         if (std::isnan(a1[i].real())) {
             std::string s;
             for (int z = 0; z < nfft; z++) {
@@ -156,8 +171,12 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
 
             abort();
         }
+#endif
         a[i] = a1[i];
     }
+    // if (pc[z].handle == 2) {
+    //     debugPrintf("Exit fourier 2");
+    // }
 }
 
 // input/output: a
@@ -167,10 +186,10 @@ void HvThr::four2a_c2c(std::complex<float> *a,std::complex<float> *a1,fftwf_plan
 
 int four2a_d2c_cnt = 0;
 
-void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,fftwf_plan *pd,int &cpd,
+void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,float *d1,FFT_PLAN *pd,int &cpd,
                        int nfft,int isign,int iform)
 {
-    static std::complex<double> aa[NSMALL+10];
+    std::vector<std::complex<double>> aa(NSMALL+10);
     four2a_d2c_cnt++;
 
 
@@ -190,10 +209,10 @@ void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,f
     for (int i = 0; i < nfft; ++i)
     {
         if (i<cfft) {
-            if (std::isnan(d[i])) {
-                std::cout << "four2a_d2c._cnt == " << four2a_d2c_cnt << " i = " << i << std::endl;
-                abort();
-            }
+            // if (std::isnan(d[i])) {
+            //     std::cout << "four2a_d2c._cnt == " << four2a_d2c_cnt << " i = " << i << std::endl;
+            //     abort();
+            // }
             a1[i] = a[i];
         }
         d1[i]=d[i];
@@ -216,7 +235,7 @@ void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,f
         bool wait = false; //if (nthreads==1) wait = false; ??? hv
         while (slpp!=0)
         {
-            usleep(slpp);
+            // usleep(slpp);
             slpp = setup_c2c_d2c_(wait,pd[z],a1,nfft,isign,iform,d1);
         }
         cpd++;  //qDebug()<<"d2c="<<cpd<<nfft;
@@ -226,41 +245,61 @@ void HvThr::four2a_d2c(std::complex<float> *a,std::complex<float> *a1,float *d,f
     {
         for (int i = 0; i<cfft; ++i) {
             a1[i] = aa[i];
-            if (std::isnan(a[i].real()) || std::isnan(a[i].imag())) {
-                abort();
-            }
+            // if (std::isnan(a[i].real()) || std::isnan(a[i].imag())) {
+            //     abort();
+            // }
         }
     }
 
-//    if (four2a_d2c_cnt == 466) {
-//        std::cout << "four2a_d2c:466, z=" << z<< " input to fft: ";
-//        for(int z=0; z<nfft; z++) {
-//            std::cout << z<<+":"<< a1[z] << " ";
-//            std::flush(std::cout);
-//        }
-//        std::cout << std::endl;
-//    }
-    fftwf_execute_dft_r2c(pd[z], d1, (fftwf_complex*)a1);
+    // auto fi = fftplug_get_float_input(pd[z]);
+    // debugPrintf("float input: %p", fi);
+    // memcpy(fi, d1, nfft * sizeof(float));
+    fftplug_execute_plan(pd[z], d1, nfft * sizeof(float), a1, nfft * sizeof(plug_complex_float));
+    // auto co = fftplug_get_complex_output(pd[z]);
+    // debugPrintf("complex output input: %p, dest=%p %p  stack=%p %p", co, a, d, &a, &iform);
+    // memcpy(a1, co, nfft * sizeof(plug_complex_float));
     for (int i = 0; i < nfft; ++i)
     {
         if (i<cfft) {
             a[i] = a1[i];
-            if (std::isnan(a[i].real()) || std::isnan(a[i].imag())) {
-                std::cout << "after exec, four2a_d2c._cnt == " << four2a_d2c_cnt << " i = " << i << " nfft = " << nfft << std::endl;
-                abort();
-            }
+            // if (std::isnan(a[i].real()) || std::isnan(a[i].imag())) {
+            //     std::cout << "after exec, four2a_d2c._cnt == " << four2a_d2c_cnt << " i = " << i << " nfft = " << nfft << std::endl;
+            //     abort();
+            // }
         }
         d[i]=d1[i];
     }
 }
+
+void HvThr::four2a_c2c(std::complex<double> *a, std::complex<float> *a1, FFT_PLAN *pc, int &cpc, int nfft, int isign,
+    int iform) {
+
+    // std::vector<std::complex<float>> buf(nfft);
+    // debugPrintf("enter fourier: a=%p buf.data=%p nfft=%d stack=%p", a, buf.data(), nfft, &iform);
+    for (int i = 0; i < nfft; ++i) {
+        a1[i] = a[i];
+    }
+    four2a_c2c(a1,a1, pc, cpc, nfft, isign, iform);
+    // debugPrintf("exit fourier: a=%p buf.data=%p nfft=%d", a, buf.data(), nfft);
+    // debugPrintf("el 1929: a=%p buf=%p", a+1929, buf.data()+1929);
+    for (int i = 0; i < nfft; ++i) {
+        // if (i > 1925) {
+        //     debugPrintf(" i = %d &a[i]=%p, &b[i]=%p", i, &a[i], &buf[i]);
+        // }
+        a[i] = a1[i];
+    }
+    // debugPrintf("Exit fourier 2b");
+
+}
+
 #define NPLIM 20 // reset if > 20 JTMS
-void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool imid)
+void HvThr::DestroyPlans(FFT_PLAN *pc,int &cpc,FFT_PLAN *pd,int &cpd,bool imid)
 {
     if (cpc > NPLIM || imid)
     {
         //qDebug()<<"Plans C2C="<<cpc;
         for (int z = 0; z < cpc; ++z)
-            fftwf_destroy_plan(pc[z]);
+            fftplug_free_plan(pc[z]);
         cpc = 0;
         _wait_t_ = SLPAMIN - SLPASTEP;
     }
@@ -268,7 +307,7 @@ void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool im
     {
         //qDebug()<<"Plans D2C="<<cpd;
         for (int z = 0; z < cpd; ++z)
-            fftwf_destroy_plan(pd[z]);
+            fftplug_free_plan(pd[z]);
         cpd = 0;
         _wait_t_ = SLPAMIN - SLPASTEP;
     }
@@ -276,57 +315,19 @@ void HvThr::DestroyPlans(fftwf_plan *pc,int &cpc,fftwf_plan *pd,int &cpd,bool im
 //// END class HvThr ///
 
 //// class F2A ///
-static int nplan_c2c0 = 0;
-static fftwf_plan plan_c2c0[NPMAX+10];
-static std::complex<float> ca_c2c0[NPAMAX+10];
-static int nplan_c2c1 = 0;
-static fftwf_plan plan_c2c1[NPMAX+10];
-static std::complex<float> ca_c2c1[NPAMAX+10];
-static int nplan_c2c2 = 0;
-static fftwf_plan plan_c2c2[NPMAX+10];
-static std::complex<float> ca_c2c2[NPAMAX+10];
-static int nplan_c2c3 = 0;
-static fftwf_plan plan_c2c3[NPMAX+10];
-static std::complex<float> ca_c2c3[NPAMAX+10];
-static int nplan_c2c4 = 0;
-static fftwf_plan plan_c2c4[NPMAX+10];
-static std::complex<float> ca_c2c4[NPAMAX+10];
-static int nplan_c2c5 = 0;
-static fftwf_plan plan_c2c5[NPMAX+10];
-static std::complex<float> ca_c2c5[NPAMAX+10];
 void F2a::four2a_c2c(std::complex<double> *a,int nfft,int isign,int iform,int thr)
 {
+    // debugPrintf("F2a::four2a_c2c enter, thr=%d", thr);
     if 		(thr==0) HvThr0.four2a_c2c(a,ca_c2c0,plan_c2c0,nplan_c2c0,nfft,isign,iform);
     else if (thr==1) HvThr1.four2a_c2c(a,ca_c2c1,plan_c2c1,nplan_c2c1,nfft,isign,iform);
     else if (thr==2) HvThr2.four2a_c2c(a,ca_c2c2,plan_c2c2,nplan_c2c2,nfft,isign,iform);
     else if (thr==3) HvThr3.four2a_c2c(a,ca_c2c3,plan_c2c3,nplan_c2c3,nfft,isign,iform);
     else if (thr==4) HvThr4.four2a_c2c(a,ca_c2c4,plan_c2c4,nplan_c2c4,nfft,isign,iform);
     else if (thr==5) HvThr5.four2a_c2c(a,ca_c2c5,plan_c2c5,nplan_c2c5,nfft,isign,iform);
+    // debugPrintf("F2a::four2a_c2c exit, thr=%d", thr);
 }
-static int nplan_d2c0 = 0;
-static fftwf_plan plan_d2c0[NPMAX+10];
-static float da_d2c0[NPAMAX+10];
-static std::complex<float> ca_d2c0[NPAMAX+10];
-static int nplan_d2c1 = 0;
-static fftwf_plan plan_d2c1[NPMAX+10];
-static float da_d2c1[NPAMAX+10];
-static std::complex<float> ca_d2c1[NPAMAX+10];
-static int nplan_d2c2 = 0;
-static fftwf_plan plan_d2c2[NPMAX+10];
-static float da_d2c2[NPAMAX+10];
-static std::complex<float> ca_d2c2[NPAMAX+10];
-static int nplan_d2c3 = 0;
-static fftwf_plan plan_d2c3[NPMAX+10];
-static float da_d2c3[NPAMAX+10];
-static std::complex<float> ca_d2c3[NPAMAX+10];
-static int nplan_d2c4 = 0;
-static fftwf_plan plan_d2c4[NPMAX+10];
-static float da_d2c4[NPAMAX+10];
-static std::complex<float> ca_d2c4[NPAMAX+10];
-static int nplan_d2c5 = 0;
-static fftwf_plan plan_d2c5[NPMAX+10];
-static float da_d2c5[NPAMAX+10];
-static std::complex<float> ca_d2c5[NPAMAX+10];
+
+
 void F2a::four2a_d2c(std::complex<double> *a,double *d,int nfft,int isign,int iform,int thr)
 {
     if 		(thr==0) HvThr0.four2a_d2c(a,ca_d2c0,d,da_d2c0,plan_d2c0,nplan_d2c0,nfft,isign,iform);
@@ -671,7 +672,9 @@ void PomAll::cshift1(std::complex<double> *a,int cou_a,int ish)
 
     //std::complex<double> t[cou_a];  //garmi hv v1.42
     //std::complex<double> t[cou_a*2+ish+50];  //garmi hv v1.43 ok
-    std::complex<double> *t = new std::complex<double>[cou_a+100]; //garmi pri goliam count hv v1.43 correct ok
+    // debugPrintf("            cshift1: %d %d", cou_a, ish);
+    std::vector<std::complex<double>> t(cou_a+ish+100, {0, 0});
+    // debugPrintf("            cshift1: %x %x", t.data(), a);
     for (int i=0; i< cou_a; i++)
         t[i]=a[i];
 
@@ -695,7 +698,7 @@ void PomAll::cshift1(std::complex<double> *a,int cou_a,int ish)
                 a[i]=t[i+ish];
         }
     }
-    delete [] t;
+    // debugPrintf("            cshift1 done");
 }
 std::complex<double> PomAll::sum_dca_mplay_conj_dca(std::complex<double> *a,int a_beg,int a_end,std::complex<double> *b)
 {
@@ -1545,7 +1548,7 @@ void PomFt::encode174_91_nocrc(bool *message910,bool *codeword)
         {
             for (int j = 0; j < 23; ++j)
             {
-                QString temp = g_ft8_174_91[i].substr(j,1);
+                QString temp = QString(g_ft8_174_91[i][j]);
                 bool ok;
                 int istr = toInt(temp.str->c_str(), ok, 16);
                 for (int jj = 0; jj < 4; ++jj)
@@ -2015,9 +2018,9 @@ c998:
 }
 
 void initDecoderPom() {
-    memset(&ca_d2c0, 0, sizeof(ca_d2c0));
-    memset(&da_d2c0, 0, sizeof(da_d2c0));
 }
 
-//// END POMFT ///
+//// END POMFT ////
+
+
 

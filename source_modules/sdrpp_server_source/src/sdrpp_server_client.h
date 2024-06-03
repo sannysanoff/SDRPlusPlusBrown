@@ -11,12 +11,23 @@
 #include <dsp/compression/sample_stream_decompressor.h>
 #include <dsp/sink.h>
 #include <dsp/routing/stream_link.h>
+#include <dsp/buffer/prebuffer.h>
 #include <zstd.h>
+#include "dsp/compression/experimental_fft_decompressor.h"
 
 #define PROTOCOL_TIMEOUT_MS             10000
 
 namespace server {
+
+    enum CompressionType {
+        CT_NONE,
+        CT_LEGACY,
+        CT_LOSSY
+    };
+
+
     class PacketWaiter {
+
     public:
         bool await(int timeout) {
             std::unique_lock lck(readyMtx);
@@ -71,6 +82,13 @@ namespace server {
         std::mutex handledMtx;
     };
 
+    enum ConnectionError {
+        CONN_ERR_TIMEOUT    = -1,
+        CONN_ERR_BUSY       = -2
+    };
+
+    struct RemoteTransmitter;
+
     class Client {
     public:
         Client(std::shared_ptr<net::Socket> sock, dsp::stream<dsp::complex_t>* out);
@@ -82,7 +100,9 @@ namespace server {
         double getSampleRate();
         
         void setSampleType(dsp::compression::PCMType type);
-        void setCompression(bool enabled);
+        void setCompressionType(CompressionType type);
+        void setLossFactor(double mult);
+        void setNoiseMultiplierDB(double mult);
 
         void start();
         void stop();
@@ -90,8 +110,50 @@ namespace server {
         void close();
         bool isOpen();
 
+        void idle();
+
         int bytes = 0;
         bool serverBusy = false;
+
+        int rxPrebufferMsec = 100;
+
+        void setRxPrebufferMsec(int msec) {
+            rxPrebufferMsec = msec;
+            prebufferer.setPrebufferMsec(rxPrebufferMsec);
+        }
+
+        void setRxResample(int freq) {
+            if (requestedSampleRate != freq) {
+                requestedSampleRate = freq;
+                *((int32_t*)&s_cmd_data[0]) = freq;
+                sendCommand(COMMAND_SET_SAMPLERATE, sizeof(int32_t));
+                prebufferer.clear();
+            }
+        }
+
+        void setMaskedFrequencies(std::vector<int32_t> offsets) {
+            if (maskedFrequencies != offsets) {
+                maskedFrequencies = offsets;
+                int bytesLen = offsets.size() * sizeof(offsets[0]);
+                memcpy(&s_cmd_data[0], offsets.data(), bytesLen);
+                sendCommand(COMMAND_SET_EFFT_MASKED_FREQUENCIES, bytesLen);
+            }
+        }
+
+        int getBufferPercentFull() {
+            return prebufferer.getPercentFull();
+        }
+
+        int getBufferTimeDelay() {
+            return prebufferer.getTimeDelayInMillis();
+        }
+
+        friend struct RemoteTransmitter;
+        long long secureChallengeReceived = 0LL;
+        std::vector<uint8_t> hmacKeyToUse;
+        std::vector<uint8_t> challenge;
+        int transmitterSupported = -1; // unknown
+        int txPrebufferMsec = 0;
 
     private:
         void worker();
@@ -112,11 +174,15 @@ namespace server {
 
         dsp::stream<uint8_t> decompIn;
         dsp::compression::SampleStreamDecompressor decomp;
+        dsp::compression::ExperimentalFFTDeCompressor fftDecompressor;
+        dsp::buffer::Prebuffer<dsp::complex_t> prebufferer;
         dsp::routing::StreamLink<dsp::complex_t> link;
         dsp::stream<dsp::complex_t>* output;
 
+
         uint8_t* rbuffer = NULL;
         uint8_t* sbuffer = NULL;
+        std::vector<int32_t> maskedFrequencies;
 
         PacketHeader* r_pkt_hdr = NULL;
         uint8_t* r_pkt_data = NULL;
@@ -136,6 +202,7 @@ namespace server {
         std::thread workerThread;
 
         double currentSampleRate = 1000000.0;
+        double requestedSampleRate = 0;
     };
 
     std::shared_ptr<Client> connect(std::string host, uint16_t port, dsp::stream<dsp::complex_t>* out);

@@ -16,7 +16,12 @@ namespace SmGui {
         { FMT_STR_FLOAT_DB_NO_DECIMAL, "%.0f dB" },
         { FMT_STR_FLOAT_DB_ONE_DECIMAL, "%.1f dB" },
         { FMT_STR_FLOAT_DB_TWO_DECIMAL, "%.2f dB" },
-        { FMT_STR_FLOAT_DB_THREE_DECIMAL, "%.3f dB" }
+        { FMT_STR_FLOAT_DB_THREE_DECIMAL, "%.3f dB" },
+
+        { FMT_STR_WATTS_INT,"%d W" },
+        { FMT_STR_PLUS_INT_PERCENT, " + %d %%" },
+        { FMT_STR_TEN_POWER_FLOAT, "10 ^ %.2f" },
+
     };
 
     DrawList* rdl = NULL;
@@ -194,15 +199,17 @@ namespace SmGui {
                 SetNextItemWidth(elements[i].f);
                 i++;
             } else if (elem.step == DRAW_STEP_POP_STYLE_COLOR) {
-                PopStyleColor(elements[i].i);
+                PopStyleColor(elements[i].f);
                 i++;
             }
             else if (elem.step == DRAW_STEP_PUSH_STYLE_COLOR) {
                 PushStyleColor(elements[i].i, ImVec4(elements[i+1].f, elements[i+2].f, elements[i+3].f, elements[i+4].f));
                 i+=5;
             }
-
-            else {
+            else if (elem.step == DRAW_STEP_COLLAPSING_HEADER) {
+                CollapsingHeader(elements[i].str.c_str());
+                i+=1;
+            } else {
                 flog::error("Invalid widget in Drawlist");
             }
 
@@ -300,8 +307,9 @@ namespace SmGui {
         }
 
         // Validate and clear if invalid
-        if (!validate()) {
-            flog::error("Drawlist validation failed");
+        std::string step;
+        if (!validate(step)) {
+            flog::error("Drawlist validation failed: {}", step);
             //elements.clear();
             return -1;
         }
@@ -406,31 +414,38 @@ namespace SmGui {
         return true;
     }
 
-    #define VALIDATE_WIDGET(n, ws, ...)     if (step == ws) { if (!checkTypes(i, n, __VA_ARGS__)) { return false; }; i += n; }
+    #define VALIDATE_WIDGET(n, ws, ...)     if (step == ws) { if (!checkTypes(i, n, __VA_ARGS__)) { val(i, "!checkTypes:"#ws); return false; } else { val(i, "ok_checkTypes:"#ws); }; i += n; }
     #define E_VALIDATE_WIDGET(n, ws, ...)   else VALIDATE_WIDGET(n, ws, __VA_ARGS__)
 
-    bool DrawList::validate() {
+    bool DrawList::validate(std::string &log) {
         int count = elements.size();
+        bool validate = true;
+        auto val = [&](int i, const char *stp) {
+            if (validate) {
+                log += std::to_string(i) + ": " + std::string(stp)+"\n";
+            }
+        };
         for (int i = 0; i < count;) {
+            val(i, "elements[i].type != DRAW_LIST_ELEM_TYPE_DRAW_STEP");
             if (elements[i].type != DRAW_LIST_ELEM_TYPE_DRAW_STEP) { return false; }
             DrawStep step = elements[i++].step;
 
             VALIDATE_WIDGET(4, DRAW_STEP_COMBO, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_INT)
-            
+
             E_VALIDATE_WIDGET(3, DRAW_STEP_BUTTON, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT)
-            
+
             E_VALIDATE_WIDGET(3, DRAW_STEP_COLUMNS, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_BOOL)
-            
+
             E_VALIDATE_WIDGET(2, DRAW_STEP_RADIO_BUTTON, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_BOOL)
-           
+
             E_VALIDATE_WIDGET(1, DRAW_STEP_LEFT_LABEL, DRAW_LIST_ELEM_TYPE_STRING)
-            
+
             E_VALIDATE_WIDGET(6, DRAW_STEP_SLIDER_INT, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_INT,
                                                         DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_INT)
-            
+
             E_VALIDATE_WIDGET(6, DRAW_STEP_SLIDER_FLOAT_WITH_STEPS, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT,
                                                         DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_INT)
-            
+
             E_VALIDATE_WIDGET(5, DRAW_STEP_INPUT_INT, DRAW_LIST_ELEM_TYPE_STRING, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_INT,
                                                         DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_INT)
             
@@ -457,6 +472,9 @@ namespace SmGui {
             E_VALIDATE_WIDGET(1, DRAW_STEP_TABLE_SET_COLUMN_INDEX, DRAW_LIST_ELEM_TYPE_INT)
 
             E_VALIDATE_WIDGET(1, DRAW_STEP_SET_NEXT_ITEM_WIDTH, DRAW_LIST_ELEM_TYPE_FLOAT)
+            E_VALIDATE_WIDGET(1, DRAW_STEP_POP_STYLE_COLOR, DRAW_LIST_ELEM_TYPE_FLOAT)
+            E_VALIDATE_WIDGET(5, DRAW_STEP_PUSH_STYLE_COLOR, DRAW_LIST_ELEM_TYPE_INT, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT, DRAW_LIST_ELEM_TYPE_FLOAT)
+            E_VALIDATE_WIDGET(1, DRAW_STEP_COLLAPSING_HEADER, DRAW_LIST_ELEM_TYPE_STRING)
         }
 
         return true;
@@ -594,6 +612,17 @@ namespace SmGui {
             return true;
         }
         return false;
+    }
+
+    bool CollapsingHeader(const char *label) {
+        if (!serverMode) { return ImGui::CollapsingHeader(label); }
+        if (rdl) {
+            rdl->pushStep(DRAW_STEP_COLLAPSING_HEADER, forceSyncForNext);
+            rdl->pushString(label);
+            forceSyncForNext = false;
+        }
+        // always open in server mode.
+        return true;
     }
 
     bool SliderFloatWithSteps(const char *label, float *v, float v_min, float v_max, float v_step, FormatString display_format) {

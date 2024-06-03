@@ -3,6 +3,7 @@
 #include "discovered.h"
 #include "plugin_main.h"
 #include "utils/stream_tracker.h"
+#include "utils/wav.h"
 #include <dsp/types.h>
 #include <signal_path/signal_path.h>
 #include <ctm.h>
@@ -33,6 +34,8 @@ struct ControlData {
     unsigned char C3; // lower middle bits [8..15]
     unsigned char C4; // lower bits [0..7]
 };
+
+#define REGISTER_RX_CENTER_FREQUENCY 0x02
 
 struct HL2Device {
 
@@ -106,15 +109,9 @@ struct HL2Device {
     bool underflow;
     double fill_level;
     long long fill_levelUpdate;
-    bool IO1;
-    bool IO2;
-    bool IO3;
-    int AIN3;
-    int AIN4;
-    int AIN6;
-    int exciter_power;
     int alex_forward_power;
     int alex_reverse_power;
+    int frequencyFromSamples = -1;
     float swr = 1;
     float fwd = 0, rev = 0; // real ones, calculated in updateSWR()
     double temperature;
@@ -138,12 +135,13 @@ struct HL2Device {
 
     int rx_sample_rate = 384000;
 
-    const std::function<void(double, double)> handler;
+    const std::function<void(int, double, double)> handler;
 
     int pttHangTime = 6;
     int bufferLatency = 0x15; // as in linhpsdr
+    wav::ComplexDumper hl2txdump;
 
-    HL2Device(DISCOVERED _discovered, const std::function<void(double, double)>& handler) : _discovered(_discovered), handler(handler), sendTracker("hl2 tx") {
+    HL2Device(DISCOVERED _discovered, const std::function<void(int, double, double)>& handler) : _discovered(_discovered), handler(handler), sendTracker("hl2 tx"), hl2txdump(0, hl2txdumpName()) {
         discovered = &this->_discovered;
         setADCGain(0);
         setFrequency(7000000);
@@ -154,6 +152,17 @@ struct HL2Device {
         if (debug) {
             debugOut = fopen("/tmp/hl2_tx_stream.bin", "wb");
         }
+        flog::info("Called HL2Device::HL2Device()");
+    }
+
+    static std::string hl2txdumpName() {
+        char buf[1024];
+        snprintf(buf, sizeof buf, "/tmp/hl2dev_tx_stream_%d.raw", core::args["server"].b() ? 1 : 0);
+        return buf;
+    }
+
+    virtual ~HL2Device() {
+        flog::info("Called HL2Device::~HL2Device()");
     }
 
     bool isHL2Proxy() {
@@ -181,11 +190,11 @@ struct HL2Device {
     }
 
     void setFrequency(long long frequency) { // RX freq
-        deviceControl[0x02].C1 = frequency >> 24;
-        deviceControl[0x02].C2 = frequency >> 16;
-        deviceControl[0x02].C3 = frequency >> 8;
-        deviceControl[0x02].C4 = frequency >> 0;
-        deviceControlDirty[0x02] = 1;
+        deviceControl[REGISTER_RX_CENTER_FREQUENCY].C1 = frequency >> 24;
+        deviceControl[REGISTER_RX_CENTER_FREQUENCY].C2 = frequency >> 16;
+        deviceControl[REGISTER_RX_CENTER_FREQUENCY].C3 = frequency >> 8;
+        deviceControl[REGISTER_RX_CENTER_FREQUENCY].C4 = frequency >> 0;
+        deviceControlDirty[REGISTER_RX_CENTER_FREQUENCY] = 1;
         if (txFrequency == 0) {
             txFrequency = frequency;
         }
@@ -291,11 +300,17 @@ struct HL2Device {
     long long transmitModeStart = 0;
     long long transmitModeProducedIQData = 0;
 
+
     void setPTT(bool ptt) {
         deviceControlDirty[0] = ptt != transmitMode;
-        transmitMode = ptt;
-        transmitModeStart = currentTimeMillis();
-        transmitModeProducedIQData = 0;
+        if (transmitMode != ptt) {
+            transmitMode = ptt;
+            transmitModeStart = currentTimeMillis();
+            transmitModeProducedIQData = 0;
+            if (ptt) {
+                hl2txdump.clear();
+            }
+        }
     }
 
     void doTuneActive(bool tune) {
@@ -412,6 +427,9 @@ struct HL2Device {
 
     StreamTracker sendTracker;
 
+    int RQSTPhase = 0; // 0=ok to send rqst 1=sent, waiting for ack (ack resets)
+    int RQSTPhaseCount = 0;
+
     // returns if has something to transmit
     bool prepareRequest(int sequence) {
         bool retval = transmitMode;
@@ -424,10 +442,47 @@ struct HL2Device {
 
         memset(output_buffer, 0, sizeof(output_buffer));
 
+        int maybeRQST = 0;
+        if (!transmitMode) {
+            switch (RQSTPhase) {
+                case 0: // safe to send
+                    switch (sendRegister) {
+                        case 2:
+                            if (deviceControlDirty[REGISTER_RX_CENTER_FREQUENCY]) { // rx frequency has been changed?
+                                maybeRQST = 0x80;       // send RQST along with the frequency request
+                                flog::info("Sending RQST");
+                                RQSTPhase = 1;
+                                RQSTPhaseCount = 0;
+                                rqstSentSeq = nInputPacketsSeq;
+                            }
+                            break;
+                        default:
+                            //flog::info("NOT Sending RQST for register: {}", sendRegister);
+                            break;
+                    }
+                    break;
+                case 1:
+                    RQSTPhaseCount++;
+                    if (RQSTPhaseCount > 30) {
+                        flog::info("RQST TIMEOUT");
+                        deviceControlDirty[REGISTER_RX_CENTER_FREQUENCY] = 1; // re-send frequency with a request.
+                        RQSTPhase = 0;
+                    } else {
+                        //flog::info("Waiting ack for RQST: {}", RQSTPhaseCount);
+                    }
+                    if (sendRegister == REGISTER_RX_CENTER_FREQUENCY) {
+                        // RQST has been sent, but ack not received, skip send rx freq again without ack: we don't want rx change came unacked. It will be re-iterated later
+                        return false; // don't send this time.
+                    }
+                    // waiting for ack.
+                    break;
+            }
+        }
+
         output_buffer[SYNC0] = SYNC;
         output_buffer[SYNC1] = SYNC;
         output_buffer[SYNC2] = SYNC;
-        output_buffer[C0] = 0x00 | (transmitMode ? 1 : 0);
+        output_buffer[C0] = 0 | (transmitMode ? 1 : 0);
         output_buffer[C1] = deviceControl[0x00].C1;
         output_buffer[C2] = deviceControl[0x00].C2;
         output_buffer[C3] = deviceControl[0x00].C3;
@@ -443,6 +498,7 @@ struct HL2Device {
         samplesToSend.lock.lock();
         if (samplesToSend.isDataReady(63)) {
             this->storeNextIQSamples(output_buffer + 8, samplesToSend.data.data());
+            hl2txdump.dump(samplesToSend.data.data(), 63);
             samplesToSend.consume_(nullptr, 63);
         }
         samplesToSend.lock.unlock();
@@ -451,7 +507,7 @@ struct HL2Device {
         output_buffer[512 + SYNC0] = SYNC;
         output_buffer[512 + SYNC1] = SYNC;
         output_buffer[512 + SYNC2] = SYNC;
-        output_buffer[512 + C0] = (sendRegister << 1) | (transmitMode ? 1 : 0);
+        output_buffer[512 + C0] = (sendRegister << 1) | (transmitMode ? 1 : 0) | maybeRQST;
         output_buffer[512 + C1] = deviceControl[sendRegister].C1;
         output_buffer[512 + C2] = deviceControl[sendRegister].C2;
         output_buffer[512 + C3] = deviceControl[sendRegister].C3;
@@ -502,17 +558,45 @@ struct HL2Device {
     };
 
     // from receiver to PC
-    void add_iq_samples(int receiverNo, double i_sample, double q_sample) {
-        handler(i_sample, q_sample);
+    void add_iq_samples(int receiverNo, int frequency, double i_sample, double q_sample) {
+        handler(frequency, i_sample, q_sample);
     }
 
+
+    int nInputPacketsSeq = 0;
+    int rqstSentSeq = 0;
+
     void process_control_bytes() {
+        nInputPacketsSeq++;
+        bool ack = control_in[0] & 0x80;
+        bool ptt = control_in[0] & 0x1;
+        if (ack == 1) {
+            int raddr = (control_in[0] >> 1) &0x1F;
+            unsigned long long receiveFreq = 0;
+            RQSTPhase = 0;
+            RQSTPhaseCount = 0;
+            char cbuf[100];
+            switch(raddr) {
+                case REGISTER_RX_CENTER_FREQUENCY: // receiver frequency:
+                    receiveFreq = ((unsigned long long)control_in[4]) << 0 |
+                    ((unsigned long long)control_in[3]) << 8 |
+                    ((unsigned long long)control_in[2]) << 16 |
+                    ((unsigned long long)control_in[1]) << 24;
+                    snprintf(cbuf,sizeof cbuf, "0x %02x %02x %02x %02x", control_in[1], control_in[2], control_in[3], control_in[4]);
+                    //flog::info("{}: ACK={} PTT={} RADDR={} delay={} receiveFreq={} cbuf={}", nInputPacketsSeq, (int)ack, (int)ptt, (int)raddr, nInputPacketsSeq-rqstSentSeq, receiveFreq, std::string(cbuf));
+                    frequencyFromSamples = receiveFreq; // confirmed frequency
+                    break;
+                default:
+                    //flog::info("{}: ACK={} PTT={} RADDR={} delay={}", nInputPacketsSeq, (int)ack, (int)ptt, (int)raddr, nInputPacketsSeq-rqstSentSeq);
+                    break;
+            }
+            return;
+        } else {
+            // flog::info("{}: ACK={} PTT={}", nInputPacketsSeq, (int)ack, (int)ptt);
+        }
         switch ((control_in[0] >> 3) & 0x1F) {
         case 0:
             adc_overload = (control_in[1] & 0x01) == 0x01;
-            IO1 = (control_in[1] & 0x02) == 0x02;
-            IO2 = (control_in[1] & 0x04) == 0x04;
-            IO3 = (control_in[1] & 0x08) == 0x08;
 
             if (transmitMode) {
                 int recovery = ((control_in[3] & 0xC0) >> 6);
@@ -530,7 +614,6 @@ struct HL2Device {
             }
             break;
         case 1: {
-            exciter_power = ((control_in[1] & 0xFF) << 8) | (control_in[2] & 0xFF); // from Penelope or Hermes
             int adc = ((control_in[1] & 0xFF) << 8) | (control_in[2] & 0xFF);
             double this_temperature = (3.26 * ((double)adc / 4096.0) - 0.5) / 0.01;
             // Exponential moving average filter
@@ -541,11 +624,8 @@ struct HL2Device {
         }
         case 2:
             alex_reverse_power = ((control_in[1] & 0xFF) << 8) | (control_in[2] & 0xFF); // from Alex or Apollo
-            AIN3 = (control_in[3] << 8) + control_in[4];                                 // from Pennelope or Hermes
             break;
         case 3:
-            AIN4 = (control_in[1] << 8) + control_in[2]; // from Pennelope or Hermes
-            AIN6 = (control_in[3] << 8) + control_in[4]; // from Pennelope or Hermes
             break;
         case 28:
             swr = (float)control_in[1] / 10.0f;
@@ -651,7 +731,7 @@ struct HL2Device {
         case RIGHT_SAMPLE_LOW: {
             right_sample |= (int)((unsigned char)b & 0xFF);
             right_sample_double = (double)right_sample / 8388607.0; // 24 bit sample 2^23-1
-            add_iq_samples(nreceiver, left_sample_double, right_sample_double);
+            add_iq_samples(nreceiver, frequencyFromSamples, left_sample_double, right_sample_double);
             nreceiver++;
             if (nreceiver == receivers) {
                 state++;
@@ -844,7 +924,7 @@ struct HL2Device {
                 auto toAdd = neededData - transmitModeProducedIQData;
                 if (toAdd > 0) {
                     for (long long q = 0; q < toAdd; q++) {
-                        add_iq_samples(0, 0, 0);
+                        add_iq_samples(0, frequencyFromSamples, 0, 0);
                     }
                     transmitModeProducedIQData = neededData;
                 }

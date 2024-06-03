@@ -608,7 +608,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/bladerf_config.json");
+    config.setPath(std::string(core::getRoot()) + "/bladerf_config.json");
     config.load(def);
     config.enableAutoSave();
 }

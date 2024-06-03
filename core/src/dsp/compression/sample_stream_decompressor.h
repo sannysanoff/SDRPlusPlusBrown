@@ -10,7 +10,7 @@ namespace dsp::compression {
 
         SampleStreamDecompressor(stream<uint8_t>* in) { base_type::init(in); }
 
-        inline int process(int count, const uint8_t* in, complex_t* out) {
+        static int process(int count, const uint8_t* in, complex_t* out) {
             uint16_t sampleType = *(uint16_t*)&in[2];
             float scaler = *(float*)&in[4];
             const void* dataBuf = &in[8];

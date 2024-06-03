@@ -512,7 +512,7 @@ MOD_EXPORT void _INIT_() {
     json defConf = {};
     defConf["device"] = "";
     defConf["devices"] = {};
-    config.setPath(core::args["root"].s() + "/plutosdr_source_config.json");
+    config.setPath(std::string(core::getRoot()) + "/plutosdr_source_config.json");
     config.load(defConf);
     config.enableAutoSave();
 

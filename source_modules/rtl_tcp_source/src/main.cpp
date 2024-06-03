@@ -309,7 +309,7 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    config.setPath(core::args["root"].s() + "/rtl_tcp_config.json");
+    config.setPath(std::string(core::getRoot()) + "/rtl_tcp_config.json");
     config.load(json({}));
     config.enableAutoSave();
 }

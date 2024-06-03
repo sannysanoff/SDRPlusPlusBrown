@@ -1155,15 +1155,15 @@ struct QSOAudioRecorder {
     dsp::routing::Splitter<dsp::stereo_t> *audioInProcessed;
 
     void init(dsp::routing::Splitter<dsp::stereo_t> *audioInProcessed) {
-        flog::info("Init insider QSOAudioRecorder");
+//        flog::info("Init insider QSOAudioRecorder");
         this->audioInProcessed = audioInProcessed;
         auto names = sigpath::sinkManager.getStreamNames();
-        flog::info("Init insider QSOAudioRecorder p.2 ");
+//        flog::info("Init insider QSOAudioRecorder p.2 ");
         if (!names.empty()) {
             // Select the stream
-            flog::info("Init insider QSOAudioRecorder p.3");
+//            flog::info("Init insider QSOAudioRecorder p.3");
             radioStream = sigpath::sinkManager.bindStream(boundStream = names[0]);
-            flog::info("Init insider QSOAudioRecorder p.4");
+//            flog::info("Init insider QSOAudioRecorder p.4");
             if (!radioStream) {
                 return;
             }
@@ -1297,17 +1297,19 @@ struct MobileMainWindowPrivate {
     }
 
     void beginPlay() {
-        ImGui::WaterfallVFO *&pVfo = gui::waterfall.vfos[gui::waterfall.selectedVFO];
-        if (pVfo) {
-            callCQlayer.startPlaying();
-            callCQlayer.onPlayEnd = [&]() {
-                flog::info("callCQlayer: onplayend, stopping tx via button");
-                callCQlayer.onPlayEnd = nullptr;
-                callCQlayer.onPlayStart = nullptr;
-                pub->qsoPanel->handleTxButton(pVfo, false, false, &pub->pvt->callCQlayer.splitter);
-            };
-            pub->qsoPanel->handleTxButton(pVfo, true, false, &pub->pvt->callCQlayer.splitter);
-            sigpath::sinkManager.setAllMuted(false);    // re-enable sound
+        if (gui::waterfall.selectedVFO != "") {
+            ImGui::WaterfallVFO *&pVfo = gui::waterfall.vfos[gui::waterfall.selectedVFO];
+            if (pVfo) {
+                callCQlayer.startPlaying();
+                callCQlayer.onPlayEnd = [&]() {
+                    flog::info("callCQlayer: onplayend, stopping tx via button");
+                    callCQlayer.onPlayEnd = nullptr;
+                    callCQlayer.onPlayStart = nullptr;
+                    pub->qsoPanel->handleTxButton(pVfo, false, false, &pub->pvt->callCQlayer.splitter);
+                };
+                pub->qsoPanel->handleTxButton(pVfo, true, false, &pub->pvt->callCQlayer.splitter);
+                sigpath::sinkManager.setAllMuted(false);    // re-enable sound
+            }
         }
 
     }
@@ -1546,18 +1548,20 @@ void MobileMainWindow::updateSubmodeAfterChange() {
     }
     this->submodeToggle.upperText = submode;
     qsoPanel->setModeSubmode(mode, submode);
-    ImGui::WaterfallVFO *&pVfo = gui::waterfall.vfos[gui::waterfall.selectedVFO];
-    if (pVfo) {
-        auto selectedDemod = RadioModule::RADIO_DEMOD_USB;
-        if (submode == "LSB") selectedDemod = RadioModule::RADIO_DEMOD_LSB;
-        if (submode == "CWU") selectedDemod = RadioModule::RADIO_DEMOD_CW;
-        if (submode == "CWL") selectedDemod = RadioModule::RADIO_DEMOD_CW;
-        if (submode == "CW") selectedDemod = RadioModule::RADIO_DEMOD_CW;
-        if (submode == "NFM") selectedDemod = RadioModule::RADIO_DEMOD_NFM;
-        if (submode == "WFM") selectedDemod = RadioModule::RADIO_DEMOD_WFM;
-        if (submode == "AM") selectedDemod = RadioModule::RADIO_DEMOD_AM;
-        if (submode == "DSB") selectedDemod = RadioModule::RADIO_DEMOD_DSB;
-        pVfo->onUserChangedDemodulator.emit((int) selectedDemod);
+    if (gui::waterfall.selectedVFO != "") {
+        ImGui::WaterfallVFO *&pVfo = gui::waterfall.vfos[gui::waterfall.selectedVFO];
+        if (pVfo) {
+            auto selectedDemod = RADIO_DEMOD_USB;
+            if (submode == "LSB") selectedDemod = RADIO_DEMOD_LSB;
+            if (submode == "CWU") selectedDemod = RADIO_DEMOD_CW;
+            if (submode == "CWL") selectedDemod = RADIO_DEMOD_CW;
+            if (submode == "CW") selectedDemod = RADIO_DEMOD_CW;
+            if (submode == "NFM") selectedDemod = RADIO_DEMOD_NFM;
+            if (submode == "WFM") selectedDemod = RADIO_DEMOD_WFM;
+            if (submode == "AM") selectedDemod = RADIO_DEMOD_AM;
+            if (submode == "DSB") selectedDemod = RADIO_DEMOD_DSB;
+            pVfo->onUserChangedDemodulator.emit((int) selectedDemod);
+        }
     }
     updateFrequencyAfterChange();
 }
@@ -1618,13 +1622,7 @@ void MobileMainWindow::updateAudioWaterfallPipeline() {
 }
 
 static RadioModule *getRadioModule() {
-    for (auto x: core::moduleManager.instances) {
-        auto radio = (RadioModule *) x.second.instance->getInterface("RadioModule");
-        if (radio) {
-            return radio;
-        }
-    }
-    return nullptr;
+    return (RadioModule *)core::moduleManager.getInterface("", "RadioModule");
 }
 
 static TransientBookmarkManager *getTransientBookmarkManager() {
@@ -1971,8 +1969,9 @@ void MobileMainWindow::draw() {
     if (qsoPanel->audioInToTransmitter) {
         qsoPanel->triggerTXOffEvent--;
         if (!qsoPanel->triggerTXOffEvent) { // zero cross
+            qsoPanel->audioInToTransmitter->out.stopReader();
             qsoPanel->audioInToTransmitter.reset();
-            sigpath::txState.emit(false);
+            sigpath::txState.emit(sigpath::transmitter->getTXStatus());
         }
     }
 
@@ -2190,6 +2189,9 @@ void MobileMainWindow::draw() {
         }
     }
 //    qsoPanel->setModeSubmode(modeToggle.upperText, submodeToggle.upperText);
+    if (!sigpath::transmitter && qsoPanel->transmitting) {
+        qsoPanel->handleTxButton(vfo, false, false, &qsoPanel->audioInProcessed);
+    }
     if (sigpath::transmitter && qsoPanel->triggerTXOffEvent <= 0) { // transiver exists, and TX is not in handing off state
         if (pressedButton == &this->softTune) {
             this->softTunePressed(vfo);
@@ -2567,25 +2569,25 @@ void MobileMainWindow::init() {
 
 void MobileMainWindow::updateModeFromRadio(int radioDemodId) {
     switch (radioDemodId) {
-        case RadioModule::RADIO_DEMOD_AM:
+        case RADIO_DEMOD_AM:
             setCurrentModeBySubmode("AM");
             return;
-        case RadioModule::RADIO_DEMOD_LSB:
+        case RADIO_DEMOD_LSB:
             setCurrentModeBySubmode("LSB");
             return;
-        case RadioModule::RADIO_DEMOD_USB:
+        case RADIO_DEMOD_USB:
             setCurrentModeBySubmode("USB");
             return;
-        case RadioModule::RADIO_DEMOD_NFM:
+        case RADIO_DEMOD_NFM:
             setCurrentModeBySubmode("NFM");
             return;
-        case RadioModule::RADIO_DEMOD_WFM:
+        case RADIO_DEMOD_WFM:
             setCurrentModeBySubmode("WFM");
             return;
-        case RadioModule::RADIO_DEMOD_CW:
+        case RADIO_DEMOD_CW:
             setCurrentModeBySubmode("CW");
             return;
-        case RadioModule::RADIO_DEMOD_DSB:
+        case RADIO_DEMOD_DSB:
             setCurrentModeBySubmode("DSB");
             return;
     }
@@ -3168,7 +3170,6 @@ void QSOPanel::handleTxButton(ImGui::WaterfallVFO *vfo, bool tx, bool tune, dsp:
     }
     if (tx) {
         if (!this->transmitting) {
-            sigpath::txState.emit(tx);
             this->transmitting = true;
             if (sigpath::transmitter) {
                 currentTransmitSource = what;
@@ -3184,6 +3185,7 @@ void QSOPanel::handleTxButton(ImGui::WaterfallVFO *vfo, bool tx, bool tune, dsp:
                 audioInToTransmitter->postprocess = postprocess;
                 audioInToTransmitter->tuneFrequency = tune ? 20 : 0; // 20hz close to carrier
                 audioInToTransmitter->start();
+                audioInToTransmitter->out.clearReadStop();
                 sigpath::transmitter->setTransmitStream(&audioInToTransmitter->out);
                 sigpath::transmitter->setTransmitFrequency((gui::mainWindow.txFrequencyOverride ? gui::mainWindow.txFrequencyOverride : (int) currentFreq) + gui::mainWindow.txOffset);
                 sigpath::transmitter->setTransmitStatus(true);
@@ -3380,7 +3382,7 @@ void MobileMainWindow::maybeAddBookmark(const std::string dx, double frequency, 
                     bookmark.extraInfo = dx;
                     bookmark.bookmarkName = rec.dxcall;
                     bookmark.listName = "OnAir";
-                    bookmark.bookmark.mode = modeI;
+                    bookmark.bookmark.modeIndex = modeI;
                     bookmark.bookmark.bandwidth = bandwidth;
                     bookmark.bookmark.frequency = frequency;
                     bookmark.worked |= worked;

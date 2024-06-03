@@ -41,6 +41,9 @@ namespace dsp::buffer {
             return "Packer:" +Sink<T>::simplifyTN(tidName);
         }
 
+        void clear() {
+            read = 0;
+        }
 
         int run() {
             int count = _in->read();

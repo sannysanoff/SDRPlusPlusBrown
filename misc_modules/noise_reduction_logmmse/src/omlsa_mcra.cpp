@@ -14,7 +14,10 @@ namespace dsp {
 
     bool omlsa_mcra::process(short *in, int incount, short *out, int &outcount) {
         if (!dtr) {
-            ::abort();
+            flog::info("ERROR omlsa_mcra: !dtr");
+            memcpy(out, in, incount*sizeof(short));
+            outcount = incount;
+            return true;
         }
         short abnormal_flag = dtr->Data_procese(in, out, incount, outcount);
         if (abnormal_flag < 0) return false;

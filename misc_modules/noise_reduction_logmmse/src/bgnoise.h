@@ -32,6 +32,7 @@ public:
         float minn = ERASED_SAMPLE;
         float maxx = -ERASED_SAMPLE;
         logFrame.clear();
+        logFrame.reserve(fftFrame.size());
         for(float q : fftFrame) {
             if(q != ERASED_SAMPLE) {
                 q = log10(q);

@@ -19,6 +19,14 @@
  
 class PackUnpackMsg77 //: public QObject 
 {
+
+	QString c_77_04 = "X"; // static init in wasm did not work here.
+	QString c_77_txt;
+	QString a1_28;
+	QString a2_28;
+	QString a3_28;
+	QString a4_28;
+
 	//Q_OBJECT // hv
 public: 
 	void initPackUnpack77(bool f_dec_gen);

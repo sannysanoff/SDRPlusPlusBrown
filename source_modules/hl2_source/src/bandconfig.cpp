@@ -125,14 +125,16 @@ bool renderCheckboxes(ConfigManager &manager, AllBands &bands, int blockOffset, 
     return retval;
 }
 
-int getBitsForBand(int frequency, bool tx) {
+std::pair<int, int> getBitsForBand(int frequency, bool tx) {
     AllBands &scan = tx ? txBands : rxBands;
+    int bandNo = 0;
     for (auto &b : scan.values) {
         if (frequency >= b.lowRange && frequency < b.highRange) {
-            return b.bits;
+            return std::make_pair(b.bits, bandNo);
         }
+        bandNo++;
     }
-    return 0;
+    return std::make_pair(0, -1);
 }
 
 bool bandsEditor(ConfigManager &config, bool isTx, int currentFreq) {

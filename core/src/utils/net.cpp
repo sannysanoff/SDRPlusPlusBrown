@@ -421,6 +421,9 @@ namespace net {
         }
 #else
         fd_set set;
+
+
+        FD_ZERO(&set);
         FD_SET(s, &set);
 
         // Set timeout
@@ -428,7 +431,7 @@ namespace net {
         tv.tv_sec = 5;
         tv.tv_usec = 0;
         // Wait for data
-        int err = select(s+1, &set, NULL, &set, &tv);
+        int err = select(s+1, NULL, &set, &set, &tv);
         if (err <= 0) {
             closeSocket(s);
             throw std::runtime_error("Connection timeout");

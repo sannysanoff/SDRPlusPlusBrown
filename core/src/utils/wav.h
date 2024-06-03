@@ -4,7 +4,12 @@
 #include <stdint.h>
 #include <mutex>
 #include "riff.h"
+#include "dsp/types.h"
 #include <string.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 
 namespace wav {    
     #pragma pack(push, 1)
@@ -68,6 +73,45 @@ namespace wav {
         int16_t* bufI16 = NULL;
         int32_t* bufI32 = NULL;
         size_t samplesWritten = 0;
+    };
+
+    struct ComplexDumper {
+        FILE *f;
+
+        ComplexDumper(int sampleRate, const std::string &path) {
+#ifdef NDEBUG
+            f = nullptr;
+#else
+#ifdef _WIN32
+            f = nullptr;
+#else
+            f = fopen(path.c_str(), "wb");
+#endif
+#endif
+        }
+
+        void dump(void* samples, int nSamples) {
+            if (f) {
+                fwrite(samples, sizeof(dsp::complex_t), nSamples, f);
+            }
+        }
+
+        void clear() {
+#ifndef NDEBUG
+#ifndef _WIN32
+            if (f) {
+                ftruncate(fileno(f), 0); // windows version?
+                fseek(f, 0, SEEK_SET);
+            }
+#endif
+#endif
+        }
+
+        ~ComplexDumper() {
+            if (f) {
+                fclose(f);
+            }
+        }
     };
 
     class Reader {

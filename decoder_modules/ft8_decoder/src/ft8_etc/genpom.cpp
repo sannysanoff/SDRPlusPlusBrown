@@ -72,7 +72,8 @@ void GenPomFt::encode174_91(bool *message77,bool *codeword)
             for (int j = 0; j < 23; ++j)//23 bb a8 30 e2 3b 6b 6f 50 98 2e
             {
                 bool ok;
-				std::string temp = g_ft8_174_91[i].substr(j,1);
+				std::string temp;
+                temp += (g_ft8_174_91[i][j]);
                 int istr = toInt(temp, ok, 16); //read(g(i)(j:j),"(Z1)") istr
                 for (int jj = 0; jj < 4; ++jj)
                 {
@@ -89,6 +90,8 @@ void GenPomFt::encode174_91(bool *message77,bool *codeword)
     //tmpchar(78:80)='000'
     //i1MsgBytes=0
     //read(tmpchar,'(10b8)') i1MsgBytes(1:10)
+    // debugPrintf("          genpom:93");
+
     for (int i = 0; i < 15; ++i) i1MsgBytes[i]=0;
     int c_77 = 0;
     for (int i = 0; i < 10; ++i)
@@ -103,7 +106,9 @@ void GenPomFt::encode174_91(bool *message77,bool *codeword)
         i1MsgBytes[i] = k;
     }
 
+    // debugPrintf("          crc14...");
     int ncrc14=crc14(i1MsgBytes,12);//int ncrc14 = crc14 (c_loc (i1MsgBytes), 12)
+    // debugPrintf("          crc14.");
 
     //write(tmpchar(78:91),'(b14)') ncrc14
     //read(tmpchar,'(91i1)') message
@@ -124,6 +129,7 @@ void GenPomFt::encode174_91(bool *message77,bool *codeword)
         }
         pchecks[i]=fmod(nsum,2);
     }
+    // debugPrintf("          mostly");
     // codeword(1:K)=message
     // codeword(K+1:N)=pchecks
     for (int i = 0; i < K; ++i)//91

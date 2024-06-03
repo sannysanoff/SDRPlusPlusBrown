@@ -4,7 +4,7 @@
 
 Please see [upstream project page](https://github.com/AlexandreRouma/SDRPlusPlus) for the basic list of its features.
 
-Last merge: 2024-01-23
+Last merge: 2024-05-23
 
 Please see [brown fork page](https://sdrpp-brown.san.systems) for list of fork features.
 
@@ -14,12 +14,15 @@ WINDOWS INSTALL TROUBLESHOOTING: https://youtu.be/Q3CV5U-2IIU
 
 Thanks and due respect to:
  
-* original author, Alexandre Rouma, for his great [work](https://github.com/AlexandreRouma/SDRPlusPlus). 
+* original author, Alexandre Rouma, for his great [work](https://github.com/AlexandreRouma/SDRPlusPlus). Due credits go to all contributors in the upstream project. 
 * MSHV author, LZ2HV, for his great [work](http://lz2hv.org/mshv).
 * logmmse/python authors for their great [work](https://github.com/wilsonchingg/logmmse).
 * OMLSA authors for their great [idea](https://github.com/yuzhouhe2000/OMLSA-IMCRA) and [implementation](https://github.com/xiaochunxin/OMLSA-MCRA).
 * imgui-notify author for his great [work](https://github.com/patrickcjk/imgui-notify)
 * implot author for his great [work](https://github.com/epezent/implot/)
+* alexander-sholohov (github) for his work on soapy_sdr module.
+* Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes.
+* monolifed for his [pbkdf2 header-only implementation](https://github.com/monolifed/pbkdf2-hmac-sha256)  
 
 ## Feedback
 
@@ -45,4 +48,3 @@ Found an issue? Fork is worse than original? File an [issue](https://github.com/
   * use this filename (debug2.keystore) in app/build.gradle along with passwords in the signingConfigs -> debug section.
 
 Good luck.
-

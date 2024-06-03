@@ -11,10 +11,11 @@ if (MSVC)
 
     target_link_libraries(limesdr_source PRIVATE LimeSuite)
 else (MSVC)
-    find_package(PkgConfig)
+    find_package(PkgConfig REQUIRED)
+    find_package(LimeSuite REQUIRED)
 
     # Not in pkg-config
-    target_link_libraries(limesdr_source PRIVATE LimeSuite)
+    target_link_libraries(limesdr_source PUBLIC LimeSuite)
 
     # Include it because for some reason pkgconfig doesn't look here?
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

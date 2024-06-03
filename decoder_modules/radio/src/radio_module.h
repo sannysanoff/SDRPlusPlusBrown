@@ -17,6 +17,7 @@
 #include <utils/optionlist.h>
 #include "radio_interface.h"
 #include "demod.h"
+#include "radio_module_interface.h"
 
 extern ConfigManager config;
 
@@ -27,9 +28,11 @@ extern std::map<DeemphasisMode, double> deempTaus;
 extern std::map<IFNRPreset, double> ifnrTaps;
 
 
-class RadioModule : public ModuleManager::Instance  {
+class RadioModule : public ModuleManager::Instance, public RadioModuleInterface  {
 public:
-    RadioModule(std::string name) {
+
+
+    RadioModule(std::string name) : RadioModuleInterface() {
         this->name = name;
 
         // Initialize option lists
@@ -117,11 +120,6 @@ public:
             }
         }
 
-
-
-        // Select the demodulator
-        selectDemodByID((DemodID)selectedDemodID);
-
         // Start IF chain
         ifChain.start();
 
@@ -130,11 +128,9 @@ public:
 
         afsplitter.start();
 
-//        if (sigpath::sinkManager.configured) { // not start streams unless sinkmanager is ready
-            for (auto& s : streams) {
-                s->start();
-            }
-//        }
+        for (auto& s : streams) {
+            s->start();
+        }
 
         // Register the menu
         gui::menu.registerEntry(name, menuHandler, this, this);
@@ -150,9 +146,14 @@ public:
         sigpath::txState.bindHandler(&txHandler);
     }
 
+
+
     void *getInterface(const char *name) override {
         if (!strcmp(name,"RadioModule")) {
             return (RadioModule*)this;
+        }
+        if (!strcmp(name,"RadioModuleInterface")) {
+            return (RadioModuleInterface*)this;
         }
         return nullptr;
     }
@@ -203,6 +204,7 @@ public:
             }
         }
     }
+
     static void removeSubstreamHandler(std::string name, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
         auto pos = std::find(_this->streamNames.begin(), _this->streamNames.end(), name);
@@ -210,9 +212,9 @@ public:
             return;
         auto index = pos - _this->streamNames.begin();
         auto stream = _this->streams[index];
-        if (_this->enabled) {
-            stream->stop();
-        }
+        // if (_this->enabled) {
+        //     stream->stop();
+        // }
         _this->afsplitter.unbindStream(stream->getInput());
         //        stream->init(&srChangeHandler, audioSampleRate);
         _this->streams.erase(_this->streams.begin()+index);
@@ -224,12 +226,23 @@ public:
         if (iter != streamz.end()) {
             streamz.erase(iter);
         }
-        core::configManager.release();
+        core::configManager.release(true);
     }
 
 
 
-    void postInit() override {}
+    void postInit() override {
+        // Select the demodulator
+        if (enabled) {
+            if (!selectDemodByID((DemodID) selectedDemodID)) {
+                // can happen if module not loaded.
+                selectedDemodID = 1;
+                selectDemodByID((DemodID) selectedDemodID);
+            }
+        }
+
+
+    }
 
     void enable() override {
         enabled = true;
@@ -263,20 +276,27 @@ public:
 
     std::string name;
 
-    enum DemodID {
-        RADIO_DEMOD_NFM,
-        RADIO_DEMOD_WFM,
-        RADIO_DEMOD_AM,
-        RADIO_DEMOD_DSB,
-        RADIO_DEMOD_USB,
-        RADIO_DEMOD_CW,
-        RADIO_DEMOD_LSB,
-        RADIO_DEMOD_RAW,
-        _RADIO_DEMOD_COUNT,
-    };
-
-    int getSelectedDemodId() {
+    int getSelectedDemodId() override  {
         return selectedDemodID;
+    }
+
+    bool selectDemodByID(DemodID id) override {
+        auto startTime = std::chrono::high_resolution_clock::now();
+        demod::Demodulator* demod = instantiateDemod(id);
+        if (!demod) {
+            flog::error("Demodulator {0} not implemented", (int)id);
+            return false;
+        }
+        selectedDemodID = id;
+        selectDemod(demod);
+
+        // Save config
+        config.acquire();
+        config.conf[name]["selectedDemodId"] = id;
+        config.release(true);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        flog::warn("Demod switch took {0} us", (int64_t)((std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)).count()));
+        return true;
     }
 
 private:
@@ -289,34 +309,24 @@ private:
         ImGui::BeginGroup();
 
         ImGui::Columns(4, CONCAT("RadioModeColumns##_", _this->name), false);
-        if (ImGui::RadioButton(CONCAT("NFM##_", _this->name), _this->selectedDemodID == 0) && _this->selectedDemodID != 0) {
-            _this->selectDemodByID(RADIO_DEMOD_NFM);
+        char boo[1024];
+        for(int i=0; i<8; i++) {
+            snprintf(boo, sizeof boo, "%s##_%s", _this->radioModes[i].first.c_str(), _this->name.c_str());
+            if (ImGui::RadioButton(boo, _this->selectedDemodID == _this->radioModes[i].second) && _this->selectedDemodID != _this->radioModes[i].second) {
+                _this->selectDemodByID((DemodID)_this->radioModes[i].second);
+            }
+            if (i % 2 == 1 && i != 7) {
+                ImGui::NextColumn();
+            }
         }
-        if (ImGui::RadioButton(CONCAT("WFM##_", _this->name), _this->selectedDemodID == 1) && _this->selectedDemodID != 1) {
-            _this->selectDemodByID(RADIO_DEMOD_WFM);
-        }
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("AM##_", _this->name), _this->selectedDemodID == 2) && _this->selectedDemodID != 2) {
-            _this->selectDemodByID(RADIO_DEMOD_AM);
-        }
-        if (ImGui::RadioButton(CONCAT("DSB##_", _this->name), _this->selectedDemodID == 3) && _this->selectedDemodID != 3) {
-            _this->selectDemodByID(RADIO_DEMOD_DSB);
-        }
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("USB##_", _this->name), _this->selectedDemodID == 4) && _this->selectedDemodID != 4) {
-            _this->selectDemodByID(RADIO_DEMOD_USB);
-        }
-        if (ImGui::RadioButton(CONCAT("CW##_", _this->name), _this->selectedDemodID == 5) && _this->selectedDemodID != 5) {
-            _this->selectDemodByID(RADIO_DEMOD_CW);
-        };
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("LSB##_", _this->name), _this->selectedDemodID == 6) && _this->selectedDemodID != 6) {
-            _this->selectDemodByID(RADIO_DEMOD_LSB);
-        }
-        if (ImGui::RadioButton(CONCAT("RAW##_", _this->name), _this->selectedDemodID == 7) && _this->selectedDemodID != 7) {
-            _this->selectDemodByID(RADIO_DEMOD_RAW);
-        };
         ImGui::Columns(1, CONCAT("EndRadioModeColumns##_", _this->name), false);
+
+        for(int i=8; i<_this->radioModes.size(); i++) {
+            snprintf(boo, sizeof boo, "%s##_%s", _this->radioModes[i].first.c_str(), _this->name.c_str());
+            if (ImGui::RadioButton(boo, _this->selectedDemodID == _this->radioModes[i].second) && _this->selectedDemodID != _this->radioModes[i].second) {
+                _this->selectDemodByID((DemodID)_this->radioModes[i].second);
+            }
+        }
 
         ImGui::EndGroup();
 
@@ -330,11 +340,11 @@ private:
             }
             int limit = 12000;
             switch(_this->selectedDemodID) {        // convenience to fully utilize slider, edit with above field for outside values
-            case RadioModule::RADIO_DEMOD_LSB:
-            case RadioModule::RADIO_DEMOD_USB:
+            case RADIO_DEMOD_LSB:
+            case RADIO_DEMOD_USB:
                 limit = 3500;
                 break;
-            case RadioModule::RADIO_DEMOD_CW:
+            case RADIO_DEMOD_CW:
                 limit = 1000;
                 break;
             }
@@ -410,7 +420,9 @@ private:
         }
 
         // Demodulator specific menu
-        _this->selectedDemod->showMenu();
+        if (_this->selectedDemod) {
+            _this->selectedDemod->showMenu();
+        }
 
         if (!_this->enabled) { style::endDisabled(); }
     }
@@ -427,6 +439,12 @@ private:
             case DemodID::RADIO_DEMOD_LSB:  demod = new demod::LSB(); break;
             case DemodID::RADIO_DEMOD_RAW:  demod = new demod::RAW(); break;
             default:                        demod = NULL; break;
+        }
+        if (!demod) {
+            for (int i = 0; i < demodulatorProviders.size(); i++) {
+                demod = demodulatorProviders[i](id);
+                if (demod) { break; }
+            }
         }
         if (!demod) { return NULL; }
 
@@ -449,24 +467,6 @@ private:
         demod->init(name, &config, ifChain.out, bw, streams.front()->getSampleRate());
 
         return demod;
-    }
-
-    void selectDemodByID(DemodID id) {
-        auto startTime = std::chrono::high_resolution_clock::now();
-        demod::Demodulator* demod = instantiateDemod(id);
-        if (!demod) {
-            flog::error("Demodulator {0} not implemented", (int)id);
-            return;
-        }
-        selectedDemodID = id;
-        selectDemod(demod);
-
-        // Save config
-        config.acquire();
-        config.conf[name]["selectedDemodId"] = id;
-        config.release(true);
-        auto endTime = std::chrono::high_resolution_clock::now();
-        flog::warn("Demod switch took {0} us", (int64_t)((std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)).count()));
     }
 
     void selectDemod(demod::Demodulator* demod) {
@@ -628,19 +628,6 @@ private:
         afChain.start();
     }
 
-    void setDeemphasisMode(DeemphasisMode mode) {
-        deempId = deempModes.valueId(mode);
-        if (!postProcEnabled || !selectedDemod) { return; }
-        bool deempEnabled = (mode != DEEMP_MODE_NONE);
-        if (deempEnabled) { deemp.setTau(deempTaus[mode]); }
-        afChain.setBlockEnabled(&deemp, deempEnabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
-
-        // Save config
-        config.acquire();
-        config.conf[name][selectedDemod->getName()]["deempMode"] = deempModes.key(deempId);
-        config.release(true);
-    }
-
     void setNBEnabled(bool enable) {
         nbEnabled = enable;
         if (!selectedDemod) { return; }
@@ -694,6 +681,19 @@ private:
         config.release(true);
     }
 
+    void setDeemphasisMode(DeemphasisMode mode) {
+        deempId = deempModes.valueId(mode);
+        if (!postProcEnabled || !selectedDemod) { return; }
+        bool deempEnabled = (mode != DEEMP_MODE_NONE);
+        if (deempEnabled) { deemp.setTau(deempTaus[mode]); }
+        afChain.setBlockEnabled(&deemp, deempEnabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["deempMode"] = deempModes.key(deempId);
+        config.release(true);
+    }
+
     void setIFNRPreset(IFNRPreset preset) {
         // Don't save if in broadcast mode
         if (preset == IFNR_PRESET_BROADCAST) {
@@ -711,6 +711,8 @@ private:
         config.conf[name][selectedDemod->getName()]["fmifnrPreset"] = ifnrPresets.key(fmIFPresetId);
         config.release(true);
     }
+
+
 
     static void vfoUserChangedBandwidthHandler(double newBw, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
@@ -737,14 +739,44 @@ private:
 
     static void moduleInterfaceHandler(int code, void* in, void* out, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
-        if (!_this->enabled || !_this->selectedDemod) { return; }
+        if(in) {
+            switch(code) {
+                case RADIO_IFACE_CMD_ADD_TO_IFCHAIN:
+                    _this->ifChain.addBlock((dsp::Processor<dsp::complex_t, dsp::complex_t> *)in, false);
+                    return;
+                case RADIO_IFACE_CMD_ADD_TO_AFCHAIN:
+                    _this->afChain.addBlock((dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in, false);
+                    return;
+                case RADIO_IFACE_CMD_REMOVE_FROM_IFCHAIN:
+                    _this->ifChain.removeBlock((dsp::Processor<dsp::complex_t, dsp::complex_t> *)in, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
+                    return;
+                case RADIO_IFACE_CMD_REMOVE_FROM_AFCHAIN:
+                    _this->afChain.removeBlock((dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
+                    return;
+                case RADIO_IFACE_CMD_ENABLE_IN_IFCHAIN:
+                    _this->ifChain.setBlockEnabled((dsp::Processor<dsp::complex_t, dsp::complex_t> *)in, true, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
+                    return;
+                case RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN:
+                    _this->afChain.setBlockEnabled((dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in, true, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
+                    return;
+                case RADIO_IFACE_CMD_DISABLE_IN_IFCHAIN:
+                    _this->ifChain.setBlockEnabled((dsp::Processor<dsp::complex_t, dsp::complex_t> *)in, false, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
+                    return;
+                case RADIO_IFACE_CMD_DISABLE_IN_AFCHAIN:
+                    _this->afChain.setBlockEnabled((dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in, false, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
+                    return;
+            }
+        }
+
+        // If no demod is selected, reject the command
+        if (!_this->selectedDemod) { return; }
 
         // Execute commands
         if (code == RADIO_IFACE_CMD_GET_MODE && out) {
             int* _out = (int*)out;
             *_out = _this->selectedDemodID;
         }
-        else if (code == RADIO_IFACE_CMD_SET_MODE && in) {
+        else if (code == RADIO_IFACE_CMD_SET_MODE && in && _this->enabled) {
             int* _in = (int*)in;
             _this->selectDemodByID((DemodID)*_in);
         }
@@ -752,7 +784,7 @@ private:
             float* _out = (float*)out;
             *_out = _this->bandwidth;
         }
-        else if (code == RADIO_IFACE_CMD_SET_BANDWIDTH && in) {
+        else if (code == RADIO_IFACE_CMD_SET_BANDWIDTH && in && _this->enabled) {
             float* _in = (float*)in;
             if (_this->bandwidthLocked) { return; }
             _this->setBandwidth(*_in);
@@ -761,7 +793,7 @@ private:
             bool* _out = (bool*)out;
             *_out = _this->squelchEnabled;
         }
-        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_ENABLED && in) {
+        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_ENABLED && in && _this->enabled) {
             bool* _in = (bool*)in;
             _this->setSquelchEnabled(*_in);
         }
@@ -769,41 +801,9 @@ private:
             float* _out = (float*)out;
             *_out = _this->squelchLevel;
         }
-        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_LEVEL && in) {
+        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_LEVEL && in && _this->enabled) {
             float* _in = (float*)in;
             _this->setSquelchLevel(*_in);
-        }
-        else if (code == RADIO_IFACE_CMD_ADD_TO_IFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
-            _this->ifChain.addBlock(proc, false);
-        }
-        else if (code == RADIO_IFACE_CMD_ADD_TO_AFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in;
-            _this->afChain.addBlock(proc, false);
-        }
-        else if (code == RADIO_IFACE_CMD_REMOVE_FROM_IFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
-            _this->ifChain.removeBlock(proc, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
-        }
-        else if (code == RADIO_IFACE_CMD_REMOVE_FROM_AFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in;
-            _this->afChain.removeBlock(proc, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
-        }
-        else if (code == RADIO_IFACE_CMD_ENABLE_IN_IFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
-            _this->ifChain.setBlockEnabled(proc, true, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
-        }
-        else if (code == RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in;
-            _this->afChain.setBlockEnabled(proc, true, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
-        }
-        else if (code == RADIO_IFACE_CMD_DISABLE_IN_IFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::complex_t, dsp::complex_t> *)in;
-            _this->ifChain.setBlockEnabled(proc, false, [=](dsp::stream<dsp::complex_t>* out){ _this->selectedDemod->setInput(out); });
-        }
-        else if (code == RADIO_IFACE_CMD_DISABLE_IN_AFCHAIN && in) {
-            auto proc = (dsp::Processor<dsp::stereo_t, dsp::stereo_t> *)in;
-            _this->afChain.setBlockEnabled(proc, false, [=](dsp::stream<dsp::stereo_t>* out){ _this->afsplitter.setInput(out); });
         }
         else {
             return;
@@ -883,3 +883,4 @@ private:
 
     EventHandler<bool> txHandler;
 };
+

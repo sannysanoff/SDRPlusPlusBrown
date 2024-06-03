@@ -1,6 +1,7 @@
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
+
 #include <imgui.h>
 #include <module.h>
 #include <gui/gui.h>
@@ -20,11 +21,11 @@ ConfigManager config;
 
 
 SDRPP_MOD_INFO{
-    /* Name:            */ "noise_reduction_logmmse",
-    /* Description:     */ "LOGMMSE noise reduction",
-    /* Author:          */ "sannysanoff",
-    /* Version:         */ 0, 1, 0,
-    /* Max instances    */ -1
+        /* Name:            */ "noise_reduction_logmmse",
+        /* Description:     */ "LOGMMSE noise reduction",
+        /* Author:          */ "sannysanoff",
+        /* Version:         */ 0, 1, 0,
+        /* Max instances    */ -1
 };
 
 class NRModule : public ModuleManager::Instance {
@@ -80,7 +81,7 @@ private:
     bool afnrEnabled = false;
     bool snrChartWidget = false;
 
-    void attachAFToRadio(const std::string& instanceName) {
+    void attachAFToRadio(const std::string &instanceName) {
         auto afnrlogmmse = std::make_shared<dsp::AFNRLogMMSE>();
         afnrProcessors[instanceName] = afnrlogmmse;
         afnrlogmmse->init(nullptr);
@@ -91,14 +92,14 @@ private:
         core::modComManager.callInterface(instanceName, RADIO_IFACE_CMD_ADD_TO_AFCHAIN, afnromlsa.get(), NULL);
         core::modComManager.callInterface(instanceName, RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN, afnromlsa.get(), NULL);
         config.acquire();
-        
+
         bool afnr = false;
-        if (config.conf.contains("AF_NR_"+instanceName)) afnr = config.conf["AF_NR_"+instanceName];
+        // if (config.conf.contains("AF_NR_"+instanceName)) afnr = config.conf["AF_NR_"+instanceName];
         auto frequency = 10;
-        if (config.conf.contains("AF_NRF_"+instanceName)) frequency = config.conf["AF_NRF_"+instanceName];
+        if (config.conf.contains("AF_NRF_" + instanceName)) frequency = config.conf["AF_NRF_" + instanceName];
 
         bool afnr2 = false;
-        if (config.conf.contains("AF_NR2_"+instanceName)) afnr2 = config.conf["AF_NR2_"+instanceName];
+        if (config.conf.contains("AF_NR2_" + instanceName)) afnr2 = config.conf["AF_NR2_" + instanceName];
 
 
         config.release(true);
@@ -107,17 +108,19 @@ private:
         afnrlogmmse->allowed = afnr;
 
         afnromlsa->allowed = afnr2;
-        
+
         actuateAFNR();
     }
 
-    void detachAFFromRadio(const std::string& instanceName) {
+    void detachAFFromRadio(const std::string &instanceName) {
         if (afnrProcessors.find(instanceName) != afnrProcessors.end()) {
-            core::modComManager.callInterface(name, RADIO_IFACE_CMD_REMOVE_FROM_IFCHAIN, afnrProcessors[instanceName].get(), NULL);
+            core::modComManager.callInterface(name, RADIO_IFACE_CMD_REMOVE_FROM_IFCHAIN,
+                                              afnrProcessors[instanceName].get(), NULL);
             afnrProcessors.erase(instanceName);
         }
         if (afnrProcessors2.find(instanceName) != afnrProcessors2.end()) {
-            core::modComManager.callInterface(name, RADIO_IFACE_CMD_REMOVE_FROM_AFCHAIN, afnrProcessors2[instanceName].get(), NULL);
+            core::modComManager.callInterface(name, RADIO_IFACE_CMD_REMOVE_FROM_AFCHAIN,
+                                              afnrProcessors2[instanceName].get(), NULL);
             afnrProcessors2.erase(instanceName);
         }
 
@@ -128,14 +131,14 @@ private:
             flog::info("Enabling noise reduction things");
             gui::mainWindow.onWaterfallDrawn.bindHandler(&waterfallDrawnHandler);
             waterfallDrawnHandler.ctx = this;
-            waterfallDrawnHandler.handler = [](ImGuiContext *gctx, void* ctx) {
-                NRModule* _this = (NRModule*)ctx;
+            waterfallDrawnHandler.handler = [](ImGuiContext *gctx, void *ctx) {
+                NRModule *_this = (NRModule *) ctx;
                 _this->drawSNRMeterAverages(gctx);
             };
             ImGui::onSNRMeterExtPoint.bindHandler(&snrMeterExtPointHandler);
             snrMeterExtPointHandler.ctx = this;
             snrMeterExtPointHandler.handler = [](ImGui::SNRMeterExtPoint extp, void *ctx) {
-                NRModule* _this = (NRModule*)ctx;
+                NRModule *_this = (NRModule *) ctx;
                 if (_this->enabled) {
                     _this->lastsnr.insert(_this->lastsnr.begin(), extp.lastDrawnValue);
                     if (_this->lastsnr.size() > NLASTSNR)
@@ -150,18 +153,18 @@ private:
             sigpath::sourceManager.onTuneChanged.bindHandler(&currentFrequencyChangedHandler);
             currentFrequencyChangedHandler.ctx = this;
             currentFrequencyChangedHandler.handler = [](double v, void *ctx) {
-                auto _this = (NRModule *)ctx;
+                auto _this = (NRModule *) ctx;
                 _this->ifnrProcessor.reset();   // reset noise profile
             };
 
             auto names = core::modComManager.findInterfaces("radio");
-            for (auto &name : names) {
+            for (auto &name: names) {
                 attachAFToRadio(name);
             }
             core::moduleManager.onInstanceCreated.bindHandler(&instanceCreatedHandler);
             instanceCreatedHandler.ctx = this;
             instanceCreatedHandler.handler = [](std::string v, void *ctx) {
-                auto _this = (NRModule *)ctx;
+                auto _this = (NRModule *) ctx;
                 auto modname = core::moduleManager.getInstanceModuleName(v);
                 if (modname == "radio") {
                     // radio created after the NR module.
@@ -180,26 +183,26 @@ private:
 
 
     std::unordered_map<std::string, long long> firstTimeHover;
-    bool mustShowTooltip(const std::string& key) {
+
+    bool mustShowTooltip(const std::string &key) {
         if (ImGui::IsItemHovered()) {
             auto what = firstTimeHover[key];
             if (what == 0) {
                 firstTimeHover[key] = currentTimeMillis();
                 return false;
-            }
-            else {
+            } else {
                 return currentTimeMillis() - what > 1000;
             }
-        }
-        else {
+        } else {
             firstTimeHover[key] = 0;
             return false;
         }
     }
 
     void actuateAFNR() {
-        for(auto [k, v] : afnrProcessors) {
-            core::modComManager.callInterface(k, !v->allowed ? RADIO_IFACE_CMD_DISABLE_IN_IFCHAIN : RADIO_IFACE_CMD_ENABLE_IN_IFCHAIN, v.get(), NULL);
+        for (auto [k, v]: afnrProcessors) {
+            core::modComManager.callInterface(k, !v->allowed ? RADIO_IFACE_CMD_DISABLE_IN_IFCHAIN
+                                                             : RADIO_IFACE_CMD_ENABLE_IN_IFCHAIN, v.get(), NULL);
         }
 //        for(auto [k, v] : afnrProcessors2) {
 //            core::modComManager.callInterface(k, !v->allowed ? RADIO_IFACE_CMD_DISABLE_IN_AFCHAIN : RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN, v.get(), NULL);
@@ -222,12 +225,40 @@ private:
             config.acquire();
             config.conf["IFNR"] = ifnr;
             config.release(true);
-
+            if (ifnr) { // toggled on - attempt to run.
+                ifnrProcessor.stopReason = "";
+            }
             actuateIFNR();
         }
+        ImGui::SameLine();
+        if (ifnrProcessor.stopReason != "" && ifnr) {       // wants to stop -> stop it.
+            ifnr = false;
+            config.acquire();
+            config.conf["IFNR"] = ifnr;
+            config.release(true);
+            actuateIFNR();
+        }
+        if (ifnrProcessor.stopReason != "") { // stopped because reason -> show it.
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
+            ImGui::Text("%s", ifnrProcessor.stopReason.c_str());
+            ImGui::PopStyleColor(1);
+        } else {
+            // show cpu usage
+            if (ifnrProcessor.percentUsage >= 0) {
+                if (ifnrProcessor.percentUsage > 80) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
+                }
+                ImGui::Text("%d%% cpu", (int) ifnrProcessor.percentUsage);
+                if (ifnrProcessor.percentUsage > 80) {
+                    ImGui::PopStyleColor(1);
+                }
+            }
+        }
+
 //        if (mustShowTooltip("IFNR"))
 //            ImGui::SetTooltip("Algorithm running on full bandwidth. High CPU usage! Good for SSB/AM/CW only.");
 
+        /*
         for(auto [k, v] : afnrProcessors) {
             if (ImGui::Checkbox(("Audio NR "+k+"##_radio_logmmse_nr_" + k).c_str(), &v->allowed)) {
                 actuateAFNR();
@@ -235,8 +266,6 @@ private:
                 config.conf["AF_NR_"+k] = v->allowed;
                 config.release(true);
             }
-//            if (mustShowTooltip("AFNR"+k))
-//                ImGui::SetTooltip("Noise reduction over the audio frequency.");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
             if (ImGui::SliderInt(("##_radio_logmmse_wf" + k).c_str(), &v->afnrBandwidth, 1, 48, "%d KHz")) {
@@ -246,15 +275,16 @@ private:
                 config.release(true);
             }
         }
-        for(auto [k, v] : afnrProcessors2) {
-            if (ImGui::Checkbox(("Audio NR2 "+k+"##_radio_omlsa_nr_" + k).c_str(), &v->allowed)) {
+        */
+        for (auto [k, v]: afnrProcessors2) {
+            if (ImGui::Checkbox(("Audio NR2 " + k + "##_radio_omlsa_nr_" + k).c_str(), &v->allowed)) {
                 actuateAFNR();
                 config.acquire();
-                config.conf["AF_NR2_"+k] = v->allowed;
+                config.conf["AF_NR2_" + k] = v->allowed;
                 config.release(true);
             }
             ImGui::SameLine();
-            ImGui::Text("%0.01f", 32767.0/v->scaled);
+            ImGui::Text("%0.01f", 32767.0 / v->scaled);
         }
         if (ImGui::Checkbox(("SNR Chart##_radio_logmmse_nr_" + name).c_str(), &snrChartWidget)) {
             config.acquire();
@@ -263,8 +293,8 @@ private:
         }
     }
 
-    static void menuHandler(void* ctx) {
-        NRModule* _this = (NRModule*)ctx;
+    static void menuHandler(void *ctx) {
+        NRModule *_this = (NRModule *) ctx;
         _this->menuHandler();
     }
 
@@ -276,6 +306,7 @@ private:
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "UnreachableCode"
+
     void drawSNRMeterAverages(ImGuiContext *gctx) {
 
         if (!snrChartWidget || !enabled) {
@@ -288,12 +319,14 @@ private:
         if (counter % winsize == winsize - 1) {
             r = dsp::math::maxeach(winsize, lastsnr);
         }
-        ImGuiWindow* window = gctx->CurrentWindow;
+        ImGuiWindow *window = gctx->CurrentWindow;
         ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
         for (int q = 1; q < r.size(); q++) {
-            window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q - 1], q - 1 + window->Pos.y), postSnrLocation + ImVec2(0 + r[q], q + window->Pos.y), text);
+            window->DrawList->AddLine(postSnrLocation + ImVec2(0 + r[q - 1], q - 1 + window->Pos.y),
+                                      postSnrLocation + ImVec2(0 + r[q], q + window->Pos.y), text);
         }
     }
+
 #pragma clang diagnostic pop
 
 
@@ -306,19 +339,18 @@ private:
 };
 
 
-
 MOD_EXPORT void _INIT_() {
-    config.setPath(core::args["root"].s() + "/noise_reduction_logmmse_config.json");
+    config.setPath(std::string(core::getRoot()) + "/noise_reduction_logmmse_config.json");
     config.load(json::object());
     config.enableAutoSave();
 }
 
-MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string name) {
+MOD_EXPORT ModuleManager::Instance *_CREATE_INSTANCE_(std::string name) {
     return new NRModule(name);
 }
 
-MOD_EXPORT void _DELETE_INSTANCE_(void* instance) {
-    delete (NRModule*)instance;
+MOD_EXPORT void _DELETE_INSTANCE_(void *instance) {
+    delete (NRModule *) instance;
 }
 
 MOD_EXPORT void _END_() {

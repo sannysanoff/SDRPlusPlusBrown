@@ -9,6 +9,7 @@ extern int glSleepTime;
 
 namespace displaymenu {
     void init();
+    void checkKeybinds();
     void draw(void* ctx);
     extern bool phoneLayout;
 #ifdef __ANDROID__
@@ -18,6 +19,7 @@ namespace displaymenu {
     extern bool showBattery;
     extern bool showClock;
     extern bool showFFT;
+    extern bool showFFTShadows;
     extern bool showMicHistogram;
     extern std::string currentBatteryLevel;
 

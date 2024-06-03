@@ -351,13 +351,13 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    config.setPath(core::args["root"].s() + "/websdr_view.json");
+    config.setPath(std::string(core::getRoot()) + "/websdr_view.json");
     config.load(json::object());
     config.enableAutoSave();
 }
 
 MOD_EXPORT ModuleManager::Instance *_CREATE_INSTANCE_(std::string name) {
-    return new ReportsMonitorModule(name, core::args["root"].s());
+    return new ReportsMonitorModule(name, std::string(core::getRoot()));
 }
 
 MOD_EXPORT void _DELETE_INSTANCE_(void *instance) {

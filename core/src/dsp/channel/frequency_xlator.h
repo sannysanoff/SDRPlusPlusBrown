@@ -44,7 +44,11 @@ namespace dsp::channel {
             if (Processor<complex_t, complex_t>::out.inputHook) {
                 Processor<complex_t, complex_t>::out.inputHook(in, count);
             }
+#if VOLK_VERSION >= 030100
+            volk_32fc_s32fc_x2_rotator2_32fc((lv_32fc_t*)out, (lv_32fc_t*)in, &phaseDelta, &phase, count);
+#else
             volk_32fc_s32fc_x2_rotator_32fc((lv_32fc_t*)out, (lv_32fc_t*)in, phaseDelta, &phase, count);
+#endif
             if (Processor<complex_t, complex_t>::out.outputHook) {
                 Processor<complex_t, complex_t>::out.outputHook(out, count);
             }

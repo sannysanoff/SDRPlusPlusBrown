@@ -17,4 +17,14 @@ namespace backend {
     int getDeviceFD(int& vid, int& pid, const std::vector<DevVIDPID>& allowedVidPids);
 
     std::string httpGet(const std::string& url);
+
+    std::string getAudioSinkIds();
+    std::string getAudioSourceIds();
+    std::string scanAudioDevices();
+    std::string startBtSco();
+    std::string stopBtSco();
+
+    void doPermissionsDialogs();
+    std::string getBatteryLevel();
+
 }

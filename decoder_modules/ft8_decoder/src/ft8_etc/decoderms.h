@@ -28,16 +28,15 @@
 #include <functional>
 #include <atomic>
 
-extern std::atomic_int outCount;
-
 // #include "../HvMsPlayer/libsound/HvGenFt8/gen_ft8.h"
 //#include <QObject> //2.53
 #define ALL_MSG_SNR 120 //2.63 from 100 to 120
 #define MAXDEC 120
 class DecoderFt8
 {
+    int outCount = 0;
 public:
-    explicit DecoderFt8(int id);
+    explicit DecoderFt8(int id, std::shared_ptr<F2a> f2a);
     ~DecoderFt8();
     void SetStMultiAnswerMod(bool f);
     void SetStWords(QString,QString,int,int);
@@ -51,8 +50,8 @@ public:
     void SetNewP(bool);
     //void SetResetPrevT(QString ptime);
     void ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqso,bool &f,int id3dec,double,double);
-    void SetResultsCallback(std::function<void(int mode, QStringList result)> callback) {
-        this->resultsCallback = callback;
+    void SetResultsCallback(std::function<void(const char *)> fun) {
+        this->resultsCallback = fun;
     }
 
 
@@ -64,9 +63,9 @@ public:
 
 private:
     int decid;
-    std::function<void(int mode, QStringList result)> resultsCallback;
+    std::function<void(const char *)> resultsCallback;
 
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     PomFt pomFt;
     GenFt8 *TGenFt8;
@@ -155,8 +154,10 @@ private:
 class DecoderFt4
 {
 
+    int outCount;
+
 public:
-    explicit DecoderFt4(int id);
+    explicit DecoderFt4(int id, std::shared_ptr<F2a> f2a);
     ~DecoderFt4();
     void SetStTxFreq(double f);
     void SetStMultiAnswerMod(bool f);
@@ -170,9 +171,13 @@ public:
     //void SetNewP(bool);
     //void SetResetPrevT(QString ptime);
     void ft4_decode(double *dd,double f0a,double f0b,double,double,double fqso,bool &f);
+    void SetResultsCallback(std::function<void(const char *)> fun) {
+        this->resultsCallback = fun;
+    }
 
-//signals:
-    void EmitDecodetTextFt(QStringList lst) {
+
+    //signals:
+    void EmitDecodedTextFt(QStringList lst) {
         char buf[1000] ="";
         snprintf(buf+strlen(buf), sizeof(buf)-strlen(buf), "FT4_OUT\t%lld\t%02d", currentTimeMillis(), outCount++);
         for(int i=0; i<lst.count(); i++) {
@@ -180,11 +185,12 @@ public:
             //        std::cout << "{" << i << "}" << lst[i].str->c_str() << " ";
         }
         strcat(buf,"\n");
-        fwrite(buf, 1, strlen(buf), stdout);
-        fflush(stdout);
-//        if (resultsCallback) {
-//            resultsCallback(11, lst);
-//        }
+        // fwrite(buf, 1, strlen(buf), stdout);
+        // fflush(stdout);
+        decodeResultOutput(buf);
+        if (resultsCallback) {
+            resultsCallback(buf);
+        }
     }
     void EmitBackColor() {
         //
@@ -192,7 +198,7 @@ public:
 
 private:
     int decid;
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     PomFt pomFt;
     GenFt4 *TGenFt4;
@@ -256,6 +262,7 @@ private:
     int apmy_ru_ft4[28];
     int aphis_fd_ft4[28];
 
+    std::function<void(const char *)> resultsCallback;
 };
 
 //#include <QObject>
@@ -319,7 +326,7 @@ public:
     ///JTMSK SHORT////
     void SetShOpt(bool f);
     void SetSwlOpt(bool f);
-    void SetResultsCallback(std::function<void(int mode, QStringList result)>);
+    void SetResultsCallback(std::function<void(const char *)> fun);
     //void SetMyGridMsk144ContM(QString,bool);//for " R " in msg 1.31
     //void SetMsk144RxEqual(int);
     ///  JT56ABC  ////////////////////////
@@ -363,7 +370,7 @@ public:
     void EmitAvgSaves(int,int,int,int) {abort();};
     void EmitAvgSavesPi4(int,int) {abort();};
     void EmitAvgSavesQ65(int,int) {abort();};
-    void EmitDecodetTextRxFreq(QStringList,bool,bool) {abort();};
+    void EmitDecodedTextRxFreq(QStringList,bool,bool) {abort();};
     void EmitTimeElapsed(float) {abort();};//2.33
     bool IsWorking();
 
@@ -384,7 +391,7 @@ private:
     bool is_thrTime;
     void CreateStartTimerthr();
 //    QElapsedTimer *thrTime;
-    F2a f2a;
+    std::shared_ptr<F2a> f2a;
     PomAll pomAll;
     //PomFt pomFt;
     void EndRtdPeriod();

@@ -325,7 +325,7 @@ MOD_EXPORT void _INIT_() {
     def["hostname"] = "192.168.0.111";
     def["port"] = 50000;
     def["devices"] = json::object();
-    config.setPath(core::args["root"].s() + "/rfspace_source_config.json");
+    config.setPath(std::string(core::getRoot()) + "/rfspace_source_config.json");
     config.load(def);
     config.enableAutoSave();
 

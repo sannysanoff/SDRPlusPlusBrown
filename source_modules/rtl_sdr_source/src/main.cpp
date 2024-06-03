@@ -579,7 +579,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = 0;
-    config.setPath(core::args["root"].s() + "/rtl_sdr_config.json");
+    config.setPath(std::string(core::getRoot()) + "/rtl_sdr_config.json");
     config.load(def);
     config.enableAutoSave();
 }

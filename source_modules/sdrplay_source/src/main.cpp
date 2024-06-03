@@ -1207,7 +1207,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/sdrplay_config.json");
+    config.setPath(std::string(core::getRoot()) + "/sdrplay_config.json");
     config.load(def);
     config.enableAutoSave();
 }

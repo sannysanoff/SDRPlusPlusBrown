@@ -22,7 +22,7 @@
 
 #include <string>
 
-void protocol1_discovery(std::string staticIp, bool scanIP);
+void protocol1_discovery(std::string staticIp, bool scanIP, bool fastScan);
 std::string getLastSocketError();
 
 #endif

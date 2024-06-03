@@ -5,7 +5,7 @@
 struct FrequencyBookmark {
     double frequency;
     double bandwidth;
-    int mode;
+    int modeIndex;
     bool selected;
 };
 

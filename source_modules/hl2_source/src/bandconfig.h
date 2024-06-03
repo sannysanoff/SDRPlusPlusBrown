@@ -21,4 +21,4 @@ struct AllBands {
 bool bandsEditor(ConfigManager &config, bool isTx, int currentFreq);
 void loadBandsConfig(ConfigManager &config);
 void initBands();
-int getBitsForBand(int frequency, bool tx);
+std::pair<int, int> getBitsForBand(int frequency, bool tx);

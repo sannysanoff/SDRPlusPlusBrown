@@ -23,14 +23,14 @@ namespace dsp {
         }
 
         std::mutex mtx;
+        multirate::RationalResampler<complex_t> resamp;
 
         void setSampleRates(float inSampleRate, float outSampleRate) {
             flog::info("carving::Set sample rate: {0} {0}", inSampleRate, outSampleRate);
             std::lock_guard g(mtx);
-            _inSampleRate = (int)(inSampleRate / 100);
-            _outSampleRate = (int)(outSampleRate / 100);
-            forward = allocateFFTWPlan(false, _inSampleRate);
-            backward = allocateFFTWPlan(true, _outSampleRate);
+            _inSampleRate = (int)(inSampleRate);
+            _outSampleRate = (int)(outSampleRate);
+            resamp.init(nullptr, inSampleRate, outSampleRate);
             inputBuffer.clear();
             _inArr = dsp::npzeros_c(_inSampleRate);
         }
@@ -38,29 +38,10 @@ namespace dsp {
         std::vector<dsp::complex_t> inputBuffer;
         ComplexArray part;
 
+
+
         int process(dsp::complex_t *in, int count, dsp::complex_t *out){
-            int nwritten = 0;
-            auto currentInputSize = inputBuffer.size();
-            inputBuffer.resize(currentInputSize + count);
-            memcpy(inputBuffer.data() + currentInputSize, in, count * sizeof(dsp::complex_t));
-            auto diff = (_inSampleRate - _outSampleRate);
-            int cutPlace = _inSampleRate / 2 - diff / 2;
-            while (inputBuffer.size() >= _inSampleRate) {
-                std::copy(inputBuffer.begin(), inputBuffer.begin() + _inSampleRate, _inArr->begin());
-                npfftfft(_inArr, forward);
-                auto buckets = forward->getOutput();
-                inputBuffer.erase(inputBuffer.begin(), inputBuffer.begin() + _inSampleRate);
-                //                dumpArr_(buckets);
-                if (!part) {
-                    part = npzeros_c(diff);
-                }
-                std::copy(buckets->begin() + cutPlace, buckets->begin() + cutPlace + diff, part->begin());
-//                buckets->erase(buckets->begin() + cutPlace, buckets->begin() + cutPlace + diff);
-                //                dumpArr_(buckets);
-                npfftfft(part, backward);
-                memcpy(out + nwritten, backward->getOutput()->data(), backward->getOutput()->size() * sizeof(dsp::complex_t));
-                nwritten += backward->getOutput()->size();
-            }
+            auto nwritten = resamp.process(count, in, out);
             return nwritten;
         }
 
@@ -95,8 +76,6 @@ namespace dsp {
     private:
         int _inSampleRate;
         int _outSampleRate;
-        Arg<FFTPlan> forward;
-        Arg<FFTPlan> backward;
         ComplexArray _inArr;
     };
 

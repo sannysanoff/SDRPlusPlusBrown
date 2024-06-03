@@ -22,7 +22,8 @@ public:
     ~Event() {}
 
     void emit(T value) {
-        for (auto const& handler : handlers) {
+        auto nh = handlers; // clone because may delete here.
+        for (auto const& handler : nh) {
             handler->handler(value, handler->ctx);
         }
     }

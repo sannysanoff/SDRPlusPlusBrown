@@ -1110,7 +1110,7 @@ private:
 
 MOD_EXPORT void _INIT_() {
     moduleRunning = true;
-    config.setPath(core::args["root"].s() + "/tci_server_config.json");
+    config.setPath(std::string(core::getRoot()) + "/tci_server_config.json");
     config.load(json::object());
     config.enableAutoSave();
 }

@@ -1,7 +1,6 @@
 
 #include <utils/arrays.h>
 #include <fftw3.h>
-#include <volk/volk.h>
 
 #ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
@@ -430,9 +429,82 @@ namespace dsp {
         float expn(float q) {
             return EXPN::expn__(q);
         }
+
+        bool linearInterpolateHoles(float *arr, int narr) {
+            int firstV = -1;
+            int lastV = -1;
+            for(int q=0; q < narr; q++) {
+                float val = arr[q];
+                if(firstV < 0 && val != 0) {
+                    firstV = q;
+                }
+                if (val != 0) {
+                    if (lastV != -1) {
+                        if (q - lastV > 1) {
+                            // fill the gap
+                            auto d = (val - arr[lastV]) / (q - lastV);
+                            auto running = arr[lastV];
+                            for(int w=lastV+1; w<q; w++) {
+                                running += d;
+                                arr[w] = running;
+                            }
+                        }
+                    }
+                    lastV = q;
+                }
+            }
+            if (firstV < 0 || lastV < 0) {
+                return false;
+            } else {
+                auto v = arr[firstV];
+                for (int q = firstV - 1; q >= 0; q--) {
+                    arr[q] = v;
+                }
+                v = arr[lastV];
+                for (int q = lastV + 1; q < narr; q++) {
+                    arr[q] = v;
+                }
+                return true;
+            }
+        }
     }
 
     namespace arrays {
+
+        FloatArray centeredSma(FloatArray in, int winsize) {
+            int limit = in->size();
+            auto rv = npzeros(limit);
+            float total = 0;
+            int win2 = winsize / 2;
+            auto indata = in->data();
+            auto outdata = rv->data();
+            for(int i=0; i<winsize; i++) {
+                total += indata[i];
+            }
+            for(int i=winsize; i<limit; i++) {
+                outdata[i - win2] = total / winsize;
+                total += indata[i] - indata[i-winsize];
+            }
+            for(int i=0; i<winsize-win2; i++) {
+                outdata[i] = outdata[winsize-win2];
+            }
+            for(int i=limit - win2; i<limit; i++) {
+                outdata[i] = outdata[limit-win2-1];
+            }
+            return rv;
+        }
+
+        FloatArray movingVariance(FloatArray in, int winsize) {
+            auto mean = centeredSma(in, winsize);
+            auto squaredDistances = npzeros(mean->size());
+            auto meanData = mean->data();
+            auto squaredDistancesData = squaredDistances->data();
+            auto inData = in->data();
+            for(int i=0; i<mean->size(); i++) {
+                squaredDistancesData[i] = (inData[i] - meanData[i]) * (inData[i] - meanData[i]);
+            }
+            return centeredSma(squaredDistances, winsize);
+        }
 
         struct fftwPlanImplFFTW : public FFTPlan {
             int nbuckets;
@@ -552,61 +624,105 @@ namespace dsp {
         };
 #endif
 
-        std::string dumpArr(const FloatArray& x) {
+        std::string dumpArr(const FloatArray &x) {
+            return dumpArr(x->data(), x->size());
+        }
+
+        std::string dumpArr(const float *x, int limit) {
             std::string s;
-            auto minn = x->at(0);
-            auto maxx = x->at(0);
+            auto minn = x[0];
+            auto maxx = x[0];
             int lim = 10;
-            for (int q = 0; q < x->size(); q++) {
-                auto v = x->at(q);
-                if (q < lim) {
+            for (int q = 0; q < limit; q++) {
+                auto v = x[q];
+                if (false) {
+                    if (q < lim) {
+                        s.append(std::to_string(v));
+                        s.append(" ");
+                    }
+                    if (v > maxx) {
+                        maxx = v;
+                    }
+                    if (v < minn) {
+                        minn = v;
+                    }
+                } else {
+                    s.append(std::to_string(q));
                     s.append(" ");
                     s.append(std::to_string(v));
-                }
-                if (v > maxx) {
-                    maxx = v;
-                }
-                if (v < minn) {
-                    minn = v;
+                    s.append("\n");
                 }
             }
-            std::string pre = "min/max=";
-            pre.append(std::to_string(minn));
-            pre += "/";
-            pre.append(std::to_string(maxx));
-            pre.append(" ");
-            return pre + s;
+            if (false) {
+                std::string pre = "min/max=";
+                pre.append(std::to_string(minn));
+                pre += "/";
+                pre.append(std::to_string(maxx));
+                pre.append(" ");
+                return pre + s;
+            } else {
+                return s;
+            }
         }
 
         std::string dumpArr(const ComplexArray& x) {
+            return dumpArr(x->data(), x->size());
+        }
+
+        std::string dumpArr(const dsp::complex_t *x, int limit) {
             std::string s;
-            auto minn = x->at(0).re;
-            auto maxx = x->at(0).re;
-            for (int q = 0; q < x->size(); q++) {
+            auto minn = x[0].re;
+            auto maxx = x[0].re;
+            for (int q = 0; q < limit; q++) {
+                s.append(std::to_string(q));
                 s.append(" ");
-                auto v = x->at(q).amplitude();
-                s.append(std::to_string(v));
+                auto v = x[q].amplitude();
+                s.append(std::to_string(x[q].re));
+                s.append(" ");
+                s.append(std::to_string(x[q].im));
+                s.append(" ");
                 if (v > maxx) {
                     maxx = v;
                 }
                 if (v < minn) {
                     minn = v;
                 }
+                s += "\n";
             }
-            std::string pre = "min/max=";
-            pre.append(std::to_string(minn));
-            pre += "/";
-            pre.append(std::to_string(maxx));
-            pre.append(" ");
-            return pre + s;
+            if (false) {
+                std::string pre = "min/max=";
+                pre.append(std::to_string(minn));
+                pre += "/";
+                pre.append(std::to_string(maxx));
+                pre.append(" ");
+                return pre + s;
+            } else {
+                return s;
+            }
         }
 
         void dumpArr_(const FloatArray& x) {
-            std::cout << dumpArr(x) << std::endl;
+            std::cout << dumpArr(x->data(), x->size()) << std::endl;
+        }
+
+        void dumpArr_(const std::vector<float> &x) {
+            std::cout << dumpArr(x.data(), x.size()) << std::endl;
         }
 
         void dumpArr_(const ComplexArray& x) {
-            std::cout << dumpArr(x) << std::endl;
+            std::cout << dumpArr(x->data(), x->size()) << std::endl;
+        }
+
+        void dumpArr_(const std::vector<dsp::complex_t> &x) {
+            std::cout << dumpArr(x.data(), x.size()) << std::endl;
+        }
+
+        void dumpArr_(dsp::complex_t *ptr, int len) {
+            std::cout << dumpArr(ptr, len) << std::endl;
+        }
+
+        void dumpArr_(float *ptr, int len) {
+            std::cout << dumpArr(ptr, len) << std::endl;
         }
 
         // hanning window
@@ -637,17 +753,17 @@ namespace dsp {
 
         // add scalar to all items
         FloatArray add(const FloatArray& v, float e) {
-            auto retval = std::make_shared<std::vector<float>>();
-            if (true) {
-                retval->reserve(v->size());
-                for (auto d : *v) {
-                    retval->emplace_back(d + e);
-                }
+            auto retval = std::make_shared<std::vector<float>>(v->size(), 0);
+#ifndef VOLK_VERSION
+            int limit = (int)v->size();
+            auto* src = v->data();
+            auto* dst = retval->data();
+            for (int i=0; i<limit; i++) {
+                dst[i] = src[i] + e;
             }
-            else {
-                //                retval->resize(v->size());
-                //                volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
-            }
+#else
+            volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
+#endif
             return retval;
         }
 
@@ -955,6 +1071,7 @@ namespace dsp {
         // only even window sizes
         FloatArray npmavg(const FloatArray& v, int windowSize) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(v->size());
             float sum = 0;
             float count = 0;
             auto ws2 = windowSize / 2;
@@ -972,6 +1089,7 @@ namespace dsp {
                 }
             }
             if (retval->size() != v->size()) {
+                flog::info("FloatArray npmavg: retval->size() != v->size() {} {}\n", (int)retval->size(), (int)v->size());
                 abort();
             }
             return retval;
@@ -979,6 +1097,7 @@ namespace dsp {
 
         FloatArray npreal(const ComplexArray& v) {
             auto retval = std::make_shared<std::vector<float>>();
+            retval->reserve(v->size());
             for (auto d : *v) {
                 retval->emplace_back(d.re);
             }
@@ -1010,6 +1129,14 @@ namespace dsp {
             return array;
         }
 
+        void swapfft(const ComplexArray &arr) {
+            int s2 = arr->size() / 2;
+            auto data = arr->data();
+            for(int i=0; i<s2; i++) {
+                std::swap(data[i], data[i+s2]);
+            }
+        }
+
         ComplexArray npzeros_c(int size) {
             auto retval = std::make_shared<std::vector<dsp::complex_t>>(size, dsp::complex_t{ 0.0f, 0.0f });
             return retval;
@@ -1019,18 +1146,12 @@ namespace dsp {
             if (in->size() == nsize) {
                 return in;
             }
-            auto retval = std::make_shared<std::vector<dsp::complex_t>>();
+            auto retval = std::make_shared<std::vector<dsp::complex_t>>(nsize, dsp::complex_t{ 0, 0 });
             auto limit = in->size();
             if (nsize < in->size()) {
                 limit = nsize;
             }
-            retval->reserve(nsize);
-            for (auto i = 0; i < limit; i++) {
-                retval->emplace_back(in->at(i));
-            }
-            for (auto i = limit; i < nsize; i++) {
-                retval->emplace_back(dsp::complex_t{ 0, 0 });
-            }
+            std::copy(in->begin(), in->begin() + limit, retval->begin());
             return retval;
         }
 
@@ -1056,6 +1177,10 @@ namespace dsp {
 
         FloatArray clone(const FloatArray& in) {
             return std::make_shared<std::vector<float>>(*in);
+        }
+
+        ComplexArray clone(const ComplexArray& in) {
+            return std::make_shared<std::vector<dsp::complex_t>>(*in);
         }
 
         FloatArray npabsolute(const ComplexArray& in) {

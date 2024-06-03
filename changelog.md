@@ -2,6 +2,37 @@
 
 Newest entries are at the top.
 
+2024.06.02
+
+* SDR++Brown server: baseband compression, TX capability (Hermes Lite 2), buffering, password authentication.
+* File replay - combobox file selection, when in server mode.
+
+2024.05.12
+
+* Added extra UHF/VHF modes module, refactored work of cropinghigh.
+
+2024.04.07
+
+* SDR++ server: client disconnection is detected, stream is stopped. Client IP address is logged properly.
+* soapysdr sources: merged work of @alexander-sholohov with extended UI config of soapy sdr sources.
+* bluetooth mic / playback on android is working ok
+* airspy hf+ fixed/made it properly: fill-in option 
+ 
+2024.04.03
+
+* Android only: added Audio Device selection (both mic and playback).
+ 
+2024.03.01
+
+* Reduced trx parts which are not relevant during receive mode (was: microphone full processing)
+* Macos: speed up FFT, check new modes in "FFT Window Size"
+* Other performance improvements: option to reduce framerate, switch off oscilloscope. 
+* Oscilloscope made simpler (and faster)
+* Added battery indicator on display, added time display (todo: fix collision with RDS)
+* Added preliminary SWR scan + results plotting (Hermes Lite 2)
+* SDR View cleanup (removed mostly all text)
+* Merged recent changes from upstream.
+
 2024.02.05
 
 * Hermes Lite 2 driver: added configuration for band filters per band. Automatic band switching.

@@ -33,7 +33,7 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
                                      NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&errorMessageBuffer, 0, NULL);
         auto narrow = wstr::wstr2str(errorMessageBuffer);
 
-        flog::error("Couldn't load {0}. Error: {1} - {2}", path.c_str(), (int64_t)err, narrow.c_str());
+        flog::error("Couldn't LoadLibraryExW {0}. Error: {1} - {2}", path.c_str(), (int64_t)err, narrow.c_str());
         LocalFree(errorMessageBuffer);
         mod.handle = NULL;
         return mod;
@@ -100,10 +100,16 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
             return _mod;
         }
     }
-    mod.init();
-    modules[mod.info->name] = mod;
-    flog::info(" ..... ok {}", path);
-    return mod;
+    try {
+        mod.init();
+        modules[mod.info->name] = mod;
+        flog::info(" ..... ok {}", path);
+        return mod;
+    } catch(std::exception& e) {
+        flog::error("Failed to initialize module {0}: {}", path, e.what());
+        mod.handle = NULL;
+        return mod;
+    }
 }
 
 int ModuleManager::createInstance(std::string name, std::string module) {

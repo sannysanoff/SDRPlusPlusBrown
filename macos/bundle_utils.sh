@@ -15,6 +15,7 @@ bundle_is_not_to_be_installed() {
     if [ "$1" = "Cocoa" ]; then echo 1; fi
     if [ "$1" = "IOKit" ]; then echo 1; fi
     if [ "$1" = "CoreFoundation" ]; then echo 1; fi
+    if [ "$1" = "Accelerate" ]; then echo 1; fi
     if [ "$1" = "AppKit" ]; then echo 1; fi
     if [ "$1" = "CoreGraphics" ]; then echo 1; fi
     if [ "$1" = "CoreServices" ]; then echo 1; fi
@@ -27,7 +28,8 @@ bundle_is_not_to_be_installed() {
     if [ "$1" = "CFNetwork" ]; then echo 1; fi
     if [ "$1" = "SystemConfiguration" ]; then echo 1; fi
     if [ "$1" = "Security" ]; then echo 1; fi
-    if [ "$1" = "AppleFSCompression" ]; then echo 1; fi    
+    if [ "$1" = "AppleFSCompression" ]; then echo 1; fi
+    if [ "$1" = "libsdrplay_api.so.3.14" ]; then echo 1; fi
 }
 
 # ========================= FOR INTERNAL USE ONLY =========================

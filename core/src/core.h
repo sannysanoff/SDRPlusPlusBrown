@@ -4,6 +4,7 @@
 #include <module_com.h>
 #include "command_args.h"
 #include <atomic>
+#include <string>
 
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
@@ -15,6 +16,7 @@ namespace core {
     SDRPP_EXPORT ModuleManager moduleManager;
     SDRPP_EXPORT ModuleComManager modComManager;
     SDRPP_EXPORT CommandArgsParser args;
+    SDRPP_EXPORT const char *getRoot();
 
     void setInputSampleRate(double samplerate);
 
@@ -54,6 +56,12 @@ inline std::string GetThreadName( ) {
     char thread_name_buffer[100] = { 0 };
     prctl(PR_GET_NAME,thread_name_buffer,0,0,0);
     return std::string(thread_name_buffer);
+#endif
+#ifdef __APPLE__
+    char name[256];
+    pthread_t thread = pthread_self();
+    int result = pthread_getname_np(thread, name, sizeof(name));
+    return name;
 #endif
     return "??";
 }

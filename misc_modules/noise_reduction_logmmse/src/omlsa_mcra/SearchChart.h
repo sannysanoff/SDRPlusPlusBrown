@@ -57,6 +57,7 @@ int G_calculate::Gvalue_solution(int Gh1_subscript,int pp_subscript) {
 	//cout << sizeof(m_G_value) << sizeof(m_G_value) / sizeof(m_G_value[0]);
     int index = vecj* 7000 + veci;
     if (index >= 700000 || index < 0) {
+        flog::info("ERROR: index >= 700000 || index < 0, aborting");
         ::abort();
     }
 //    static bool bits[700000] = {false};

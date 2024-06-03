@@ -12,6 +12,10 @@ namespace dsp::compression {
 
         void init(stream<complex_t>* in, PCMType pcmType) {
             _pcmType = pcmType;
+
+            // Set the output buffer size to the max size of a complex buffer + 8 bytes for the header
+            out.setBufferSize(STREAM_BUFFER_SIZE*sizeof(complex_t) + 8);
+
             base_type::init(in);
         }
 
@@ -23,7 +27,7 @@ namespace dsp::compression {
             base_type::tempStart();
         }
 
-        inline static int process(int count, PCMType pcmType, const complex_t* in, uint8_t* out) {
+        static int process(int count, PCMType pcmType, const complex_t* in, uint8_t* out) {
             uint16_t* compressionType = (uint16_t*)out;
             uint16_t* sampleType = (uint16_t*)&out[2];
             float* scaler = (float*)&out[4];
@@ -41,9 +45,9 @@ namespace dsp::compression {
             }
 
             // Find maximum value
-            uint32_t maxIdx;
+            uint32_t maxIdx; // in case count = 0
             volk_32f_index_max_32u(&maxIdx, (float*)in, count * 2);
-            float maxVal = ((float*)in)[maxIdx];
+            float maxVal = count == 0 ? 1.0 : ((float*)in)[maxIdx];
             *scaler = maxVal;
 
             // Convert to the right type and send it out (sign bit determines pcm type)

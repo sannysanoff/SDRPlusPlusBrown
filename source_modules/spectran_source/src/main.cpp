@@ -9,7 +9,12 @@
 #include <gui/smgui.h>
 #include <utils/optionlist.h>
 #include <codecvt>
+#include <locale>
 #include <aaroniartsaapi.h>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -531,7 +536,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/spectran_config.json");
+    config.setPath(std::string(core::getRoot()) + "/spectran_config.json");
     config.load(def);
     config.enableAutoSave();
 }

@@ -8,13 +8,6 @@
 #include "dsp.h"
 #include "pocsag.h"
 
-const char* msgTypes[] = {
-    "Numeric",
-    "Unknown (0b01)",
-    "Unknown (0b10)",
-    "Alphanumeric",
-};
-
 #define BAUDRATE    2400
 #define SAMPLERATE  (BAUDRATE*10)
 
@@ -52,10 +45,6 @@ public:
             // TODO
         }
 
-        if (ImGui::Button("Detune")) {
-            dsp.detune();
-        }
-
         ImGui::FillWidth();
         diag.draw();
     }
@@ -68,7 +57,6 @@ public:
     }
 
     void start() {
-        flog::debug("POCSAG start");
         dsp.start();
         reshape.start();
         dataHandler.start();
@@ -76,7 +64,6 @@ public:
     }
 
     void stop() {
-        flog::debug("POCSAG stop");
         dsp.stop();
         reshape.stop();
         dataHandler.stop();

@@ -21,7 +21,7 @@
 #include <core.h>
 #include <utils/optionlist.h>
 #include <utils/wav.h>
-#include <radio_interface.h>
+#include <radio_module_interface.h>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -41,7 +41,7 @@ class RecorderModule : public ModuleManager::Instance {
 public:
     RecorderModule(std::string name) : folderSelect("%ROOT%/recordings") {
         this->name = name;
-        root = (std::string)core::args["root"];
+        root = std::string(core::getRoot());
         strcpy(nameTemplate, "$t_$f_$h-$m-$s_$d-$M-$y");
 
         // Define option lists
@@ -51,6 +51,7 @@ public:
         sampleTypes.define(wav::SAMP_TYPE_INT16, "Int16", wav::SAMP_TYPE_INT16);
         sampleTypes.define(wav::SAMP_TYPE_INT32, "Int32", wav::SAMP_TYPE_INT32);
         sampleTypes.define(wav::SAMP_TYPE_FLOAT32, "Float32", wav::SAMP_TYPE_FLOAT32);
+
 
         // Load default config for option lists
         containerId = containers.valueId(wav::FORMAT_WAV);
@@ -440,17 +441,6 @@ private:
         if (dbLvl.r > lvl.r) { lvl.r = dbLvl.r; }
     }
 
-    std::map<int, const char*> radioModeToString = {
-        { RADIO_IFACE_MODE_NFM, "NFM" },
-        { RADIO_IFACE_MODE_WFM, "WFM" },
-        { RADIO_IFACE_MODE_AM,  "AM"  },
-        { RADIO_IFACE_MODE_DSB, "DSB" },
-        { RADIO_IFACE_MODE_USB, "USB" },
-        { RADIO_IFACE_MODE_CW,  "CW"  },
-        { RADIO_IFACE_MODE_LSB, "LSB" },
-        { RADIO_IFACE_MODE_RAW, "RAW" }
-    };
-
     std::string genFileName(std::string templ, std::string type, std::string name) {
         // Get data
         time_t now = time(0);
@@ -477,10 +467,12 @@ private:
         snprintf(dayStr, sizeof dayStr, "%02d", ltm->tm_mday);
         snprintf(monStr, sizeof monStr, "%02d", ltm->tm_mon + 1);
         snprintf(yearStr, sizeof yearStr, "%02d", ltm->tm_year + 1900);
-        if (core::modComManager.getModuleName(name) == "radio") {
-            int mode;
-            core::modComManager.callInterface(name, RADIO_IFACE_CMD_GET_MODE, NULL, &mode);
-            modeStr = radioModeToString[mode];
+        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(name,"RadioModuleInterface");
+        if (radio) {
+            int demodId = radio->getSelectedDemodId();
+            for(int q=0; q<radio->radioModes.size(); q++) {
+                if (radio->radioModes[q].second == demodId) { modeStr = radio->radioModes[q].first.c_str(); }
+            }
         }
 
         // Replace in template
@@ -602,7 +594,7 @@ private:
 
 MOD_EXPORT void _INIT_() {
     // Create default recording directory
-    std::string root = (std::string)core::args["root"];
+    std::string root = std::string(core::getRoot());
     if (!std::filesystem::exists(root + "/recordings")) {
         flog::warn("Recordings directory does not exist, creating it");
         if (!std::filesystem::create_directory(root + "/recordings")) {

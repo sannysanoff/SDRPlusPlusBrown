@@ -27,9 +27,19 @@ SDRPP_MOD_INFO{
 ConfigManager config;
 
 static bool rtaudioCallbackError;
+
+#if !defined(RTAUDIO_VERSION_MAJOR) || RTAUDIO_VERSION_MAJOR < 6
+
 static void rtaudioCallback(RtAudioError::Type type, const std::string& errorText) {
     rtaudioCallbackError = true;
 }
+
+#else
+static void rtaudioCallback(int type, const std::string& errorText) {
+    rtaudioCallbackError = true;
+}
+
+#endif
 
 
 class AudioSink : SinkManager::Sink {
@@ -204,12 +214,6 @@ public:
     void menuHandler() {
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
-        if (underflow == 1) {
-            menuWidth -= style::baseFont->FontSize;
-        }
-        if (underflow == 2) {
-            menuWidth -= style::baseFont->FontSize;
-        }
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devId, txtDevList.c_str())) {
             selectById(devId);
@@ -230,6 +234,10 @@ public:
                 config.acquire();
                 config.conf[_streamName]["devices"][devList[devId].name] = sampleRate;
                 config.release(true);
+            }
+            if (underflow != 0) {
+                ImGui::SameLine();
+                ImGui::Text("Underflow %d", underflow);
             }
             if (ImGui::Checkbox("Mic input (restart needed)", &micInput)) {
                 config.acquire();
@@ -285,8 +293,11 @@ private:
                 audio.startStream();
                 stereoPacker.start();
             }
-            catch (const RtAudioError& e) {
-                flog::error("Could not open audio device: {}", e.getMessage());
+            catch (const std::runtime_error& e) {
+                flog::error("Could not open audio device: {}", e.what());
+                return false;
+            } catch (...) {
+                flog::error("Could not open audio device. generic exception");
                 return false;
             }
 
@@ -307,8 +318,11 @@ private:
                     audio2.startStream();
                     flog::info("RtAudio2 input stream open");
                 }
-                catch (RtAudioError& e) {
-                    flog::error("Could not open INPUT audio device: {}", e.getMessage());
+                catch (const std::runtime_error& e) {
+                    flog::error("Could not open INPUT audio device: {}", e.what());
+                    return false;
+                } catch (...) {
+                    flog::error("Could not open audio device. generic exception");
                     return false;
                 }
             }
@@ -317,8 +331,6 @@ private:
             sigpath::sinkManager.defaultInputAudio.start();
             //            microphone.setBufferSize(sampleRate / 60);
             //            flog::info("_this->microphone.writeBuf={} after setsize", (void*)microphone.writeBuf);
-        } else {
-            sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
         }
         return true;
     }
@@ -328,10 +340,12 @@ private:
 
     void doStop() {
         flog::info("Stopping RtAudio stream:  {}", _streamName);
-
-        sigpath::sinkManager.defaultInputAudio.stop();
-        flog::info("sigpath::sinkManager.defaultInputAudio.setInput(nullptr)");
-        sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
+        bool isPrimary = SinkManager::getSecondaryStreamIndex(_streamName).second == 0;
+        if (isPrimary && micInput) {
+            sigpath::sinkManager.defaultInputAudio.stop();
+            flog::info("sigpath::sinkManager.defaultInputAudio.setInput(nullptr)");
+            sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
+        }
 
         //        s2m.stop();
         //        monoPacker.stop();
@@ -558,7 +572,7 @@ private:
 
 MOD_EXPORT void _INIT_() {
     json def = json({});
-    config.setPath(core::args["root"].s() + "/audio_sink_config.json");
+    config.setPath(std::string(core::getRoot()) + "/audio_sink_config.json");
     config.load(def);
     config.enableAutoSave();
 }

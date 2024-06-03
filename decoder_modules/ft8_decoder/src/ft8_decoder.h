@@ -1,5 +1,7 @@
 #pragma once
 
+#define NEW_BUILTIN_MODE
+
 #include <core.h>
 #include <iostream>
 #include <utils/wav.h>
@@ -24,6 +26,13 @@
 
 #ifdef _WIN32
 #include <io.h>
+#endif
+
+#ifdef NEW_BUILTIN_MODE
+#include "ft8_etc/mshv_support.h"
+#include "ft8_etc/mscore.h"
+#include "ft8_etc/decoderms.h"
+#include "symbolic.h"
 #endif
 
 namespace dsp {
@@ -113,9 +122,15 @@ namespace dsp {
             DMS_FT8 = 11
         } DecoderMSMode;
 
+#ifdef NEW_BUILTIN_MODE
+
         void invokeDecoder(int nthreads, const std::string &mode, const std::string &wavPath, const std::string &outPath,
-                           const std::string &errPath, std::function<void(int mode,
-                                                                          std::vector<std::string> result, std::atomic<const char *> &progress)> callback, std::atomic<const char *> &progress) {
+                               const std::string &errPath, std::function<void(int mode, std::vector<std::string> result, std::atomic<const char *> &progress)> callback, std::atomic<const char *> &progress);
+
+#else
+
+        void invokeDecoder(int nthreads, const std::string &mode, const std::string &wavPath, const std::string &outPath,
+                           const std::string &errPath, std::function<void(int mode, std::vector<std::string> result, std::atomic<const char *> &progress)> callback, std::atomic<const char *> &progress) {
 
 #ifdef __ANDROID__
             Dl_info info;
@@ -304,11 +319,11 @@ namespace dsp {
 #endif // !win32
         }
 
+#endif // NEW_BUILTIN_MODE
+
         inline void decodeFT8(int nthreads, const std::string &mode, int sampleRate, dsp::stereo_t *samples, long long nsamples,
-                              std::function<void(int mode,
-                                                 std::vector<std::string> result, std::atomic<const char *> &progress)> callback,
-                              std::atomic<const char *> &progress,
-                              bool removeFiles
+                              std::function<void(int mode, std::vector<std::string> result, std::atomic<const char *> &progress)> callback,
+                              std::atomic<const char *> &progress, bool removeFiles
                               ) {
 
             static std::atomic_int _seq = 100;

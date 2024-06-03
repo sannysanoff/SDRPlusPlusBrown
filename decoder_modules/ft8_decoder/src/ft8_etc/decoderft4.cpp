@@ -33,8 +33,9 @@ static const int naptypes_4[6][4]=
 //!   5        MyCall DxCall 73            (77 ap bits)
 //!   6        MyCall DxCall RR73          (77 ap bits)
 //!********
-DecoderFt4::DecoderFt4(int id)
+DecoderFt4::DecoderFt4(int id, std::shared_ptr<F2a> f2a) : f2a(f2a)
 {
+
     pomFt.initPomFt();
     pomAll.initPomAll();//2.66 for pctile_shell
     decid = id;
@@ -52,8 +53,9 @@ DecoderFt4::DecoderFt4(int id)
     cont_id0_ft4_2 = 0;
     //f_new_p = true;
 }
-DecoderFt4::~DecoderFt4()
-{}
+DecoderFt4::~DecoderFt4() {
+    delete TGenFt4;
+}
 static double s_nftx4 = 1200.0;
 void DecoderFt4::SetStTxFreq(double f)
 {
@@ -155,8 +157,8 @@ void DecoderFt4::ft4_downsample(double *dd,bool newdata,double f0,std::complex<d
     const int NDOWN = 18;
     const int NFFT2 = NMAX/NDOWN; //=4032
     const int NSPS = 576;
-    double x[NMAX+50];
-    std::complex<double> c1[NFFT2+100];//(0:NFFT2-1)
+    std::vector<double> x(NMAX+50);
+    std::vector<std::complex<double>> c1(NFFT2+100);//(0:NFFT2-1)
 
     double df=DEC_SAMPLE_RATE/(double)NMAX;
     double baud=DEC_SAMPLE_RATE/(double)NSPS;
@@ -185,7 +187,7 @@ void DecoderFt4::ft4_downsample(double *dd,bool newdata,double f0,std::complex<d
     {
         for (int i = 0; i < NMAX; ++i)
             x[i]=dd[i]*0.01;
-        f2a.four2a_d2c(cx_ft4_ds,x,NMAX,-1,0,decid);//four2a(x,NMAX,1,-1,0)            // !r2c FFT to freq domain
+        f2a->four2a_d2c(cx_ft4_ds,x.data(),NMAX,-1,0,decid);//four2a(x,NMAX,1,-1,0)            // !r2c FFT to freq domain
     }
     int i0=(int)(f0/df);
     for (int i = 0; i < NFFT2; ++i)
@@ -200,7 +202,7 @@ void DecoderFt4::ft4_downsample(double *dd,bool newdata,double f0,std::complex<d
     for (int i = 0; i < NFFT2; ++i)
         c1[i]*=window_ft4_ds[i]/(double)NFFT2;//c1=c1*window/NFFT2
 
-    f2a.four2a_c2c(c1,NFFT2,1,1,decid);//call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
+    f2a->four2a_c2c(c1.data(),NFFT2,1,1,decid);//call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
 
     for (int i = 0; i < NMAX/NDOWN; ++i)
         c[i]=c1[i];//c[]=c1(0:NMAX/NDOWN-1)
@@ -324,7 +326,7 @@ void DecoderFt4::getcandidates4(double *dd,double fa,double fb,double fa1,double
         if (ib>NMAX) break;// if(ib.gt.NMAX) exit
         for (int z = 0; z < NFFT1; ++z)
             x[z]=fac*dd[ia+z]*window_ft4[z]*0.01;
-        f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);              //!r2c FFT
+        f2a->four2a_d2c(cx,x,NFFT1,-1,0,decid);              //!r2c FFT
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1
             //s_[j][i]=pomAll.ps_hv(cx[i]);//old -> s(i,j)=real(cx(i))**2 + aimag(cx(i))**2
@@ -702,7 +704,7 @@ void DecoderFt4::subtractft4(double *dd,int *itone,double f0,double dt)
 
         pomAll.cshift1(cw_subsft4,NMAX,(NFILT/2+1));    //cw=cshift(cw,NFILT/2+1);
 
-        f2a.four2a_c2c(cw_subsft4,NFFT,-1,1,decid);//call four2a(cw,nfft,1,-1,1)
+        f2a->four2a_c2c(cw_subsft4,NFFT,-1,1,decid);//call four2a(cw,nfft,1,-1,1)
         for (int i = 0; i < NMAX; ++i)
             cw_subsft4[i]*=fac;
         first_subsft4=false;
@@ -717,10 +719,10 @@ void DecoderFt4::subtractft4(double *dd,int *itone,double f0,double dt)
         }
     }
 
-    f2a.four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
+    f2a->four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
     for (int i = 0; i < NFFT; ++i)//cfilt(1:nfft)=cfilt(1:nfft)*cw(1:nfft)
         cfilt[i]*=cw_subsft4[i];
-    f2a.four2a_c2c(cfilt,NFFT,1,1,decid);//call four2a(cfilt,nfft,1,1,1)
+    f2a->four2a_c2c(cfilt,NFFT,1,1,decid);//call four2a(cfilt,nfft,1,1,1)
 
     //! Subtract the reconstructed signal
     for (int i = 0; i < NFRAME; ++i)//if(j.ge.1 .and. j.le.NMAX) dd(j)=dd(j)-2*REAL(cfilt(i)*cref(i))
@@ -806,7 +808,7 @@ void DecoderFt4::get_ft4_bitmetrics(std::complex<double> *cd,double bitmetrics_[
         int i1=k*NSS;//i1=(k-1)*NSS
         for (int z = 0; z < NSS; ++z)//NSS=32
             csymb[z]=cd[z+i1];      //csymb=cd(i1:i1+NSS-1)
-        f2a.four2a_c2c(csymb,NSS,-1,1,decid);//four2a(csymb,NSS,1,-1,1)
+        f2a->four2a_c2c(csymb,NSS,-1,1,decid);//four2a(csymb,NSS,1,-1,1)
         for (int x = 0; x < 4; ++x)
         {
             cs_[k][x]=csymb[x];      //cs(0:3,k)=csymb(1:4)
@@ -1678,7 +1680,7 @@ c10:
                         <<QString("%1").arg(qual,0,'f',1)
                         <<QString("%1").arg((int)f1);
 
-                        EmitDecodetTextFt(list);//1.27 psk rep   fopen bool true    false no file open
+                        EmitDecodedTextFt(list);//1.27 psk rep   fopen bool true    false no file open
                         have_dec = true;
 
                         /*//if (abs((int)s_nfqso65-(int)f1)<=10 || list.at(4).contains(s_MyCall))

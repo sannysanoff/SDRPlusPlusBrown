@@ -5,7 +5,7 @@
 #include "mshv_support.h"
  
 #define NSEC 85   //ARRL Field Day
-static const QString csec_77[NSEC] =
+static const char * csec_77[NSEC] =
     {
         "AB ","AK ","AL ","AR ","AZ ","BC ","CO ","CT ","DE ","EB ",
         "EMA","ENY","EPA","EWA","GA ","GTA","IA ","ID ","IL ","IN ",
@@ -18,7 +18,7 @@ static const QString csec_77[NSEC] =
         "WV ","WWA","WY ","DX ","PE "
     };
 #define NUSCAN 65 //ARRL RTTY Contest and ARRL RTTY Roundup
-static const QString cmult_77[NUSCAN]=
+static const char * cmult_77[NUSCAN]=
     {
         "AL ","AK ","AZ ","AR ","CA ","CO ","CT ","DE ","FL ","GA ",
         "HI ","ID ","IL ","IN ","IA ","KS ","KY ","LA ","ME ","MD ",

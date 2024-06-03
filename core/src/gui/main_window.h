@@ -106,8 +106,7 @@ protected:
 };
 
 #ifdef __ANDROID__
-namespace backend {
-    extern void doPermissionsDialogs();
-    extern std::string getBatteryLevel();
-}
+
+#include <android_backend.h>
+
 #endif

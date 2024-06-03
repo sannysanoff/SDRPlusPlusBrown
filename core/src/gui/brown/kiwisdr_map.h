@@ -79,28 +79,30 @@ struct KiwiSDRMapSelector {
                         std::thread t([&]() {
                             serversList = loadServersList();
 
-                            for (const auto& entry : *serversList) {
-                                ServerEntry serverEntry;
+                            if (serversList) {
+                                for (const auto& entry : *serversList) {
+                                    ServerEntry serverEntry;
 
-                                // Check if all required fields are present
-                                if (entry.contains("gps") && entry.contains("name") && entry.contains("url") &&
-                                    entry.contains("snr") && entry.contains("users") && entry.contains("users_max") && entry.contains("offline")) {
+                                    // Check if all required fields are present
+                                    if (entry.contains("gps") && entry.contains("name") && entry.contains("url") &&
+                                        entry.contains("snr") && entry.contains("users") && entry.contains("users_max") && entry.contains("offline")) {
 
-                                    if (entry["offline"].get<std::string>() == "no") {
-                                        std::string gps_str = entry["gps"].get<std::string>();
-                                        geomap::GeoCoordinates geo;
-                                        sscanf(gps_str.c_str(), "(%lf, %lf)", &geo.latitude, &geo.longitude);
-                                        serverEntry.gps = geomap::geoToCartesian(geo).toImVec2();
-                                        serverEntry.name = entry["name"].get<std::string>();
-                                        serverEntry.loc = entry["loc"].get<std::string>();
-                                        serverEntry.url = entry["url"].get<std::string>();
-                                        if (entry.contains("antenna")) {
-                                            serverEntry.antenna = entry["antenna"].get<std::string>();
+                                        if (entry["offline"].get<std::string>() == "no") {
+                                            std::string gps_str = entry["gps"].get<std::string>();
+                                            geomap::GeoCoordinates geo;
+                                            sscanf(gps_str.c_str(), "(%lf, %lf)", &geo.latitude, &geo.longitude);
+                                            serverEntry.gps = geomap::geoToCartesian(geo).toImVec2();
+                                            serverEntry.name = entry["name"].get<std::string>();
+                                            serverEntry.loc = entry["loc"].get<std::string>();
+                                            serverEntry.url = entry["url"].get<std::string>();
+                                            if (entry.contains("antenna")) {
+                                                serverEntry.antenna = entry["antenna"].get<std::string>();
+                                            }
+                                            sscanf(entry["snr"].get<std::string>().c_str(), "%f,%f", &serverEntry.maxSnr, &serverEntry.secondSnr);
+                                            serverEntry.users = atoi(entry["users"].get<std::string>().c_str());
+                                            serverEntry.usersmax = atoi(entry["users_max"].get<std::string>().c_str());
+                                            servers.push_back(serverEntry);
                                         }
-                                        sscanf(entry["snr"].get<std::string>().c_str(), "%f,%f", &serverEntry.maxSnr, &serverEntry.secondSnr);
-                                        serverEntry.users = atoi(entry["users"].get<std::string>().c_str());
-                                        serverEntry.usersmax = atoi(entry["users_max"].get<std::string>().c_str());
-                                        servers.push_back(serverEntry);
                                     }
                                 }
                             }

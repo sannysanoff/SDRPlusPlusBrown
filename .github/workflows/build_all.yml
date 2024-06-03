@@ -38,10 +38,10 @@ jobs:
           run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
 
         - name: Download SDRPlay API
-          run: Invoke-WebRequest -Uri "https://drive.google.com/uc?id=12UHPMwkfa67A11QZDmpCT4iwHnyJHWuu&confirm=t" -OutFile ${{runner.workspace}}/SDRPlay.zip
+          run: Invoke-WebRequest -Uri "https://www.sdrpp.org/SDRplay.zip" -OutFile ${{runner.workspace}}/SDRplay.zip
 
         - name: Install SDRPlay API
-          run: 7z x ${{runner.workspace}}/SDRPlay.zip -o"C:/Program Files/"
+          run: 7z x ${{runner.workspace}}/SDRplay.zip -o"C:/Program Files/"
 
         - name: Download codec2
           run: git clone https://github.com/AlexandreRouma/codec2
@@ -59,7 +59,7 @@ jobs:
           run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
 
         - name: Install vcpkg dependencies
-          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows
+          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows
 
         - name: Install rtaudio
           run: git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake .. ; cmake --build . --config Release ; cmake --install .
@@ -69,7 +69,7 @@ jobs:
 
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON
+          run: cmake "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -93,8 +93,8 @@ jobs:
           run: gh release upload stable ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
 
 
-    build_macos:
-      runs-on: macos-latest
+    build_macos_intel:
+      runs-on: macos-12
 
       steps:
         - uses: actions/checkout@v4
@@ -102,19 +102,18 @@ jobs:
         - name: Create Build Environment
           run: cmake -E make_directory ${{runner.workspace}}/build
 
-        - name: Update brew repositories
-          run: brew update
+#        - name: Update brew repositories
+#          run: brew update
 
         - name: Install dependencies
           # run: brew install pkg-config libusb fftw glfw airspy airspyhf portaudio hackrf rtl-sdr libbladerf codec2 zstd autoconf automake libtool && pip3 install mako
-          run: HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install pkg-config libusb fftw glfw airspy airspyhf portaudio hackrf libbladerf codec2 zstd autoconf automake libtool && pip3 install mako
+          run: HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install pkg-config libusb fftw glfw airspy airspyhf portaudio hackrf libbladerf codec2 zstd autoconf automake libtool && pip3 install mako --break-system-packages
 
         - name: Install volk
           run: git clone --recursive https://github.com/gnuradio/volk && cd volk && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
 
         - name: Install SDRplay API
-          #run: curl https://www.sdrplay.com/software/SDRplay_RSP_API-MacOSX-3.07.3.pkg > sdrplay.pkg && sudo installer -pkg sdrplay.pkg -target /
-          run: wget https://www.sdrplay.com/software/SDRplayAPI-macos-installer-universal-3.12.1.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.12.1.pkg -target /
+          run: wget https://www.sdrplay.com/software/SDRplayAPI-macos-installer-universal-3.14.0.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.14.0.pkg -target /
 
         - name: Install libiio
           run: wget https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.25.zip && 7z x v0.25.zip && cd libiio-0.25 && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
@@ -133,7 +132,7 @@ jobs:
 
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 $GITHUB_WORKSPACE -DOPT_BUILD_PLUTOSDR_SOURCE=ON -DOPT_BUILD_SOAPY_SOURCE=OFF -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_AUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_AUDIO_SOURCE=OFF -DUSE_BUNDLE_DEFAULTS=ON -DCMAKE_BUILD_TYPE=Release
+          run: cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 $GITHUB_WORKSPACE -DOPT_BUILD_PLUTOSDR_SOURCE=ON -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_AUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_AUDIO_SOURCE=OFF -DUSE_BUNDLE_DEFAULTS=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DCMAKE_BUILD_TYPE=Release 
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -141,7 +140,7 @@ jobs:
 
         - name: Create Archive
           working-directory: ${{runner.workspace}}
-          run: cd $GITHUB_WORKSPACE && sh make_macos_bundle.sh ${{runner.workspace}}/build ./SDR++.app && zip -r ${{runner.workspace}}/sdrpp_macos_intel.zip SDR++.app
+          run: cd $GITHUB_WORKSPACE && sh make_macos_bundle.sh ${{runner.workspace}}/build ./SDR++Brown.app && zip -r ${{runner.workspace}}/sdrpp_macos_intel.zip SDR++Brown.app
 
         - name: Save Archive
           uses: actions/upload-artifact@v4
@@ -154,7 +153,71 @@ jobs:
 
         - name: Update Stable
           if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
+          run: gh release upload stable ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
+
+
+
+
+
+    build_macos_arm:
+
+
+      runs-on: macos-14
+
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Create Build Environment
+          run: cmake -E make_directory ${{runner.workspace}}/build
+
+        - name: Install dependencies
+          run: brew install pkg-config libusb fftw glfw airspy airspyhf portaudio hackrf libbladerf codec2 zstd autoconf automake libtool && pip3 install mako --break-system-packages
+
+        - name: Install volk
+          run: git clone --recursive https://github.com/gnuradio/volk && cd volk && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        - name: Install SDRplay API
+          run: wget https://www.sdrplay.com/software/SDRplayAPI-macos-installer-universal-3.14.0.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.14.0.pkg -target /
+
+        - name: Install libiio
+          run: wget https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.25.zip && 7z x v0.25.zip && cd libiio-0.25 && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        - name: Install libad9361
+          run: git clone https://github.com/analogdevicesinc/libad9361-iio && cd libad9361-iio && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        - name: Install LimeSuite
+          run: git clone https://github.com/myriadrf/LimeSuite && cd LimeSuite && mkdir builddir && cd builddir && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        # - name: Install libperseus
+        #   run: git clone https://github.com/Microtelecom/libperseus-sdr && cd libperseus-sdr && autoreconf -i && ./configure --prefix=/usr/local && make && make install && cd ..
+
+        - name: Install more recent librtlsdr
+          run: git clone https://github.com/osmocom/rtl-sdr && cd rtl-sdr && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 LIBRARY_PATH=$(pkg-config --libs-only-L libusb-1.0 | sed 's/\-L//') && sudo make install && cd ../../
+
+        - name: Prepare CMake
+          working-directory: ${{runner.workspace}}/build
+          run: cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 $GITHUB_WORKSPACE -DOPT_BUILD_PLUTOSDR_SOURCE=ON -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_AUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=OFF -DOPT_BUILD_PERSEUS_SOURCE=OFF -DOPT_BUILD_AUDIO_SOURCE=OFF -DUSE_BUNDLE_DEFAULTS=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DCMAKE_BUILD_TYPE=Release
+
+        - name: Build
+          working-directory: ${{runner.workspace}}/build
+          run: make VERBOSE=1 -j3
+
+        - name: Create Archive
+          working-directory: ${{runner.workspace}}
+          run: cd $GITHUB_WORKSPACE && sh make_macos_bundle.sh ${{runner.workspace}}/build ./SDR++Brown.app && zip -r ${{runner.workspace}}/sdrpp_macos_arm.zip SDR++Brown.app
+
+        - name: Save Archive
+          uses: actions/upload-artifact@v4
+          with:
+            name: sdrpp_macos_arm
+            path: ${{runner.workspace}}/sdrpp_macos_arm.zip
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
+
+        - name: Update Stable
+          if: contains(github.ref_name, 'stable')
+          run: gh release upload stable ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
 
 
     build_debian_buster:
@@ -229,33 +292,33 @@ jobs:
           if: contains(github.ref_name, 'stable')
           run: gh release upload stable ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
 
-    build_ubuntu_focal:
-        runs-on: ubuntu-latest
-
-        steps:
-        - uses: actions/checkout@v4
-
-        - name: Create Docker Image
-          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_focal && docker build . --tag sdrpp_build
-
-        - name: Run Container
-          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
-
-        - name: Recover Deb Archive
-          working-directory: ${{runner.workspace}}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_focal_amd64.deb
-
-        - name: Save Deb Archive
-          uses: actions/upload-artifact@v4
-          with:
-              name: sdrpp_ubuntu_focal_amd64
-              path: ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb
-
-        - name: Update Nightly
-          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
+#    build_ubuntu_focal:
+#        runs-on: ubuntu-latest
+#
+#        steps:
+#        - uses: actions/checkout@v4
+#
+#        - name: Create Docker Image
+#          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_focal && docker build . --tag sdrpp_build
+#
+#        - name: Run Container
+#          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+#
+#        - name: Recover Deb Archive
+#          working-directory: ${{runner.workspace}}
+#          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_focal_amd64.deb
+#
+#        - name: Save Deb Archive
+#          uses: actions/upload-artifact@v4
+#          with:
+#              name: sdrpp_ubuntu_focal_amd64
+#              path: ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb
+#
+#        - name: Update Nightly
+#          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
+#        - name: Update Stable
+#          if: contains(github.ref_name, 'stable')
+#          run: gh release upload stable ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
 
 
     build_ubuntu_jammy:

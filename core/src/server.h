@@ -17,11 +17,16 @@ namespace server {
     void commandHandler(Command cmd, uint8_t* data, int len);
     void renderUI(SmGui::DrawList* dl, std::string diffId, SmGui::DrawListElem diffValue);
     void sendUI(Command originCmd, std::string diffId, SmGui::DrawListElem diffValue);
+    void sendUnsolicitedUI();
     void sendError(Error err);
     void sendSampleRate(double sampleRate);
+    void sendCenterFrequency(double centerFreq);
     void setInputSampleRate(double samplerate);
+    void setInputCenterFrequencyCallback(int centerFrequency); // realtime callback from drivers.
 
     void sendPacket(PacketType type, int len);
     void sendCommand(Command cmd, int len);
     void sendCommandAck(Command cmd, int len);
+
+
 }

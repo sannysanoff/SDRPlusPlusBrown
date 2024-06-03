@@ -21,7 +21,7 @@ using namespace std; // zaradi max(
 static const double DEC_SAMPLE_RATE_11025 = 11025.0;
 static const double DEC_SAMPLE_RATE_12000 = 12000.0;
 
-std::atomic_int outCount = 0;
+std::function<void(const char *line)> decodeResultOutputFun;
 //#include <QtGui>
 
 #define MAXDUPMSGTHR 120 //2.63 from 100 to 120
@@ -29,6 +29,7 @@ std::atomic_int outCount = 0;
 DecoderMs::DecoderMs()//QObject *parent
 //: QObject(parent)
 {
+    f2a = std::make_shared<F2a>();
 	pomAll.initPomAll();//2.66 for pctile_shell in jt65 and pi4
     for (int i = 0; i <  MAXDUPMSGTHR; ++i)
     {
@@ -46,22 +47,22 @@ DecoderMs::DecoderMs()//QObject *parent
     //f_multi_answer_mod = false;
     //s_ncontest_ft8_2 = 0;
     /////////// FT4 ///////////////////////////////////////////////////////////
-    DecFt4_0 = new DecoderFt4(0);
+    DecFt4_0 = new DecoderFt4(0, f2a);
 //    connect(DecFt4_0, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_0, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_1 = new DecoderFt4(1);
+    DecFt4_1 = new DecoderFt4(1, f2a);
 //    connect(DecFt4_1, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_1, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_2 = new DecoderFt4(2);
+    DecFt4_2 = new DecoderFt4(2, f2a);
 //    connect(DecFt4_2, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_2, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_3 = new DecoderFt4(3);
+    DecFt4_3 = new DecoderFt4(3, f2a);
 //    connect(DecFt4_3, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_3, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_4 = new DecoderFt4(4);
+    DecFt4_4 = new DecoderFt4(4, f2a);
 //    connect(DecFt4_4, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_4, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt4_5 = new DecoderFt4(5);
+    DecFt4_5 = new DecoderFt4(5, f2a);
 //    connect(DecFt4_5, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
 //    connect(DecFt4_5, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
     /////////// FT4 END ///////////////////////////////////////////////////////
@@ -75,31 +76,16 @@ DecoderMs::DecoderMs()//QObject *parent
     is_stat_ftb[1] = false;
     is_ftBuff = false;
 
-    DecFt8_0 = new DecoderFt8(0);
-//    connect(DecFt8_0, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_0, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_1 = new DecoderFt8(1);
-//    connect(DecFt8_1, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_1, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_2 = new DecoderFt8(2);
-//    connect(DecFt8_2, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_2, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_3 = new DecoderFt8(3);
-//    connect(DecFt8_3, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_3, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_4 = new DecoderFt8(4);
-//    connect(DecFt8_4, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_4, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
-    DecFt8_5 = new DecoderFt8(5);
-//    connect(DecFt8_5, SIGNAL(EmitDecodetTextFt(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecFt8_5, SIGNAL(EmitBackColor()), this, SLOT(ThrSetBackColor()));
+    DecFt8_0 = new DecoderFt8(0, f2a);
+    DecFt8_1 = new DecoderFt8(1, f2a);
+    DecFt8_2 = new DecoderFt8(2, f2a);
+    DecFt8_3 = new DecoderFt8(3, f2a);
+    DecFt8_4 = new DecoderFt8(4, f2a);
+    DecFt8_5 = new DecoderFt8(5, f2a);
     /////////// END FT8 ///////////////////////////////////////////////////////////
 
     allq65 = false;
     DecQ65 = new DecoderQ65();
-//    connect(DecQ65, SIGNAL(EmitDecodetText(QStringList)), this, SLOT(SetDecodetTextFtQ65(QStringList)));
-//    connect(DecQ65, SIGNAL(EmitBackColor()), this, SLOT(SetBackColorQ65()));
-//    connect(DecQ65, SIGNAL(EmitAvgSavesQ65(int,int)), this, SIGNAL(EmitAvgSavesQ65(int,int)));
 
     /////////// PI4 ///////////////////////////////////////////////////////////
     first_pi4 = true;
@@ -272,6 +258,23 @@ DecoderMs::DecoderMs()//QObject *parent
 DecoderMs::~DecoderMs()
 {
     //qDebug()<<"DELETE";
+    delete DecFt8_5;
+    delete DecFt8_4;
+    delete DecFt8_3;
+    delete DecFt8_2;
+    delete DecFt8_1;
+    delete DecFt8_0;
+
+    delete DecFt4_5;
+    delete DecFt4_4;
+    delete DecFt4_3;
+    delete DecFt4_2;
+    delete DecFt4_1;
+    delete DecFt4_0;
+
+    delete TGenMsk;
+    delete TGen65;
+    delete DecQ65;
 }
 void DecoderMs::SetMaxDrift(bool f)
 {
@@ -638,7 +641,7 @@ void DecoderMs::setMode(int ident)
         DEC_SAMPLE_RATE = DEC_SAMPLE_RATE_12000;
 
     is_new_rpt_msk = false;//reset s_list_rpt_msk QStringList
-    f2a.DestroyPlansAll(true);//2.09  true inidiatly
+    f2a->DestroyPlansAll(true);//2.09  true inidiatly
 
     if (prev_mod == 14 || prev_mod == 15 || prev_mod == 16 || prev_mod == 17) DecQ65->SetClearAvgQ65all();
     prev_mod = ident;
@@ -656,7 +659,7 @@ void DecoderMs::analytic(double *d,int d_count_begin,int npts,int nfft,double *s
     for (int j = npts; j<nfft; j++)
         c[j]=0.0;
 
-    f2a.four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
+    f2a->four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
 
     for (int x = 0; x<nh; x++)
         //s[x]=real(c[x])**2 + aimag(c[x])**2
@@ -668,7 +671,7 @@ void DecoderMs::analytic(double *d,int d_count_begin,int npts,int nfft,double *s
     for (int y = nh+1; y<nfft; y++)
         c[y]=complex_zero;
 
-    f2a.four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
+    f2a->four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
 
     //c[1] = 4.9+6*I;
     //c[2] = 6.7+6*I;
@@ -757,7 +760,7 @@ void DecoderMs::xfft(std::complex<double> *c,double *d,int nfft)
 {
     //! Real-to-complex FFT.
     //four2a((std::complex<double>*)x,nfft,1,-1,0);
-    f2a.four2a_d2c(c,d,nfft,-1,0);
+    f2a->four2a_d2c(c,d,nfft,-1,0);
 }
 void DecoderMs::zero_int_beg_end(int*d,int begin,int end)
 {
@@ -1676,7 +1679,7 @@ c10:
         //c(nh+2-i)=conjg(c(i))
         c[nh+1-i]=conj(c[i]);
 
-    f2a.four2a_d2c(c,x,nh,1,-1);
+    f2a->four2a_d2c(c,x,nh,1,-1);
     double fac=(double)1.0/nfft;
     for (int i = 0; i<jz/nadd; i++)
     {
@@ -2001,6 +2004,8 @@ void DecoderMs::StrtDecode() {
     int nforce = 1; // force_decode
     bool pick;
 
+    //debugPrintf("StrtDecode ok");
+
     if ((s_mod != 0 && s_mod != 7 && s_mod != 8 && s_mod != 9 && s_mod != 10 && s_mod != 11 && s_mod != 12 &&
          s_mod != 13 && !allq65) &&
         s_nzap) // 1.52 msk144 JT65abc ft8 pi4 ft4  no zap
@@ -2133,7 +2138,7 @@ void DecoderMs::StrtDecode() {
 
 
 c900:
-    f2a.DestroyPlansAll(false);
+    f2a->DestroyPlansAll(false);
     EmitDecodeInProgresPskRep(false);
     //qDebug()<<"1-DestroyPlansAll";
 c990:  //2.40
@@ -2161,7 +2166,9 @@ void *DecoderMs::ThreadDecode(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDecode();
     pthread_detach(pt->th); // inportant delete thread memory
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 /*void DecoderMs::SetDecodetTextFt(QStringList list)
@@ -2281,7 +2288,7 @@ void DecoderMs::SetDecodetTextFtQ65(QStringList list)//2.66
     bool forme = false;
     if (abs((int)s_nfqso_all-(int)f1)<=10 || fmyc)
     {
-        EmitDecodetTextRxFreq(list,true,true);//1.60= true no emit other infos from decode list2 s_fopen
+        EmitDecodedTextRxFreq(list,true,true);//1.60= true no emit other infos from decode list2 s_fopen
         forme = true;
     }
     if (allq65) forme = true;
@@ -2332,7 +2339,7 @@ void DecoderMs::ResetDupThr()
         DecFt8_4->SetNewP(true);
         DecFt8_5->SetNewP(true);
 
-        f2a.DestroyPlansAll(false);
+        f2a->DestroyPlansAll(false);
         EmitDecodeInProgresPskRep(false);
         have_decALL3_ = false;
         //qDebug()<<"END-DestroyPlansAll";
@@ -2440,7 +2447,9 @@ void *DecoderMs::ThrDec0(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec0();
     pthread_detach(pt->th0);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec1(void *argom)
@@ -2448,7 +2457,9 @@ void *DecoderMs::ThrDec1(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec1();
     pthread_detach(pt->th1);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec2(void *argom)
@@ -2456,7 +2467,9 @@ void *DecoderMs::ThrDec2(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec2();
     pthread_detach(pt->th2);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec3(void *argom)
@@ -2464,7 +2477,9 @@ void *DecoderMs::ThrDec3(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec3();
     pthread_detach(pt->th3);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec4(void *argom)
@@ -2472,7 +2487,9 @@ void *DecoderMs::ThrDec4(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec4();
     pthread_detach(pt->th4);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 void *DecoderMs::ThrDec5(void *argom)
@@ -2480,7 +2497,9 @@ void *DecoderMs::ThrDec5(void *argom)
     DecoderMs* pt = (DecoderMs*)argom;
     pt->StrtDec5();
     pthread_detach(pt->th5);
+#ifndef __wasm__
     pthread_exit(NULL);
+#endif
     return NULL;
 }
 
@@ -2574,6 +2593,7 @@ void DecoderMs::SETftBuff()
         //qDebug()<<"STOP TIMM";
     }
 }
+
 void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int mousebutton,bool f_rtd,bool end_rtd,bool ffopen)//1.27 psk rep   fopen bool true    false no file open
 {
     //qDebug()<<count_q;
@@ -2783,7 +2803,8 @@ void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int 
     {
         have_dec0_ = false;
         //2.56 stop thr_only_one_color = true;
-        pthread_create(&th,NULL,DecoderMs::ThreadDecode,(void*)this);
+        this->StrtDecode();
+        // pthread_create(&th,NULL,DecoderMs::ThreadDecode,(void*)this);
         //pthread_attr_destroy(&thread_attr);
     }
     else
@@ -2861,20 +2882,31 @@ void DecoderMs::SetDecode(short *raw,int count_q,QString time, int t_istart,int 
             //qDebug()<<"D6="<<_f05_<<_f06_<<_f06_-_f05_;
         }
         //2.41 important to be here for slow speed PCs
+        // debugPrintf("Pthread create....");
+        abort();
+        /*
         pthread_create(&th0,NULL,DecoderMs::ThrDec0,(void*)this);
         pthread_create(&th1,NULL,DecoderMs::ThrDec1,(void*)this);
         if (nthr>2) pthread_create(&th2,NULL,DecoderMs::ThrDec2,(void*)this);
         if (nthr>3) pthread_create(&th3,NULL,DecoderMs::ThrDec3,(void*)this);
         if (nthr>4) pthread_create(&th4,NULL,DecoderMs::ThrDec4,(void*)this);
         if (nthr>5) pthread_create(&th5,NULL,DecoderMs::ThrDec5,(void*)this);
+        */
+        // debugPrintf("Pthread crete end");
     }
 }
 
-void DecoderMs::SetResultsCallback(std::function<void(int, QStringList)> fun) {
+void DecoderMs::SetResultsCallback(std::function<void(const char *)> fun) {
     DecFt8_0->SetResultsCallback(fun);
     DecFt8_1->SetResultsCallback(fun);
     DecFt8_2->SetResultsCallback(fun);
     DecFt8_3->SetResultsCallback(fun);
     DecFt8_4->SetResultsCallback(fun);
     DecFt8_5->SetResultsCallback(fun);
+    DecFt4_0->SetResultsCallback(fun);
+    DecFt4_1->SetResultsCallback(fun);
+    DecFt4_2->SetResultsCallback(fun);
+    DecFt4_3->SetResultsCallback(fun);
+    DecFt4_4->SetResultsCallback(fun);
+    DecFt4_5->SetResultsCallback(fun);
 }

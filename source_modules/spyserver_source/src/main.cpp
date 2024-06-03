@@ -317,7 +317,7 @@ MOD_EXPORT void _INIT_() {
     def["hostname"] = "localhost";
     def["port"] = 5555;
     def["devices"] = json::object();
-    config.setPath(core::args["root"].s() + "/spyserver_config.json");
+    config.setPath(std::string(core::getRoot()) + "/spyserver_config.json");
     config.load(def);
     config.enableAutoSave();
 

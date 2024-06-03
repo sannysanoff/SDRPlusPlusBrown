@@ -4,6 +4,12 @@
 #include <stdexcept>
 #include <atomic>
 
+#ifndef WIN32
+#include <arpa/inet.h>
+#else
+#include <ws2tcpip.h>
+#endif
+
 void logDebugMessage(const char *msg) {
     flog::info("logDebugMessage: {}", msg);
 }
@@ -163,6 +169,13 @@ namespace net {
         readQueueCnd.notify_all();
     }
 
+    std::string ConnClass::getPeerName() {
+        char ipStr[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(remoteAddr.sin_addr), ipStr, INET_ADDRSTRLEN);
+        unsigned short port = ntohs(remoteAddr.sin_port);
+        return std::string(ipStr) + ":" + std::to_string(port);
+    }
+
     void ConnClass::writeAsync(int count, uint8_t* buf) {
         if (!connectionOpen) { return; }
         // Create entry
@@ -257,8 +270,14 @@ namespace net {
             throw std::runtime_error("Could not bind socket");
             return NULL;
         }
-
-        return Conn(new ConnClass(_sock));
+        struct sockaddr_in guestRemoteAddr; // sockaddr
+#ifdef WIN32
+        int guestRemoteAddrLen = sizeof(guestRemoteAddr);
+#else
+        socklen_t guestRemoteAddrLen = sizeof(guestRemoteAddr);
+#endif
+        getpeername(_sock, (struct sockaddr*)&guestRemoteAddr, &guestRemoteAddrLen);
+        return Conn(new ConnClass(_sock, guestRemoteAddr));
     }
 
     void ListenerClass::acceptAsync(void (*handler)(Conn conn, void* ctx), void* ctx) {
@@ -539,7 +558,7 @@ namespace dsp::buffer {
 #ifdef DBGTRACE
         auto nxt = dbg_cnt++;
         if (*buffer == nullptr) {
-            flog::error("Buffer verifier: got null pointer!");
+            flog::error("ERROR Buffer verifier: got null pointer!");
             abort();
         }
         dbg_trace[nxt].info = info;
@@ -571,7 +590,7 @@ namespace dsp::buffer {
                     volatile auto found = dbg_trace[q].storageVariable ? *dbg_trace[q].storageVariable : nullptr;
                     if (dbg_trace[q].storageVariable && expected && found != expected) {
                         if (dbg_trace[q].STAMP1 != 0x3456345634563456 || dbg_trace[q].STAMP2 != 0x1234123412341234) {
-                            flog::error("Buffer verifier self-corruption");
+                            flog::error("ERROR Buffer verifier self-corruption");
                             abort();
                         }
                         expected = nullptr;

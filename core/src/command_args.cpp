@@ -3,14 +3,15 @@
 
 void CommandArgsParser::defineAll() {
 #if defined(_WIN32)
-        std::string root = ".";
-        define('c', "con", "Show console on Windows");
+    flog::info("Inside defineAll");
+    std::string root = ".";
+    define('c', "con", "Show console on Windows");
 #elif defined(IS_MACOS_BUNDLE)
-        std::string root = (std::string)getenv("HOME") + "/Library/Application Support/sdrpp-brown";
+    std::string root = (std::string)getenv("HOME") + "/Library/Application Support/sdrpp-brown";
 #elif defined(__ANDROID__)
-        std::string root = "/storage/self/primary/sdrpp-brown";
+    std::string root = "/storage/self/primary/sdrpp-brown";
 #else
-        std::string root = (std::string)getenv("HOME") + "/.config/sdrpp-brown";
+    std::string root = (std::string)getenv("HOME") + "/.config/sdrpp-brown";
 #endif
 
     std::string tempPath = "/tmp";
@@ -27,6 +28,7 @@ void CommandArgsParser::defineAll() {
         define('r', "root", "Root directory, where all config files are stored", std::filesystem::absolute(root).string());
         define('x', "temp", "Temp directory, where all temporary files are stored", tempPath);
         define('s', "server", "Run in server mode");
+        define('\0', "password", "Protect server mode protocol with password",std::string(""));
         define('\0', "autostart", "Automatically start the SDR after loading");
 }
 

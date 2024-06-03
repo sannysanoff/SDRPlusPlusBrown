@@ -11,6 +11,7 @@
 namespace dsp {
     class generic_block {
     public:
+        virtual ~generic_block() {}
         virtual void start() {}
         virtual void stop() {}
         virtual int run() { return -1; }
@@ -18,8 +19,6 @@ namespace dsp {
 
     class block : public generic_block {
     public:
-        virtual void init() {}
-
         virtual ~block() {
             if (!_block_init) { return; }
             stop();
@@ -116,14 +115,14 @@ namespace dsp {
                 out->clearWriteStop();
             }
         }
-    
-        void acquire() {
-            ctrlMtx.lock();
-        }
-
-        void release() {
-            ctrlMtx.unlock();
-        }
+        //
+        // void acquire() {
+        //     ctrlMtx.lock();
+        // }
+        //
+        // void release() {
+        //     ctrlMtx.unlock();
+        // }
 
         void registerInput(untyped_stream* inStream) {
             if (inputs.size() == 1 && inStream) {

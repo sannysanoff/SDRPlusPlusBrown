@@ -18,6 +18,7 @@ SinkManager::SinkManager() : defaultInputAudio(nullptr) {
     txHandler.ctx = this;
     txHandler.handler = [](bool txOn, void* ctx) {
         SinkManager* _this = (SinkManager*)ctx;
+        flog::info("_this->setAllMuted: {}", txOn);
         _this->setAllMuted(txOn);
     };
 
@@ -273,6 +274,7 @@ void SinkManager::setStreamSink(std::string name, std::string providerName) {
 }
 
 void SinkManager::setAllMuted(bool muted) {
+    flog::info("::setAllMuted: {}", muted);
     for(auto &k : streams) {
         k.second->volumeAjust.setTempMuted(muted);
     }

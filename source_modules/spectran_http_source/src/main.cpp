@@ -144,9 +144,7 @@ private:
             _this->tryConnect();
         }
         else if (connected && SmGui::Button("Disconnect##spectran_http_source")) {
-            _this->client->onCenterFrequencyChanged.unbind(_this->onFreqChangedId);
-            _this->client->onCenterFrequencyChanged.unbind(_this->onSamplerateChangedId);
-            _this->client->close();
+            _this->disconnect();
         }
         if (_this->running) { style::endDisabled(); }
 
@@ -171,6 +169,12 @@ private:
         catch (std::runtime_error e) {
             flog::error("Could not connect: {0}", e.what());
         }
+    }
+
+    void disconnect() {
+        client->onCenterFrequencyChanged.unbind(onFreqChangedId);
+        client->onSamplerateChanged.unbind(onSamplerateChangedId);
+        client->close();
     }
 
     void onFreqChanged(double newFreq) {
@@ -209,7 +213,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/spectran_http_config.json");
+    config.setPath(std::string(core::getRoot()) + "/spectran_http_config.json");
     config.load(def);
     config.enableAutoSave();
 }

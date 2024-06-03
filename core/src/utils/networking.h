@@ -1,4 +1,8 @@
 #pragma once
+
+#ifndef SDRPP_SOCKET_DEFINED
+#define SDRPP_SOCKET_DEFINED
+
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -9,8 +13,10 @@
 #include <condition_variable>
 
 #ifdef _WIN32
+#ifndef TCP_NODELAY
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#endif
 #else
 #include <unistd.h>
 #include <strings.h>
@@ -54,6 +60,7 @@ namespace net {
         bool write(int count, uint8_t* buf);
         void readAsync(int count, uint8_t* buf, void (*handler)(int count, uint8_t* buf, void* ctx), void* ctx, bool enforceSize = true);
         void writeAsync(int count, uint8_t* buf);
+        std::string getPeerName();
 
     private:
         void readWorker();
@@ -124,3 +131,5 @@ namespace net {
     extern bool winsock_init;
 #endif
 }
+
+#endif

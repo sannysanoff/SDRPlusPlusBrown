@@ -270,7 +270,7 @@ void DecoderMs::analytic_msk144_2(double *d,int d_count_begin,int npts,int nfft,
     for (int j = npts; j<nfft; j++)
         c[j]=0.0+0.0*complex_i;
 
-    f2a.four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
+    f2a->four2a_c2c(c,nfft,-1,1);               //!Forward c2c FFT
 
     //int button = (bdeq<<1 | bseq);
     //qDebug()<<"button"<<button;
@@ -300,7 +300,7 @@ void DecoderMs::analytic_msk144_2(double *d,int d_count_begin,int npts,int nfft,
     for (int y = nh+1; y<nfft; y++)
         c[y]=0.0+0.0*complex_i; //c(nh+2:nfft)=0.
 
-    f2a.four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
+    f2a->four2a_c2c(c,nfft,1,1);                //!Inverse c2c FFT
 }
 /*
 void DecoderMs::analytic_msk144_2(double *d,int d_count_begin,int npts,int nfft,std::complex<double> *c,
@@ -586,7 +586,7 @@ void DecoderMs::SetDecodetTextMsk2DL(QStringList list)//2.46
     {
         if (tlist.at(x)==s_MyBaseCall || tlist.at(x)==s_MyCall)
         {
-            EmitDecodetTextRxFreq(list,true,true);
+            EmitDecodedTextRxFreq(list,true,true);
             break;
         }
     }
@@ -688,7 +688,7 @@ void DecoderMs::detectmsk144(std::complex<double> *cbig,int n,double s_istart,in
         mplay_dca_dca_dca(ctmp,0,NFFT,ctmp,0,ctmp,0,1);//ctmp=ctmp**2
         mplay_dca_dca_da(ctmp,0,12,ctmp,0,rcw_msk144,0,1);//ctmp(1:12)=ctmp(1:12)*rcw
         mplay_dca_dca_da(ctmp,NSPM-12,NSPM,ctmp,NSPM-12,rcw_msk144,11,-1);//ctmp(NSPM-11:NSPM)=ctmp(NSPM-11:NSPM)*rcw(12:1:-1)
-        f2a.four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
+        f2a->four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
         mplay_da_absdca_absdca(tonespec,NFFT,ctmp,ctmp);//tonespec=abs(ctmp)**2
 
         //qDebug()<<"IIIIII="<<i3800<<i4200;
@@ -2044,7 +2044,7 @@ void DecoderMs::msk144spd(std::complex<double> *cbig,int n,int &nsuccess,QString
         mplay_dca_dca_dca(ctmp,0,NFFT,ctmp,0,ctmp,0,1);//ctmp=ctmp**2
         mplay_dca_dca_da(ctmp,0,12,ctmp,0,rcw_msk144,0,1);//ctmp(1:12)=ctmp(1:12)*rcw
         mplay_dca_dca_da(ctmp,NSPM-12,NSPM,ctmp,NSPM-12,rcw_msk144,11,-1);//ctmp(NSPM-11:NSPM)=ctmp(NSPM-11:NSPM)*rcw(12:1:-1)
-        f2a.four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
+        f2a->four2a_c2c(ctmp,NFFT,-1,1);//call four2a(ctmp,nfft,1,-1,1)
         mplay_da_absdca_absdca(tonespec,NFFT,ctmp,ctmp);//tonespec=abs(ctmp)**2
         //qDebug()<<ihlo_msk144<<ihhi_msk144;
         int ihpk = pomAll.maxloc_da_beg_to_end(tonespec,ihlo_msk144,ihhi_msk144);//! high tone search window

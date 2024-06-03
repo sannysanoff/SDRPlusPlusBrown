@@ -3,7 +3,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
-#include <volk/volk.h>
+//#include <volk/volk.h>
 #include "buffer/buffer.h"
 
 // 1MSample buffer
@@ -14,6 +14,7 @@ extern void logDebugMessage(const char *msg);
 namespace dsp {
     class untyped_stream {
     public:
+        virtual ~untyped_stream() {}
         virtual bool swap(int size) { return false; }
         virtual int read() { return -1; }
         virtual void flush() {}

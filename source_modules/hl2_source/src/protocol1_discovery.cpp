@@ -113,14 +113,19 @@ int getLastSocketErrorNo() {
 #endif
 }
 
-static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, bool scanIP) {
+static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, bool scanIP, bool fastScan, std::atomic<bool> *stopDiscovery) {
     int rc;
     struct sockaddr_in *sa;
     struct sockaddr_in *mask;
 
     char interface_name[64];
-    struct sockaddr_in interface_addr={0};
-    struct sockaddr_in interface_netmask={0};
+    struct sockaddr_in interface_addr = {0};
+    struct sockaddr_in interface_netmask = {0};
+
+
+    if (stopDiscovery->load()) {
+        return;
+    }
 
 #define DISCOVERY_PORT 1024
     int discovery_socket;
@@ -132,18 +137,18 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
 //    flog::info("discover: looking for HPSDR devices on {0}\n", interface_name);
 
     // send a broadcast to locate hpsdr boards on the network
-    discovery_socket=socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP);
-    if(discovery_socket<0) {
+    discovery_socket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (discovery_socket < 0) {
         flog::error("discover: create socket failed for discovery_socket: for {0}", interface_name);
         return;
     }
 
     int optval = 1;
-    setsockopt(discovery_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&optval, sizeof(optval));
+    setsockopt(discovery_socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &optval, sizeof(optval));
 
     if (iface) {
-        sa = (struct sockaddr_in*)iface->ifa_addr;
-        mask = (struct sockaddr_in*)iface->ifa_netmask;
+        sa = (struct sockaddr_in *) iface->ifa_addr;
+        mask = (struct sockaddr_in *) iface->ifa_netmask;
         interface_netmask.sin_addr.s_addr = mask->sin_addr.s_addr;
 
         // bind to this interface and the discovery port
@@ -152,7 +157,7 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
         interface_addr.sin_addr.s_addr = sa->sin_addr.s_addr;
         // interface_addr.sin_port = htons(DISCOVERY_PORT*2);
         interface_addr.sin_port = htons(0); // system assigned port
-        if (bind(discovery_socket, (struct sockaddr*)&interface_addr, sizeof(interface_addr)) < 0) {
+        if (bind(discovery_socket, (struct sockaddr *) &interface_addr, sizeof(interface_addr)) < 0) {
             flog::error("discover: bind socket failed for discovery_socket, for {0}", interface_name);
             return;
         }
@@ -161,7 +166,7 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
     // allow broadcast on the socket
     if (!fixed) {
         int on = 1;
-        rc = setsockopt(discovery_socket, SOL_SOCKET, SO_BROADCAST, (const char*)&on, sizeof(on));
+        rc = setsockopt(discovery_socket, SOL_SOCKET, SO_BROADCAST, (const char *) &on, sizeof(on));
         if (rc != 0) {
             flog::error("discover: cannot set SO_BROADCAST: rc={0}, for {1}", rc, interface_name);
             return;
@@ -169,13 +174,13 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
     }
 
     // setup to address
-    struct sockaddr_in to_addr={0};
+    struct sockaddr_in to_addr = {0};
     //to_addr.sin_family=AF_INET;
-    to_addr.sin_port=htons(DISCOVERY_PORT);
+    to_addr.sin_port = htons(DISCOVERY_PORT);
     if (fixed) {
         to_addr.sin_family = AF_INET;
         to_addr.sin_addr = fixed->sin_addr;
-        flog::info("discover: fixed, sending to: ip={}:{}",
+        flog::info("HL2/HPSDR discover: fixed, sending to: ip={}:{}",
                    std::string(inet_ntoa(to_addr.sin_addr)).c_str(), DISCOVERY_PORT);
     } else {
         to_addr.sin_family = iface->ifa_addr->sa_family;
@@ -199,7 +204,7 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
             }
         }
 #endif
-        flog::info("discover: bound to {} ip={}, sending to: ip={}:{}",
+        flog::info("HL2/HPSDR discover: bound to {} ip={}, sending to: ip={}:{}",
                    interface_name,
                    std::string(inet_ntoa(interface_addr.sin_addr)).c_str(),
                    std::string(inet_ntoa(to_addr.sin_addr)).c_str(), DISCOVERY_PORT);
@@ -221,160 +226,183 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
         DWORD msec = 2000;
         setsockopt(discovery_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&msec,sizeof(msec));
 #else
+        //flog::info("thread started: recv on HPSDR device: {0}\n", interface_name);
         struct timeval tv;
-        tv.tv_sec = 2;
-        tv.tv_usec = 0;
-        version=0;
-        setsockopt(discovery_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
+        tv.tv_sec = 0;
+        tv.tv_usec = 30000;
+        version = 0;
+        setsockopt(discovery_socket, SOL_SOCKET, SO_RCVTIMEO, (char *) &tv, sizeof(struct timeval));
 #endif
         int localDevicesFound = 0;
-        len=sizeof(addr);
+        len = sizeof(addr);
         int retryCount = 0;
         auto startTime = currentTimeMillis();
-        while(1) {
-            bytes_read=recvfrom(discovery_socket,(char *)buffer,sizeof(buffer),0,(struct sockaddr*)&addr,&len);
-            if(bytes_read<0) {
+        while (1) {
+            if (stopDiscovery->load()) {
+                break;
+            }
+            bytes_read = recvfrom(discovery_socket, (char *) buffer, sizeof(buffer), 0, (struct sockaddr *) &addr,
+                                  &len);
+            if (bytes_read < 0) {
                 auto en = getLastSocketErrorNo();
-                if (en == EINTR|| en == EAGAIN) {
-                    if (currentTimeMillis() - startTime < 3000) {
-                        usleep(100000);
+                if (en == EINTR || en == EAGAIN) {
+                    if (currentTimeMillis() - startTime < 2000) {
+                        usleep(10000);
                         retryCount++;
                         continue;
                     }
                 }
                 std::string errtxt = getLastSocketError();
-                flog::error("discovery: recvfrom socket failed after {} retries for discover_receive_thread on {0}: {1}", retryCount, interface_name, errtxt);
+                flog::error(
+                        "discovery: recvfrom socket failed after {} retries for discover_receive_thread on {0}: {1}",
+                        retryCount, interface_name, errtxt);
                 break;
             }
-            flog::info("discovered: received {0} bytes from {}",bytes_read, std::string(inet_ntoa(addr.sin_addr)).c_str());
+            flog::info("HL2/HPSDR: discovered: received {0} bytes from {} on {} ",
+                       bytes_read, std::string(inet_ntoa(addr.sin_addr)).c_str(), interface_name);
             if ((buffer[0] & 0xFF) == 0xEF && (buffer[1] & 0xFF) == 0xFE) {
                 int status = buffer[2] & 0xFF;
                 if (status == 2 || status == 3 || status == 28) { // 28 == hl_proxy, extended command set
                     bool isHL2Proxy = status == 28;
                     discoveredLock.lock();
-                    if(devices<MAX_DEVICES) {
-                        discovered[devices].protocol=PROTOCOL_1;
+                    if (devices < MAX_DEVICES) {
+                        discovered[devices].protocol = PROTOCOL_1;
                         discovered[devices].hl2_protocol = false;
-                        version=buffer[9]&0xFF;
-                        snprintf(discovered[devices].software_version,sizeof discovered[devices].software_version, "%d",version);
-                        switch(buffer[10]&0xFF) {
+                        version = buffer[9] & 0xFF;
+                        snprintf(discovered[devices].software_version, sizeof discovered[devices].software_version,
+                                 "%d", version);
+                        switch (buffer[10] & 0xFF) {
                             case OLD_DEVICE_METIS:
-                                discovered[devices].device=DEVICE_METIS;
-                                strcpy(discovered[devices].name,"Metis");
-                                discovered[devices].supported_receivers=5;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=1;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_METIS;
+                                strcpy(discovered[devices].name, "Metis");
+                                discovered[devices].supported_receivers = 5;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 1;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                             case OLD_DEVICE_HERMES:
-                                discovered[devices].device=DEVICE_HERMES;
-                                strcpy(discovered[devices].name,"Hermes");
-                                discovered[devices].supported_receivers=5;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=1;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_HERMES;
+                                strcpy(discovered[devices].name, "Hermes");
+                                discovered[devices].supported_receivers = 5;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 1;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                             case OLD_DEVICE_ANGELIA:
-                                discovered[devices].device=DEVICE_ANGELIA;
-                                strcpy(discovered[devices].name,"Angelia");
-                                discovered[devices].supported_receivers=7;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=2;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_ANGELIA;
+                                strcpy(discovered[devices].name, "Angelia");
+                                discovered[devices].supported_receivers = 7;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 2;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                             case OLD_DEVICE_ORION:
-                                discovered[devices].device=DEVICE_ORION;
-                                strcpy(discovered[devices].name,"Orion");
-                                discovered[devices].supported_receivers=7;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=2;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_ORION;
+                                strcpy(discovered[devices].name, "Orion");
+                                discovered[devices].supported_receivers = 7;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 2;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                             case OLD_DEVICE_HERMES_LITE:
-                                discovered[devices].device=DEVICE_HERMES_LITE;
+                                discovered[devices].device = DEVICE_HERMES_LITE;
                                 if (version < 42) {
-                                    strcpy(discovered[devices].name,"Hermes Lite V1");
+                                    strcpy(discovered[devices].name, "Hermes Lite V1");
                                     discovered[devices].supported_receivers = 2;
                                 } else {
-                                    strcpy(discovered[devices].name,"Hermes Lite V2");
+                                    strcpy(discovered[devices].name, "Hermes Lite V2");
                                     discovered[devices].device = DEVICE_HERMES_LITE2;
                                     // HL2 send max supported receveirs in discovery response.
-                                    discovered[devices].supported_receivers=buffer[0x13];
+                                    discovered[devices].supported_receivers = buffer[0x13];
                                 }
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=1;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=30720000.0;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 1;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 30720000.0;
                                 break;
                             case OLD_DEVICE_ORION2:
-                                discovered[devices].device=DEVICE_ORION2;
-                                strcpy(discovered[devices].name,"Orion 2");
-                                discovered[devices].supported_receivers=7;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=2;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_ORION2;
+                                strcpy(discovered[devices].name, "Orion 2");
+                                discovered[devices].supported_receivers = 7;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 2;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                             default:
-                                discovered[devices].device=DEVICE_UNKNOWN;
-                                strcpy(discovered[devices].name,"Unknown");
-                                discovered[devices].supported_receivers=7;
-                                discovered[devices].supported_transmitters=1;
-                                discovered[devices].adcs=1;
-                                discovered[devices].frequency_min=0.0;
-                                discovered[devices].frequency_max=61440000.0;
+                                discovered[devices].device = DEVICE_UNKNOWN;
+                                strcpy(discovered[devices].name, "Unknown");
+                                discovered[devices].supported_receivers = 7;
+                                discovered[devices].supported_transmitters = 1;
+                                discovered[devices].adcs = 1;
+                                discovered[devices].frequency_min = 0.0;
+                                discovered[devices].frequency_max = 61440000.0;
                                 break;
                         }
 
-                        for(i=0;i<6;i++) {
-                            discovered[devices].info.network.mac_address[i]=buffer[i+3];
+                        for (i = 0; i < 6; i++) {
+                            discovered[devices].info.network.mac_address[i] = buffer[i + 3];
                         }
-                        discovered[devices].status=status;
-                        memcpy((void*)&discovered[devices].info.network.address,(void*)&addr,sizeof(addr));
-                        discovered[devices].info.network.address_length=sizeof(addr);
-                        memcpy((void*)&discovered[devices].info.network.interface_address,(void*)&interface_addr,sizeof(interface_addr));
-                        memcpy((void*)&discovered[devices].info.network.interface_netmask,(void*)&interface_netmask,sizeof(interface_netmask));
-                        discovered[devices].info.network.interface_length=sizeof(interface_addr);
-                        strcpy(discovered[devices].info.network.interface_name,interface_name);
+                        discovered[devices].status = status;
+                        memcpy((void *) &discovered[devices].info.network.address, (void *) &addr, sizeof(addr));
+                        discovered[devices].info.network.address_length = sizeof(addr);
+                        memcpy((void *) &discovered[devices].info.network.interface_address, (void *) &interface_addr,
+                               sizeof(interface_addr));
+                        memcpy((void *) &discovered[devices].info.network.interface_netmask,
+                               (void *) &interface_netmask, sizeof(interface_netmask));
+                        discovered[devices].info.network.interface_length = sizeof(interface_addr);
+                        strcpy(discovered[devices].info.network.interface_name, interface_name);
                         char buf[10000];
                         if (isHL2Proxy) {
-                            for(int q=0; q<devices; q++) {
-                                if (!memcmp(&discovered[q].info.network.address.sin_addr, &discovered[devices].info.network.address.sin_addr, sizeof(discovered[q].info.network.address.sin_addr))) {
+                            for (int q = 0; q < devices; q++) {
+                                if (!memcmp(&discovered[q].info.network.address.sin_addr,
+                                            &discovered[devices].info.network.address.sin_addr,
+                                            sizeof(discovered[q].info.network.address.sin_addr))) {
                                     discovered[q].hl2_protocol = true;
                                 }
                             }
                             // just update preceding device
                         } else {
                             bool found = false;
-                            for(int q=0; q<devices; q++) {
-                                if (!memcmp(&discovered[q].info.network.address.sin_addr, &discovered[devices].info.network.address.sin_addr, sizeof(discovered[q].info.network.address.sin_addr))) {
+                            for (int q = 0; q < devices; q++) {
+                                if (!memcmp(&discovered[q].info.network.address.sin_addr,
+                                            &discovered[devices].info.network.address.sin_addr,
+                                            sizeof(discovered[q].info.network.address.sin_addr))) {
                                     // already there; dropping duplicates
                                     found = true;
                                 }
                             }
                             if (!found) {
                                 // new ip:port
-                                snprintf(buf, sizeof buf, "discovery: found device=%d software_version=%s status=%d address=%s (%02X:%02X:%02X:%02X:%02X:%02X) on %s",
-                                        discovered[devices].device,
-                                        discovered[devices].software_version,
-                                        discovered[devices].status,
-                                        inet_ntoa(discovered[devices].info.network.address.sin_addr),
-                                        discovered[devices].info.network.mac_address[0],
-                                        discovered[devices].info.network.mac_address[1],
-                                        discovered[devices].info.network.mac_address[2],
-                                        discovered[devices].info.network.mac_address[3],
-                                        discovered[devices].info.network.mac_address[4],
-                                        discovered[devices].info.network.mac_address[5],
-                                        discovered[devices].info.network.interface_name);
-                                flog::info("{0}", buf);
+                                if (false) {
+                                    // dont report here.
+                                    snprintf(buf, sizeof buf,
+                                             "HL2/HPSDR: discovery: found device=%d software_version=%s status=%d address=%s (%02X:%02X:%02X:%02X:%02X:%02X) on %s",
+                                             discovered[devices].device,
+                                             discovered[devices].software_version,
+                                             discovered[devices].status,
+                                             inet_ntoa(discovered[devices].info.network.address.sin_addr),
+                                             discovered[devices].info.network.mac_address[0],
+                                             discovered[devices].info.network.mac_address[1],
+                                             discovered[devices].info.network.mac_address[2],
+                                             discovered[devices].info.network.mac_address[3],
+                                             discovered[devices].info.network.mac_address[4],
+                                             discovered[devices].info.network.mac_address[5],
+                                             discovered[devices].info.network.interface_name);
+                                    flog::info("{0}", buf);
+                                }
                                 devices++;
                                 localDevicesFound++;
                             }
                         }
+                    }
+                    if (localDevicesFound > 0 && fastScan) {
+                        //flog::info("Fast scan enabled, cancelling remaining discovery.");
+                        stopDiscovery->store(true);
                     }
                     discoveredLock.unlock();
                 }
@@ -386,39 +414,46 @@ static void discover(struct ifaddrs* iface, const struct sockaddr_in *fixed, boo
     });
 
 
-
-    // send discovery packet
-    unsigned char buffer[63];
-    buffer[0]=0xEF;
-    buffer[1]=0xFE;
-    buffer[2]=0x02;
-    int i;
-    for(i=3;i<63;i++) {
-        buffer[i]=0x00;
-    }
-
-    usleep(300000);
-
-    if(sendto(discovery_socket,(char*)buffer,63,0,(struct sockaddr*)&to_addr,sizeof(to_addr))<0) {
-        flog::error("discover: sendto (broadcast/direct) failed for discovery_socket\n");
-    }
-    if (scanIP) {
-        to_addr = *((sockaddr_in *)iface->ifa_addr);
-        to_addr.sin_port = htons(1024);
-        unsigned char *ipv4 = (unsigned char *) &to_addr.sin_addr.s_addr;
-        flog::info("Scanning interface {}:  {}.{}.{}.1 - .254..", interface_name, ipv4[0], ipv4[1], ipv4[2]);
-        for (int q = 1; q <= 254; q++) {
-            ipv4[3] = q;
-            if (sendto(discovery_socket, (char *) buffer, 63, 0, (struct sockaddr *) &to_addr, sizeof(to_addr)) < 0) {
-                flog::error("discover: sendto (scan) failed for discovery_socket: {}.{}.{}.{}: errno={}", ipv4[0], ipv4[1], ipv4[2], ipv4[3], errno);
-            }
-            usleep(1500);
+    if (!stopDiscovery->load()) {
+        // send discovery packet
+        unsigned char buffer[63];
+        buffer[0] = 0xEF;
+        buffer[1] = 0xFE;
+        buffer[2] = 0x02;
+        int i;
+        for (i = 3; i < 63; i++) {
+            buffer[i] = 0x00;
         }
-        flog::info("Finished scanning {}", interface_name);
+
+        if (!stopDiscovery->load()) {
+            if (sendto(discovery_socket, (char *) buffer, 63, 0, (struct sockaddr *) &to_addr, sizeof(to_addr)) < 0) {
+                flog::info("WARNING discover: ({}) sendto (broadcast/direct) failed for discovery_socket", interface_name);
+            }
+            if (scanIP) {
+                to_addr = *((sockaddr_in *) iface->ifa_addr);
+                to_addr.sin_port = htons(1024);
+                unsigned char *ipv4 = (unsigned char *) &to_addr.sin_addr.s_addr;
+                //flog::info("Scanning interface {}:  {}.{}.{}.1 - .254..", interface_name, ipv4[0], ipv4[1], ipv4[2]);
+                for (int q = 1; q <= 254; q++) {
+                    if (stopDiscovery->load()) {
+                        break;
+                    }
+                    ipv4[3] = q;
+                    if (sendto(discovery_socket, (char *) buffer, 63, 0, (struct sockaddr *) &to_addr,
+                               sizeof(to_addr)) <
+                        0) {
+                        flog::error("discover: sendto (scan) failed for discovery_socket: {}.{}.{}.{}: errno={}",
+                                    ipv4[0],
+                                    ipv4[1], ipv4[2], ipv4[3], errno);
+                    }
+                    usleep(1500);
+                }
+                //flog::info("Finished scanning {}", interface_name);
+            }
+        }
     }
 
     // wait for receive thread to complete
-closeReceiver:
     receiver.join();
 
 #ifdef WIN32
@@ -427,7 +462,7 @@ closeReceiver:
     ::close(discovery_socket);
 #endif
 
-    flog::info("discover: exiting discover for {0}",interface_name);
+    ///flog::info("discover: exiting discover for {0}",interface_name);
 
 }
 
@@ -478,13 +513,14 @@ void __cdecl getifaddrs(struct ifaddrs **dest) {
 }
 #endif
 
-void protocol1_discovery(std::string staticIp, bool scanIp) {
+void protocol1_discovery(std::string staticIp, bool scanIp, bool fastScan) {
     struct ifaddrs *addrs,*ifa;
 
-    printf("protocol1_discovery\n");
+    flog::info("HL2/HPSDR: using protocol1_discovery..");
     getifaddrs(&addrs);
     ifa = addrs;
     std::vector<std::shared_ptr<std::thread>> interfaceThreads;
+    std::atomic<bool> stopDiscovery(false);
     while (ifa) {
 //        g_main_context_iteration(NULL, 0);
         if (ifa->ifa_addr && (ifa->ifa_addr->sa_family == AF_INET
@@ -499,8 +535,8 @@ void protocol1_discovery(std::string staticIp, bool scanIp) {
                 /*&& (ifa->ifa_flags&IFF_LOOPBACK)!=IFF_LOOPBACK*/) {
                 auto thisif = ifa;
                 if (true) {
-                    interfaceThreads.emplace_back(std::make_shared<std::thread>([=] {
-                        discover(thisif, nullptr, scanIp);
+                    interfaceThreads.emplace_back(std::make_shared<std::thread>([=, &stopDiscovery] {
+                        discover(thisif, nullptr, scanIp, fastScan, &stopDiscovery);
                     }));
                 }
             }
@@ -511,7 +547,7 @@ void protocol1_discovery(std::string staticIp, bool scanIp) {
         try {
             net::Address addr(staticIp, 1024);
             interfaceThreads.emplace_back(std::make_shared<std::thread>([&,a=addr]{
-                discover(nullptr, &a.addr, false);
+                discover(nullptr, &a.addr, false, fastScan, &stopDiscovery);
             }));
         } catch (std::exception &e) {
             flog::error("Invalid static IP address: {0}", e.what());
@@ -524,24 +560,26 @@ void protocol1_discovery(std::string staticIp, bool scanIp) {
 
     freeifaddrs(addrs);
 
-    flog::info( "HPSDR discovery found {0} devices\n",devices);
+    flog::info( "HPSDR discovery found {} devices, fastScan={}",devices, (int)fastScan);
 
     auto q = discovered;
 
     int i;
     for(i=0;i<devices;i++) {
-                    printf("discovery: found device=%d software_version=%s status=%d address=%s (%02X:%02X:%02X:%02X:%02X:%02X) on %s\n",
-                            discovered[i].device,
-                            discovered[i].software_version,
-                            discovered[i].status,
-                            inet_ntoa(discovered[i].info.network.address.sin_addr),
-                            discovered[i].info.network.mac_address[0],
-                            discovered[i].info.network.mac_address[1],
-                            discovered[i].info.network.mac_address[2],
-                            discovered[i].info.network.mac_address[3],
-                            discovered[i].info.network.mac_address[4],
-                            discovered[i].info.network.mac_address[5],
-                            discovered[i].info.network.interface_name);
+        char buf[1024];
+        snprintf(buf, sizeof buf, "discovery: found device=%d software_version=%s status=%d address=%s (%02X:%02X:%02X:%02X:%02X:%02X) on %s",
+                discovered[i].device,
+                discovered[i].software_version,
+                discovered[i].status,
+                inet_ntoa(discovered[i].info.network.address.sin_addr),
+                discovered[i].info.network.mac_address[0],
+                discovered[i].info.network.mac_address[1],
+                discovered[i].info.network.mac_address[2],
+                discovered[i].info.network.mac_address[3],
+                discovered[i].info.network.mac_address[4],
+                discovered[i].info.network.mac_address[5],
+                discovered[i].info.network.interface_name);
+        flog::info("HL2/HPSDR: {0}", buf);
     }
 
 }

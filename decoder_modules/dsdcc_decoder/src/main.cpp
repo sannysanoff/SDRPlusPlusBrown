@@ -280,7 +280,7 @@ private:
 MOD_EXPORT void _INIT_() {
     // Create default recording directory
     json def = json({});
-    config.setPath(core::args["root"].s() + "/dsdcc_decoder_config.json");
+    config.setPath(std::string(core::getRoot()) + "/dsdcc_decoder_config.json");
     config.load(def);
     config.enableAutoSave();
 }

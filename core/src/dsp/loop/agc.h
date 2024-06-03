@@ -84,6 +84,10 @@ namespace dsp::loop {
 
         inline int process(int count, T* in, T* out) {
             float envelope = 1.0f;
+            if (_attack <= 0) {
+                std::copy(in, in + count, out);
+                return count;
+            }
             for (int i = 0; i < count; i++) {
                 // Get signal amplitude
                 float inAmp, gain = 1.0;
@@ -97,8 +101,11 @@ namespace dsp::loop {
                 // Update average amplitude
                 if (inAmp != 0.0f) {
                     if (!_frozen.load()) {
-                        amp = (inAmp > amp) ? ((amp * _invAttack) + (inAmp * _attack)) : ((amp * _invDecay) + (inAmp * _decay));
-                        gain = std::min<float>(_setPoint / amp, _maxGain);
+                        auto namp = (inAmp > amp) ? ((amp * _invAttack) + (inAmp * _attack)) : ((amp * _invDecay) + (inAmp * _decay));
+                        if (!isnan(namp)) {
+                            amp = namp;
+                            gain = std::min<float>(_setPoint / amp, _maxGain);
+                        }
                     }
                 }
                 else {

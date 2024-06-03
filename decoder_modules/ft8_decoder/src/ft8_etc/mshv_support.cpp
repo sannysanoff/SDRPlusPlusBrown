@@ -1,6 +1,9 @@
 
 
 #include "mshv_support.h"
+
+#include <cassert>
+
 #include "pfx_sfx.h"
 #include "decoderpom.h"
 #include <functional>
@@ -74,6 +77,10 @@ void QString::initWithConstChar(const char* init, int len) {
 }
 QString::QString(const char* init) {
     initWithConstChar(init, strlen(init));
+    verify();
+}
+QString::QString(const char* init, int len) {
+    initWithConstChar(init, len);
     verify();
 }
 QString::QString(char init) {
@@ -238,45 +245,6 @@ QString QString::operator+(const char* s) {
 }
 
 
-/*
-// stubs for using float fftw lib as double
-extern "C" {
-void* fftw_malloc(size_t n) {
-    return nullptr;
-}
-void fftw_free(void *ptr) {
-    return;
-}
-void fftw_execute(const fftw_plan plan) {
-
-}
-
-void fftw_destroy_plan(fftw_plan plan) {
-
-}
-
-fftw_plan fftw_plan_dft_1d(int n, fftw_complex *in, fftw_complex *out,
-                           int sign, unsigned flags) {
-    return nullptr;
-}
-
-fftw_plan fftw_plan_dft_c2r_1d(int n0,
-                               fftw_complex *in, double *out,
-                               unsigned flags) {
-    return nullptr;
-}
-
-fftw_plan fftw_plan_dft_r2c_1d(int n0,
-                               double *in, fftw_complex *out,
-                               unsigned flags) {
-    return nullptr;
-}
-
-
-}
-
- */
-
 
 void mshv_init() {
     static int initialized = 0;
@@ -288,4 +256,92 @@ void mshv_init() {
     }
     init_pfx_sfx();
     initDecoderPom();
+}
+
+std::string arrayToString(const char *name, const float *arr, int len) {
+    std::string rv(len * 35,' ');
+    auto dbg = rv.data();
+    dbg[0] = 0;
+    for(int q=0; q<len;q++) {
+        snprintf(dbg+strlen(dbg), rv.size() - strlen(dbg), "%s[%d] = %f\n", name, q, arr[q]);
+    }
+    rv.resize(strlen(dbg));
+    return rv;
+}
+
+std::string arrayToStringD(const char *name, const double *arr, int len) {
+    std::string rv(len * 35,' ');
+    auto dbg = rv.data();
+    dbg[0] = 0;
+    int ix = 0;
+    for(int q=0; q<len;q++) {
+        ix += snprintf(dbg+ix, rv.size() - ix, "%s[%d] = %f\n", name, q, arr[q]);
+    }
+    rv.resize(strlen(dbg));
+    return rv;
+}
+
+std::string arrayToStringC(const char *name, const plug_complex_float *arr, int len) {
+    std::string rv(len * 45,' ');
+    auto dbg = rv.data();
+    dbg[0] = 0;
+    int ix = 0;
+    for(int q=0; q<len;q++) {
+        ix += snprintf(dbg+ix, rv.size()-ix, "%s[%d] = %f %f*i\n", name, q, arr[q][0], arr[q][1]);
+    }
+    rv.resize(strlen(dbg));
+    return rv;
+}
+
+std::string arrayToStringSCD(const char *name, const std::complex<double> *arr, int len) {
+    unsigned char *cd0b = (unsigned char *)arr;
+    unsigned char summ = 0;
+    for(int q=0; q<len*sizeof(arr[0]); q++) {
+        summ |= cd0b[q];
+    }
+
+
+    int cnt = 0;
+    for(int q=0; q<len;q++) {
+        if (arr[q].real() != 0) {
+            cnt++;
+        }
+        if (arr[q].imag() != 0) {
+            cnt++;
+        }
+    }
+
+    std::ostringstream oss;
+    for(int q=0; q<len;q++) {
+        oss << name << "[" << q << "] = " << arr[q].real() << " " << arr[q].imag() << "\n";
+    }
+    oss << "== end print, nzcnt= " << cnt << " summ=" << (int)summ << " base=" << (void*)arr << "\n";
+    return oss.str();
+}
+
+void printArray(const char *name, const float *arr, int len) {
+    decodeResultOutput(arrayToString(name, arr, len).c_str());
+}
+
+void printArrayD(const char *name, const double *arr, int len) {
+    decodeResultOutput(arrayToStringD(name, arr, len).c_str());
+}
+
+void printArrayC(const char *name, const plug_complex_float *arr, int len) {
+    decodeResultOutput(arrayToStringC(name, arr, len).c_str());
+}
+
+void printArraySCD(const char *name, const std::complex<double> *arr, int len) {
+    decodeResultOutput(arrayToStringSCD(name, arr, len).c_str());
+}
+
+void debugPrintf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    auto size = vsnprintf(NULL, 0, fmt, args);
+    std::string destbuf(size+100, 0);
+    vsnprintf(destbuf.data(), destbuf.size(), fmt, args);
+    va_end(args);
+
+    decodeResultOutput(destbuf.data());
 }

@@ -299,13 +299,13 @@ struct KiwiSDRSourceModule : public ModuleManager::Instance {
 
 MOD_EXPORT void _INIT_() {
     json def = json({});
-    config.setPath(core::args["root"].s() + "/kiwisdr_source_config.json");
+    config.setPath(std::string(core::getRoot()) + "/kiwisdr_source_config.json");
     config.load(def);
     config.enableAutoSave();
 }
 
 MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string name) {
-    auto root = core::args["root"].s();
+    auto root = std::string(core::getRoot());
     return new KiwiSDRSourceModule(name, root);
 }
 

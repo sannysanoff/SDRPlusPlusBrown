@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.NativeActivity
 import android.app.PendingIntent
 import android.app.PendingIntent.FLAG_MUTABLE
+import android.bluetooth.BluetoothSocket.TYPE_SCO
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -50,6 +51,7 @@ import java.util.concurrent.LinkedBlockingQueue
 private const val ACTION_USB_PERMISSION = "org.sdrppbrown.sdrppbrown.USB_PERMISSION";
 
 class MainActivity : NativeActivity(), SensorEventListener {
+    private lateinit var audioManager: AudioManager
     private lateinit var toneG: ToneGenerator
     private lateinit var thisCacheDir: String
     private val TAG: String = "SDR++Brown";
@@ -282,12 +284,12 @@ class MainActivity : NativeActivity(), SensorEventListener {
         grantResults: IntArray
     ) {
         if (requestCode > PERMISSION_REQUEST_CODE && requestCode < PERMISSION_REQUEST_CODE + 10) {
-            Log.w("SDR++", "PERM: got perm response: $requestCode", )
+            Log.w("SDR++", "PERM: got perm response: $requestCode")
             this.permissionsPassed.add(requestCode);
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (autoPermissionProceed) {
-            Log.w("SDR++", "PERM: auto proceed", )
+            Log.w("SDR++", "PERM: auto proceed")
             proceedWithPermissions();
         }
     }
@@ -338,7 +340,49 @@ class MainActivity : NativeActivity(), SensorEventListener {
         registerReceiver(this.batteryBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
         batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+
+        scanAudioDevices()
+
         proceedWithPermissions();
+    }
+
+    fun scanAudioDevices() : String {
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val adi = audioManager.getDevices(AudioManager.GET_DEVICES_ALL)
+        _audioSinkIds = "";
+        _audioSourceIds = "";
+        adi.forEach {
+            if (it.isSink)
+                _audioSinkIds += "${it.id}\t${it.type}\t${it.productName}\t"
+            if (it.isSource)
+                _audioSourceIds += "${it.id}\t${it.type}\t${it.productName}\t"
+        }
+        if (_audioSinkIds.isNotEmpty()) _audioSinkIds =
+            _audioSinkIds.substring(0, _audioSinkIds.length - 1)
+        if (_audioSourceIds.isNotEmpty()) _audioSourceIds =
+            _audioSourceIds.substring(0, _audioSourceIds.length - 1)
+        return "OK";
+    }
+
+    var _audioSinkIds = "";
+    var _audioSourceIds = "";
+
+    fun getAudioSinkIds() = _audioSinkIds;
+    fun getAudioSourceIds() = _audioSourceIds;
+
+    fun startBtSco() : String {
+        audioManager.isBluetoothScoOn = true
+        audioManager.startBluetoothSco()
+        audioManager.isMicrophoneMute = false;
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        return "OK";
+    }
+
+    fun stopBtSco() : String {
+        audioManager.isBluetoothScoOn = false
+        audioManager.stopBluetoothSco()
+        audioManager.mode = AudioManager.MODE_NORMAL;
+        return "OK";
     }
 
     var batteryStatusStr: String = "?";

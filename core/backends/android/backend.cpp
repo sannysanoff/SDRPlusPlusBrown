@@ -39,7 +39,7 @@ namespace backend {
     int PollUnicodeChars();
 
     void doPartialInit() {
-        std::string root = (std::string)core::args["root"];
+        std::string root = std::string(core::getRoot());
         backend::init();
         style::loadFonts(root + "/res"); // TODO: Don't hardcode, use config
         icons::load(root + "/res");
@@ -506,7 +506,25 @@ namespace backend {
         return callStringGetter("getDisplayDensityStr");
     }
 
+    std::string getAudioSinkIds() {
+        return callStringGetter("getAudioSinkIds");
+    }
 
+    std::string getAudioSourceIds() {
+        return callStringGetter("getAudioSourceIds");
+    }
+
+    std::string scanAudioDevices() {
+        return callStringGetter("scanAudioDevices");
+    }
+
+    std::string startBtSco() {
+        return callStringGetter("startBtSco");
+    }
+
+    std::string stopBtSco() {
+        return callStringGetter("stopBtSco");
+    }
 
     const std::vector<DevVIDPID> AIRSPY_VIDPIDS = {
         { 0x1d50, 0x60a1 }

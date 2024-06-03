@@ -15,6 +15,7 @@
 #include "hl2_device.h"
 #include "utils/stream_tracker.h"
 #include "bandconfig.h"
+#include <server.h>
 
 #define CONCAT(a, b) ((std::string(a) + (b)).c_str())
 
@@ -45,10 +46,26 @@ class HermesLite2SourceModule : public ModuleManager::Instance, public Transmitt
     int redZoneExtraPercent = 100;
     float powerADCScalingFactor = 0.0f;
 
+    bool serverMode = false;
+    wav::ComplexDumper txDump;
+
 public:
-    explicit HermesLite2SourceModule(const std::string& name) : hermesSamples("hermes samples") {
+
+
+    static std::string txDumpName() {
+        char buf[1024];
+        snprintf(buf, sizeof buf, "/tmp/hl2sm_tx_stream_%d.raw", core::args["server"].b() ? 1 : 0);
+        return buf;
+    }
+
+    explicit HermesLite2SourceModule(const std::string& name) : hermesSamples("hermes samples"), txDump(48000, txDumpName()) {
 
         this->name = name;
+
+        if (core::args["server"].b()) {
+            serverMode = true;
+        }
+
         memset(sevenRelays, 0, sizeof(sevenRelays));
 
         sampleRate = 48000;
@@ -73,6 +90,9 @@ public:
         }
         if (config.conf.contains("scanIP")) {
             scanIP = config.conf["scanIP"];
+        }
+        if (config.conf.contains("fastScan")) {
+            fastScan = config.conf["fastScan"];
         }
         if (config.conf.contains("directIP")) {
             directIP = config.conf["directIP"];
@@ -126,7 +146,7 @@ public:
         refreshing = true;
         devices = 0;
         try {
-            protocol1_discovery(staticIp, scanIP);
+            protocol1_discovery(staticIp, scanIP, fastScan);
         }
         catch (std::exception& e) {
             flog::error("Error while discovering devices: %s", e.what());
@@ -264,20 +284,25 @@ private:
     bool showMore = false;
     bool directIP = false;
     bool scanIP = true;
+    bool fastScan = true;
     char staticIp[20] = { 0 };
 
     void incomingSample(double i, double q) {
         incomingBuffer.emplace_back(dsp::complex_t{ (float)q, (float)i });
         if (incomingBuffer.size() >= 512 - 8) {
-            //            hermesSamples.add(incomingBuffer.size());
-            memcpy(stream.writeBuf, incomingBuffer.data(), incomingBuffer.size() * sizeof(dsp::complex_t));
-            if (stream.willSwap()) {
-                stream.swap((int)incomingBuffer.size());
-            }
-            incomingBuffer.clear();
-
+            flushIncomingSamples();
         }
     }
+
+    void flushIncomingSamples() {
+        memcpy(stream.writeBuf, incomingBuffer.data(), incomingBuffer.size() * sizeof(dsp::complex_t));
+        if (stream.willSwap()) {
+            stream.swap((int) incomingBuffer.size());
+        }
+        incomingBuffer.clear();
+    }
+
+    int lastReportedFrequency = -1;
 
     static void start(void* ctx) {
         auto* _this = (HermesLite2SourceModule*)ctx;
@@ -288,11 +313,10 @@ private:
             flog::error("Tried to start HL2 source with null serial");
             return;
         }
-
         _this->device.reset();
         for (int i = 0; i < devices; i++) {
             if (_this->selectedIP == discoveredToIp(discovered[i])) {
-                _this->device = std::make_shared<HL2Device>(discovered[i], [=](double i, double q) {
+                _this->device = std::make_shared<HL2Device>(discovered[i], [=](int currentFrequency, double i, double q) {
                     static auto lastCtm = currentTimeMillis();
                     static auto totalCount = 0LL;
                     totalCount++;
@@ -303,6 +327,13 @@ private:
                             //                            std::cout << "HL2: Speed: IQ pairs/sec: ~ " << (totalCount - lastLastTotalCount) * 1000 / (nowCtm - lastCtm) << std::endl;
                             lastLastTotalCount = totalCount;
                             lastCtm = nowCtm;
+                        }
+                    }
+                    if (_this->lastReportedFrequency != currentFrequency) {
+                        _this->lastReportedFrequency = currentFrequency;
+                        if (_this->serverMode) {
+                            _this->flushIncomingSamples();
+                            server::setInputCenterFrequencyCallback(currentFrequency);  // notify server next samples are for different frequency
                         }
                     }
                     _this->incomingSample(i, q);
@@ -318,6 +349,8 @@ private:
                     _this->device->setSevenRelays(1 << q);
                 }
             }
+            _this->prevBand = -1; // update ui
+            _this->updateBandRelays();
             _this->device->start();
         }
         _this->running = true;
@@ -339,11 +372,18 @@ private:
     }
 
 
+    int prevBand = -1;
     void updateBandRelays() {
         if (device) {
             auto istx = this->getTXStatus();
-            auto bits = getBitsForBand(tunedFrequency, istx);
+            auto [bits, band] = getBitsForBand(tunedFrequency, istx);
             device->setSevenRelays(bits);
+            if (band != prevBand) {
+                prevBand = band;
+                if (serverMode) {
+                    server::sendUnsolicitedUI(); // to reflect current band on checkboxes.
+                }
+            }
         }
     }
 
@@ -403,6 +443,9 @@ private:
                             selectFirst();
                         }
                     };
+                    if (serverMode) {
+                        server::sendUnsolicitedUI();
+                    }
                 });
                 refreshThread.detach();
             }
@@ -424,6 +467,7 @@ private:
         SmGui::SameLine();
         //        SmGui::SetNextItemWidth(100);
         if (SmGui::SliderInt(("##_radio_agc_gain_" + name).c_str(), &adcGain, -12, +48, SmGui::FMT_STR_INT_DB)) {
+            flog::info("ADC Gain changed: {}", adcGain);
             if (device) {
                 device->setADCGain(adcGain);
                 config.acquire();
@@ -433,7 +477,7 @@ private:
         }
 
         if (running) { SmGui::BeginDisabled(); }
-        if (ImGui::CollapsingHeader("HL2 advanced discovery")) {
+        if (SmGui::CollapsingHeader("HL2 advanced discovery")) {
             SmGui::LeftLabel("Probe IP:");
             SmGui::SameLine();
             SmGui::FillWidth();
@@ -452,19 +496,25 @@ private:
                 config.conf["scanIP"] = scanIP;
                 config.release(true);
             }
+            SmGui::SameLine();
+            if (SmGui::Checkbox("Fast scan##hl2_scan_ip_first", &fastScan)) {
+                config.acquire();
+                config.conf["fastScan"] = fastScan;
+                config.release(true);
+            }
         }
         if (running) { SmGui::EndDisabled(); }
 
-        if (ImGui::CollapsingHeader("HL2 bands config")) {
+        if (SmGui::CollapsingHeader("HL2 bands config")) {
             if (bandsEditor(config, running && getTXStatus(), tunedFrequency)) {
                 updateBandRelays();
             }
         }
 
-        if (ImGui::CollapsingHeader("HL2 power calibrate")) {
-            if (ImGui::SliderInt("nominal PWR", &nominalPower, 5, 100, "%d W") ||
-                ImGui::SliderInt("red zone %", &redZoneExtraPercent, 20, 100, " + %d %%") ||
-                ImGui::SliderFloat("PWR calibrate", &powerADCScalingFactor, -2, +2, "10 ^ %.2f")) //
+        if (SmGui::CollapsingHeader("HL2 power calibrate")) {
+            if (SmGui::SliderInt("nominal PWR", &nominalPower, 5, 100, SmGui::FMT_STR_WATTS_INT) || // "%d W"
+                SmGui::SliderInt("red zone %", &redZoneExtraPercent, 20, 100, SmGui::FMT_STR_PLUS_INT_PERCENT) || // " + %d %%"
+                SmGui::SliderFloat("PWR calibrate", &powerADCScalingFactor, -2, +2, SmGui::FMT_STR_TEN_POWER_FLOAT )) // "10 ^ %.2f"
             {
                 config.acquire();
                 config.conf["nominalPower"] = nominalPower;
@@ -537,15 +587,27 @@ private:
     int tunedFrequency = 0;
 
 
-    int getInputStreamFramerate() override {
-        return 48000;
-    }
+//    int getInputStreamFramerate() override {
+//        return 48000;
+//    }
+
+    bool lastPTT = false;
     void setTransmitStatus(bool status) override {
         device->setTune(false);
         device->setPTT(status);
         updateBandRelays();
+        sigpath::txState.emit(status);
+        if (lastPTT != status) {
+            lastPTT = status;
+            if (status) {
+                txDump.clear();
+            }
+        }
     }
+
+
     void setTransmitStream(dsp::stream<dsp::complex_t>* astream) override {
+        flog::info("hl2 transmit stream feed NEW STREAM");
         std::thread([this, astream]() {
             SetThreadName("hl2_tx_strm_rd");
             auto debug = true;
@@ -553,13 +615,21 @@ private:
             int addedBlocks = 0;
             int readSamples = 0;
             int nreads = 0;
+            long long lastTransmit = currentTimeMillis();
             while (true) {
                 int rd = astream->read();
                 if (rd < 0) {
-                    printf("End iq stream for tx");
+                    flog::info("End iq stream for tx: astream read < 0");
                     break;
                 }
+                txDump.dump(astream->readBuf, rd);
                 readSamples += rd;
+                auto ctm = currentTimeMillis();
+                if (lastTransmit < ctm - 1000) {
+                    //flog::info("hl2 transmit stream feed: got samples/sec: {}", readSamples * 1000 / (ctm - lastTransmit));
+                    readSamples = 0;
+                    lastTransmit = ctm;
+                }
                 nreads++;
                 for (int q = 0; q < rd; q++) {
                     buffer.push_back(astream->readBuf[q]);
@@ -574,6 +644,7 @@ private:
                 }
                 astream->flush();
             }
+            flog::info("hl2 transmit stream feed END, {}", (int)core::args["server"].b() ? 1 : 0);
         }).detach();
     }
     void setTransmitSoftwareGain(unsigned char gain) override {
@@ -592,45 +663,45 @@ public:
     }
 
 public:
-    int getTransmittedBufferLatency() override {
-        return device->bufferLatency;
-    }
-    void setTransmittedBufferLatency(int latency) override {
-        device->bufferLatency = latency;
-        device->setHangLatency(device->pttHangTime, device->bufferLatency);
-    }
-    int getTransmittedPttDelay() override {
-        return device->pttHangTime;
-    }
-    void setTransmittedPttDelay(int delay) override {
-        device->pttHangTime = delay;
-        device->setHangLatency(device->pttHangTime, device->bufferLatency);
-    }
+//    int getTransmittedBufferLatency() override {
+//        return device->bufferLatency;
+//    }
+//    void setTransmittedBufferLatency(int latency) override {
+//        device->bufferLatency = latency;
+//        device->setHangLatency(device->pttHangTime, device->bufferLatency);
+//    }
+//    int getTransmittedPttDelay() override {
+//        return device->pttHangTime;
+//    }
+//    void setTransmittedPttDelay(int delay) override {
+//        device->pttHangTime = delay;
+//        device->setHangLatency(device->pttHangTime, device->bufferLatency);
+//    }
 
 private:
-    void startGenerateTone(int frequency) override {
-        device->setFrequency(frequency);
-        device->setTxFrequency(frequency);
-        device->setTune(true);
-        device->setPTT(true);
-    }
+//    void startGenerateTone(int frequency) override {
+//        device->setFrequency(frequency);
+//        device->setTxFrequency(frequency);
+//        device->setTune(true);
+//        device->setPTT(true);
+//    }
 
     void setPAEnabled(bool paenabled) override {
-        device->setPAEnabled(paenabled);
-    }
-
-    void stopGenerateTone() override {
-        device->setPTT(false);
-        device->setTune(false);
-    }
-
-    void setToneGain() override {
+        if (device) {
+            device->setPAEnabled(paenabled);
+        }
     }
 
     int getTXStatus() override {
+        if (!device) {
+            return false;
+        }
         return device->transmitMode;
     }
     float getTransmitPower() override {
+        if (!device) {
+            return 0;
+        }
         return device->fwd * pow(10, powerADCScalingFactor);
         //        device->updateSWR();
         //        return device->fwd+device->rev;
@@ -638,10 +709,16 @@ private:
 
 public:
     float getReflectedPower() override {
+        if (!device) {
+            return 0;
+        }
         return device->rev * pow(10, powerADCScalingFactor);
     }
 
     float getTransmitSWR() override {
+        if (!device) {
+            return 0;
+        }
         return device->swr;
     }
     int getNormalZone() override {
@@ -652,6 +729,9 @@ public:
     }
 
     float getFillLevel() {
+        if (!device) {
+            return 0;
+        }
         return (float)device->fill_level;
     }
 
@@ -677,7 +757,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/hl2_config.json");
+    config.setPath(std::string(core::getRoot()) + "/hl2_config.json");
     config.load(def);
     config.enableAutoSave();
 }

@@ -14,6 +14,7 @@
 namespace displaymenu {
     bool showWaterfall;
     bool showFFT = true;
+    bool showFFTShadows = true;
     bool showMicHistogram = false;
     bool fullWaterfallUpdate = true;
     bool showBattery = true;
@@ -88,7 +89,7 @@ namespace displaymenu {
     const IQFrontEnd::FFTWindow fftWindowList[] = {
         IQFrontEnd::FFTWindow::RECTANGULAR,
         IQFrontEnd::FFTWindow::BLACKMAN,
-        IQFrontEnd::FFTWindow::NUTTALL
+        IQFrontEnd::FFTWindow::NUTTALL,
     };
 
     void updateFFTSpeeds() {
@@ -100,6 +101,9 @@ namespace displaymenu {
     void init() {
         if (core::configManager.conf.contains("showFFT")) {
             showFFT = core::configManager.conf["showFFT"];
+        }
+        if (core::configManager.conf.contains("showFFTShadows")) {
+            showFFTShadows = core::configManager.conf["showFFTShadows"];
         }
         if (core::configManager.conf.contains("showMicHistogram")) {
             showMicHistogram = core::configManager.conf["showMicHistogram"];
@@ -132,7 +136,7 @@ namespace displaymenu {
             showClock = core::configManager.conf["showClock"];
         }
 
-        fftSizeId = 3;
+        fftSizeId = 4;
         int fftSize = core::configManager.conf["fftSize"];
         for (int i = 0; i < std::size(FFTSizes); i++) {
             if (fftSize == FFTSizes[i]) {
@@ -194,10 +198,24 @@ namespace displaymenu {
         uiScaleId = uiScales.valueId(style::uiScale);
     }
 
+    void setWaterfallShown(bool shown) {
+        showWaterfall = shown;
+        showWaterfall ? gui::waterfall.showWaterfall() : gui::waterfall.hideWaterfall();
+        core::configManager.acquire();
+        core::configManager.conf["showWaterfall"] = showWaterfall;
+        core::configManager.release(true);
+    }
+
+
+    void checkKeybinds() {
+        if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) {
+            setWaterfallShown(!showWaterfall);
+        }
+    }
+
 
     void draw(void* ctx) {
         float menuWidth = ImGui::GetContentRegionAvail().x;
-        bool homePressed = ImGui::IsKeyPressed(ImGuiKey_Home, false);
         if (ImGui::Checkbox("Small screen / thick fingers##_sdrpp", &phoneLayout)) {
             core::configManager.acquire();
             core::configManager.conf["smallScreen"] = phoneLayout;
@@ -217,17 +235,19 @@ namespace displaymenu {
             core::configManager.release(true);
         }
 
-        if (ImGui::Checkbox("Show Waterfall##_sdrpp", &showWaterfall) || homePressed) {
-            if (homePressed) { showWaterfall = !showWaterfall; }
-            showWaterfall ? gui::waterfall.showWaterfall() : gui::waterfall.hideWaterfall();
+        if (ImGui::Checkbox("Waterfall##_sdrpp", &showWaterfall)) {
+            setWaterfallShown(showWaterfall);
+        }
+        ImGui::SameLine();
+        if (ImGui::Checkbox("FFT##_sdrpp", &showFFT)) {
             core::configManager.acquire();
-            core::configManager.conf["showWaterfall"] = showWaterfall;
+            core::configManager.conf["showFFT"] = showFFT;
             core::configManager.release(true);
         }
         ImGui::SameLine();
-        if (ImGui::Checkbox("Show FFT##_sdrpp", &showFFT)) {
+        if (ImGui::Checkbox("Shadow##_sdrpp", &showFFTShadows)) {
             core::configManager.acquire();
-            core::configManager.conf["showFFT"] = showFFT;
+            core::configManager.conf["showFFTShadows"] = showFFTShadows;
             core::configManager.release(true);
         }
 

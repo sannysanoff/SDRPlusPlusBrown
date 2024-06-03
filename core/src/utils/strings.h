@@ -89,49 +89,88 @@ inline void trimString(std::string & line) {
 
 namespace percentile {
 
-    template<typename T>
-    int partition(std::vector<T>& arr, int low, int high) {
-        auto pivot = arr[high];
-        int i = low - 1;
 
-        for (int j = low; j <= high - 1; ++j) {
-            if (arr[j] <= pivot) {
-                ++i;
+    template<typename T>
+    int partition(T *arr, int l, int r)
+    {
+        int x = arr[r], i = l;
+        for (int j = l; j <= r - 1; j++) {
+            if (arr[j] <= x) {
                 std::swap(arr[i], arr[j]);
+                i++;
             }
         }
-        std::swap(arr[i + 1], arr[high]);
-        return (i + 1);
+        std::swap(arr[i], arr[r]);
+        return i;
     }
 
     template<typename T>
-    int quick_select(std::vector<T>& arr, int low, int high, int k) {
-        if (low == high) {
-            return arr[low];
+    T kthSmallest(T *arr, int l, int r, int k)
+    {
+        recur:
+        // If k is smaller than number of
+        // elements in array
+        if (k > 0 && k <= r - l + 1) {
+
+            // Partition the array around last
+            // element and get position of pivot
+            // element in sorted array
+            int index = partition(arr, l, r);
+
+            // If position is same as k
+            if (index - l == k - 1)
+                return arr[index];
+
+            // If position is more, recur
+            // for left subarray
+            if (index - l > k - 1) {
+                r = index - 1;
+                goto recur;
+            }
+
+            // Else recur for right subarray
+            k = k - index + l - 1;
+            l = index + 1;
+            goto recur;
         }
 
-        int pivot_index = partition<T>(arr, low, high);
-
-        if (k == pivot_index) {
-            return arr[k];
-        } else if (k < pivot_index) {
-            return quick_select<T>(arr, low, pivot_index - 1, k);
-        } else {
-            return quick_select<T>(arr, pivot_index + 1, high, k);
-        }
+        // If k is more than number of
+        // elements in array
+        return arr[0];
     }
 
+
     template<typename T>
-    double percentile(std::vector<T>& arr, double p) {
+    T percentile(std::vector<T>& arr, double p) {
         int n = arr.size();
+        if (n == 0) {
+            return 0;
+        }
         double k = (n - 1) * p;
-        int k_low = static_cast<int>(std::floor(k));
-        int k_high = static_cast<int>(std::ceil(k));
+        return kthSmallest(arr.data(), 0, n-1, (int)k);
+    }
 
-        auto x_low = quick_select<T>(arr, 0, n - 1, k_low);
-        auto x_high = quick_select<T>(arr, 0, n - 1, k_high);
-
-        return x_low + (x_high - x_low) * (k - k_low);
+    template<typename T>
+    T percentile_sampling(std::vector<T>& arr, double p) {
+        int n = arr.size();
+        if (n == 0) {
+            return 0;
+        }
+        int targetPoints = 100;
+        T *data = arr.data();
+        std::vector<T> sampled;
+        if (n > 2 * targetPoints) {
+            // sample array
+            float step = (n - 1) / (float)targetPoints;
+            sampled.resize(targetPoints);
+            for(int z=0; z<targetPoints; z++) {
+                sampled[z] = data[(int)std::floor(step * z)];
+            }
+            data = sampled.data();
+            n = sampled.size();
+        }
+        double k = (n - 1) * p;
+        return kthSmallest(data, 0, n-1, (int)k);
     }
 
 

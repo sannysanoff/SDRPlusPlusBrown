@@ -2,6 +2,7 @@
 #include <string>
 #include <map>
 #include <stdexcept>
+#include <utils/flog.h>
 
 enum CLIArgType {
     CLI_ARG_TYPE_INVALID,
@@ -143,8 +144,10 @@ public:
     int parse(int argc, char* argv[]);
     void showHelp();
 
-    CLIArg operator[](std::string name) {
-        return args[name];
+    CLIArg &operator[](std::string name) {
+        auto &rv = args[name];
+//        flog::info("Arg {} type {}", name, (int)rv.type);
+        return rv;
     }
     char** systemArgv;
 

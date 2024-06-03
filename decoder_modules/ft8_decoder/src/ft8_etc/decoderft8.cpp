@@ -16,9 +16,7 @@
 #include "genpom.h"
 #include "gen_ft8.h"
 #include "ft_all_ap_def.h"
-#include <sstream>
 #include <ctm.h>
-//#include <QtGui>
 
 #include <module.h>
 
@@ -49,7 +47,7 @@ static const int naptypes_2[6][4]=
         {1,2,0,0},{2,3,0,0},{2,3,0,0},{3,4,5,6},{3,4,5,6},{3,1,2,0}
     };
 
-DecoderFt8::DecoderFt8(int id)
+DecoderFt8::DecoderFt8(int id, std::shared_ptr<F2a> f2a) : f2a(f2a)
 {
     pomFt.initPomFt();
     pomAll.initPomAll();//2.66 for pctile_shell
@@ -95,8 +93,9 @@ DecoderFt8::DecoderFt8(int id)
         }
     }
 }
-DecoderFt8::~DecoderFt8()
-{}
+DecoderFt8::~DecoderFt8() {
+    delete TGenFt8;
+}
 static bool f_multi_answer_mod8 = false;
 void DecoderFt8::SetStMultiAnswerMod(bool f)
 {
@@ -231,6 +230,8 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
     const int c_c1=NFFT2;//1.44 tuk be6e problema be6e->(NFFT2-1) triabva da e->(NFFT2-0)
     const int NMAX=15*DEC_SAMPLE_RATE;  //=180000    !192000/60 = 3200
     const int NFFT1=192000;
+    // printArrayD("dd", dd, NFFT1);
+    // printArraySCD("c1-0", c1, c_c1);  // << broken here on wasm
     //double x[NFFT1+100];
 
     if (first_ft8_downsample)
@@ -252,7 +253,10 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
             if (i < NMAX) x[i]=dd[i]*0.01;
             else x[i]=0.0;
         }
-        f2a.four2a_d2c(cx_ft8,x.data(),NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)             //!r2c FFT to freq domain
+        // debugPrintf("            four2a_d2c...");
+        f2a->four2a_d2c(cx_ft8,x.data(),NFFT1,-1,0,decid);//call four2a(cx,NFFT1,1,-1,0)             //!r2c FFT to freq domain
+        // debugPrintf("            four2a_d2c.");
+        // printArraySCD("cx", cx_ft8, NFFT1);
         newdat=false;
     }
 
@@ -276,6 +280,7 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
     //QString my_call = "LZ2HV";
     //qDebug()<<QString("%1").arg(my_call, -12);
     //c1=0.0; in ft8b zero
+    // debugPrintf("            ibit...ib=%d id=%d", ib, it);
     for (int i = ib; i < it; ++i)
     {//do i=ib,it
         c1[k]=cx_ft8[i];//c1(k)=cx(i)
@@ -284,6 +289,8 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
 
     int to_tap = 101;
     int ctrp = to_tap - 1; //qDebug()<<k; k=900
+    // printArraySCD("c1-a", c1, c_c1);  // << broken here on wasm
+    // printArrayD("tfd", taper_ft8_ds, to_tap);
     for (int i = 0; i < to_tap; ++i)
     {
         //c1[i]=taper_ft8_ds[ctrp]*conj(c1[i]);
@@ -294,8 +301,15 @@ void DecoderFt8::ft8_downsample(double *dd,bool &newdat,double f0,std::complex<d
         //c1[i+k-to_tap]=taper_ft8_ds[i]*conj(c1[i+k-to_tap]);
         c1[i+k-to_tap]*=taper_ft8_ds[i];//c1(k-1-100:k-1)=c1(k-1-100:k-1)*taper
 
+    // debugPrintf("            cshift...k=%d totap=%d", k, to_tap);
+    // printArraySCD("c1-b", c1, c_c1);
     pomAll.cshift1(c1,c_c1,i0-ib);//c1=cshift(c1,i0-ib)
-    f2a.four2a_c2c(c1,NFFT2,1,1,decid); //call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
+    // printArraySCD("c1-c", c1, c_c1);
+    // debugPrintf("            cshift. next c1=%p", c1);
+
+    f2a->four2a_c2c(c1,NFFT2,1,1,decid); //call four2a(c1,NFFT2,1,1,1)            //!c2c FFT back to time domain
+    // printArraySCD("c1-d", c1, NFFT2);
+    // debugPrintf("            four2a_c2c.");
     /*
         int ctrp = 100; //qDebug()<<k; k=900
         int to_tap = 101;
@@ -397,10 +411,10 @@ double DecoderFt8::BestIdtft8(double *dd,double f0,double dt,double idt,std::com
     for (int i = NFRAME; i < 180010; ++i)
         cfilt[i]=0.0;//cfilt(nframe+1:)=0.0
 
-    f2a.four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
+    f2a->four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
     for (int i = 0; i < NFFT; ++i)
         cfilt[i]*=cw_subs[i];//cfilt(1:nfft)=cfilt(1:nfft)*cw(1:nfft)
-    f2a.four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
+    f2a->four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
 
     for (int i = 0; i < NFILT/4; ++i)//hv NFILT/2+1
         cfilt[i]*=endcorr[i];//cfilt(1:NFILT/2+1)=cfilt(1:NFILT/2+1)*endcorrection
@@ -451,7 +465,7 @@ double DecoderFt8::BestIdtft8(double *dd,double f0,double dt,double idt,std::com
     if (j<0) j=0;//2.40 protection
     for (int i = j; i < NMAX; ++i) 	xdd[i]=0.0;*/
 
-    f2a.four2a_d2c(cx,xdd,NFFT,-1,0,decid);   //!Forward FFT, r2c
+    f2a->four2a_d2c(cx,xdd,NFFT,-1,0,decid);   //!Forward FFT, r2c
     double df=12000.0/(double)NFFT;
 
     //int ia=((f0-1.05*6.25)/df);//ia=(f0-1.5*6.25)/df
@@ -529,7 +543,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
             }
         }
 
-        f2a.four2a_c2c(cw_subsft8,NFFT,-1,1,decid);//four2a(cw,nfft,1,-1,1)
+        f2a->four2a_c2c(cw_subsft8,NFFT,-1,1,decid);//four2a(cw,nfft,1,-1,1)
 
         cw_subsft8[0] = mk_complex(1, 0);   // otherwise valgrind says its uninitialized
 
@@ -587,7 +601,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
         for (int i = NFRAME; i < 180010; ++i)
             cfilt[i]=0.0;//cfilt(nframe+1:)=0.0
 
-        f2a.four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
+        f2a->four2a_c2c(cfilt,NFFT,-1,1,decid);//call four2a(cfilt,nfft,1,-1,1)
         for (int i = 0; i < NFFT; ++i) {
 //            std::cout << "subtract 1 i=" << i << std::endl;
 //            std::cout << "before read cwsubs real" << std::endl;
@@ -604,7 +618,7 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
 //            std::cout << "end" << std::endl;
             cfilt[i] *= cw_subsft8[i]; // cfilt(1:nfft)=cfilt(1:nfft)*cw(1:nfft)
         }
-        f2a.four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
+        f2a->four2a_c2c(cfilt,NFFT,1,1,decid);//;//call four2a(cfilt,nfft,1,1,1)
 
         for (int i = 0; i < NFILT/4; ++i)//hv NFILT/2+1
             cfilt[i]*=endcorrectionft8[i];//cfilt(1:NFILT/2+1)=cfilt(1:NFILT/2+1)*endcorrection
@@ -629,11 +643,24 @@ void DecoderFt8::subtractft8(double *dd,int *itone,double f0,double dt,bool lref
     delete [] cref;
     delete [] cfilt;
 }
+
+static int countNonZero(void *ptr0, int len, int elem) {
+    auto nzcnt = 0;
+    char *ptr = (char*)ptr0;
+    for(int i=0; i<len * elem; i++) {
+        if (ptr[i] != 0) {
+            nzcnt++;
+        }
+    }
+    return nzcnt;
+}
+
+
 bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1,double &xdt,int &nbadcrc,
                                      int &nsync,double s8_[79][8],double *bmeta,double *bmetb,double *bmetc,double *bmetd)
 {
-    std::complex<double> cd0[3350];			   //3200+100  __attribute__((aligned(32)))
-    std::complex<double> ctwk[32+5];
+    std::vector<std::complex<double>> cd0(3350);			   //3200+100  __attribute__((aligned(32)))
+    std::vector<std::complex<double>> ctwk(32+5);
     double a[5];
     const int NP2=2812;
     //const int ND=58;//                   !Data symbols
@@ -648,7 +675,21 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
             0,1,3,2,5,6,4,7
         };
 
-    pomAll.zero_double_comp_beg_end(cd0,0,3300);//3200+100
+    pomAll.zero_double_comp_beg_end(cd0.data(),0,3300);//3200+100
+    // auto c0 = countNonZero(cd0.data(), 3300, sizeof(cd0[0]));
+    // debugPrintf("pomAll.zero_double_comp_beg_end(cd0,0,3300); 1921i=%f base=%p.\n", cd0[1921].imag(), cd0);
+    //decodeResultOutput("Hello africa!");
+    auto p = new float[30000];
+    // auto c1 = countNonZero(cd0, 3300, sizeof(cd0[0]));
+    // printArraySCD("cd0-0", cd0, 3300);
+    // auto q = arrayToStringSCD("cd0-0", cd0, 3300);
+    // auto c2 = countNonZero(cd0, 3300, sizeof(cd0[0]));
+    // debugPrintf("pomAll.zero_double_comp_beg_end(cd0,0,3300); 1921i=%f (again).\n", cd0[1921].imag());
+    auto limit1 = 3300 * sizeof(cd0[0]);
+    memset(cd0.data(), 0, limit1);
+    // printArraySCD("cd0-1", cd0, 3300);
+    // auto c3 = countNonZero(cd0, 3300, sizeof(cd0[0]));
+    // debugPrintf("c0=%d c1=%d c2=%d c3=%d ql=%d %p %p", c0, c1, c2, c3, (int)q.size(), p, cd0);
     //int NDOWN=60;
     double fs2=DEC_SAMPLE_RATE/60.0;
     double dt2=1.0/fs2;
@@ -656,7 +697,10 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
     int ibest=0;
     nbadcrc=1;
 
-    ft8_downsample(dd,newdat,f1,cd0);   //!Mix f1 to baseband and downsample
+    // debugPrintf("          ft8_downsample... cd0=%p", cd0.data());
+    ft8_downsample(dd,newdat,f1,cd0.data());   //!Mix f1 to baseband and downsample
+    // debugPrintf("          ft8_downsample.");
+    // printArraySCD("cd0-2", cd0, 3300);
 
     //qDebug()<<"ft8b="<<creal(cd0[100])<<cimag(cd0[100]);
     int i0=int((xdt+0.5)*fs2);   //0.5                 //!Initial guess for start of signal
@@ -666,13 +710,14 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
     //pomAll.zero_double_comp_beg_end(ctwk,0,33);//no needed 2.37
     for (int idt = i0-10; idt <= i0+10; ++idt)//2.39 ????
     {//2.39 do idt=i0-10,i0+10  do idt=i0-8,i0+8                         //!Search over +/- one quarter symbol
-        sync8d(cd0,idt,ctwk,0,sync); //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
+        sync8d(cd0.data(),idt,ctwk.data(),0,sync); //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
         if (sync>smax)
         {
             smax=sync; //qDebug()<<idt<<sync;
             ibest=idt;
         }
     }
+    // debugPrintf("          sync8d.");
     //2.39 double xdt2=(double)ibest*dt2;                           //!Improved estimate for DT
 
     //! Now peak up in frequency
@@ -690,29 +735,33 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
             ctwk[i]= mk_complex(cos(phi), sin(phi));
             phi=fmod(phi+dphi,twopi);
         }
-        sync8d(cd0,ibest,ctwk,1,sync);//sync8d(cd0,i0,ctwk,1,sync);
+        sync8d(cd0.data(),ibest,ctwk.data(),1,sync);//sync8d(cd0,i0,ctwk,1,sync);
         if (sync>smax)
         {
             smax=sync;  //qDebug()<<"2-ft8b delfbest="<<sync;
             delfbest=delf;
         }
     }
+    // debugPrintf("          sync8d-2.");
     //qDebug()<<"2-ft8b delfbest="<<"delfbest"<<delfbest<<"sync"<<sync<<xdt2;
     for (int i = 0; i < 5; ++i) a[i]=0.0;//-delfbest;//0.0;
     a[0]=-delfbest;
-    pomFt.twkfreq1(cd0,NP2,fs2,a,cd0);
+    pomFt.twkfreq1(cd0.data(),NP2,fs2,a,cd0.data());
+    // debugPrintf("          pomFt.twkfreq1. cd0=%p", cd0.data());
     //2.39 old xdt=xdt2;
     f1=f1+delfbest;                           //!Improved estimate of DF
 
     bool fnewdat = false;
-    ft8_downsample(dd,fnewdat,f1,cd0);   //!Mix f1 to baseband and downsample
+    ft8_downsample(dd,fnewdat,f1,cd0.data());   //!Mix f1 to baseband and downsample
+    // debugPrintf("          ft8_downsample-2.");
     smax=0.0;
     double ss[12];// ss(9)
     for (int idt = -4; idt < 5; ++idt)
     { //do idt=-4,4                         !Search over +/- one quarter symbol
-        sync8d(cd0,ibest+idt,ctwk,0,sync);
+        sync8d(cd0.data(),ibest+idt,ctwk.data(),0,sync);
         ss[idt+4]=sync; 	//ss(idt+5)=sync
     }
+    // debugPrintf("          sync8d-2.");
     smax=pomAll.maxval_da_beg_to_end(ss,0,9); //smax=maxval(ss)
     int iloc=pomAll.maxloc_da_end_to_beg(ss,0,9); //iloc=maxloc(ss)
     ibest=iloc-4+ibest;//ibest=iloc(1)-5+ibest
@@ -722,6 +771,7 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
 
     sync=smax;
 
+    // debugPrintf("          knn...");
     //QString sss;
     for (int k = 0; k < NN; ++k)
     {
@@ -732,7 +782,7 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
             for (int z = 0; z < 32; ++z)
                 csymb[z]=cd0[i1+z];
         }
-        f2a.four2a_c2c(csymb,32,-1,1,decid);
+        f2a->four2a_c2c(csymb,32,-1,1,decid);
         for (int z = 0; z < 8; ++z)
         {
             cs_[k][z]=csymb[z]*0.001;//1000.0;//cs(0:7,k)=csymb(1:8)/1e3
@@ -740,6 +790,7 @@ bool DecoderFt8::ft8_downs_sync_bmet(double *dd,bool ap7,bool &newdat,double &f1
             //sss.append(QString("%1 ").arg(cabs(csymb[z]),0,'f',1));
         }//sss.append("\n");
     }
+    // debugPrintf("          knn.");
 
     if (!ap7)
     {
@@ -872,6 +923,7 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
                       double xbase,int *apsym,int &nharderrors,double &dmin,int &nbadcrc,QString &message,
                       double &xsnr,QString hiscall12,int *i4tone)//QString mygrid6,bool bcontest,
 {
+    // debugPrintf("      inside ft8b");
     //int NDOWN=60;//parameter (NDOWN=60)                  !Downsample factor
     //int NP2=2812;
     //const int ND=58;//                     !Data symbols
@@ -974,7 +1026,12 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
     nbadcrc=1;  //! this is used upstream to flag good decodes.
     nharderrors=-1;
     int nsync=0;
-    if (!ft8_downs_sync_bmet(dd,false,newdat,f1,xdt,nbadcrc,nsync,s8_,bmeta,bmetb,bmetc,bmetd)) return;
+    // debugPrintf("      ft8_downs_sync_bmet...");
+    if (!ft8_downs_sync_bmet(dd,false,newdat,f1,xdt,nbadcrc,nsync,s8_,bmeta,bmetb,bmetc,bmetd)) {
+        // debugPrintf("      ft8_downs_sync_bmet ret.");
+        return;
+    }
+    // debugPrintf("      ft8_downs_sync_bmet.");
 
     double scalefac = 2.83;//scalefac=2.83 double ss=0.85;//hv tested->85-86    0.84;//0.84
     double maxval_llra_abs = 0.0;
@@ -1023,10 +1080,12 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
     if (n4pas3int) npasses=4;//2.40
     //qDebug()<<"npasses="<<npasses;
 
+    // debugPrintf("      npasses:%d", npasses);
     for (int ipass = 1; ipass <= npasses; ++ipass)
     {//do ipass=1,npasses    //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
         //qDebug()<<"ft8b ipass======== Start"<<ipass;
         //qDebug()<<"1 Unpack==================77="<<nbadcrc<<ipass;
+        // debugPrintf("      ipasses:%d", ipass);
         for (int z = 0; z < 174; ++z)
         {
             if (ipass==1)
@@ -1040,6 +1099,7 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
 
             // if (ipass > 4) dolu go pokriva
         }
+        // debugPrintf("      llrz.");
         if (ipass<=4) //4new if(ipass.le.4)
         {
             for (int z = 0; z < 174; ++z)
@@ -1294,6 +1354,7 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
             if (z<120) message91[z]=0;
         }
 
+        // debugPrintf("      llrz-2.");
         dmin=0.0;
         int norder=2;
         int maxosd=2;   //c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
@@ -1309,6 +1370,7 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
             maxosd=1;
         }
         //all =int Keff=91;
+        // debugPrintf("      llrz-3.");
         pomFt.decode174_91(llrz,maxosd,norder,apmask,message91,cw,nharderrors,dmin);//ntype, Keff,
         //if(f1>2098 && f1<2110) qDebug()<<"f1-nfqso="<<f1<<xdt<<nharderrors;
         /*if (nharderrors>=0)
@@ -1316,6 +1378,7 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
             for (int z = 0; z < 77; ++z)//message77=message91(1:77)
                 message77[z]=message91[z];
         }*/
+        // debugPrintf("      llrz-4.");
 
 
         message="";
@@ -1345,12 +1408,15 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
         nbadcrc=0;  //! If we get this far: valid codeword, valid (i3,n3), nonquirky message.
 
         //int i4tone[120];
+        // debugPrintf("      llrz-5.");
         TGenFt8->make_c77_i4tone(message91,i4tone);
+        // debugPrintf("      llrz-6.");
 
 
         if (lsubtract)
             subtractft8(dd,i4tone,f1,xdt,false);//qDebug()<<"subtractft8"<<message<<xdt2<<f1<<ipass;
 
+        // debugPrintf("      llrz-7.");
         double xsig=0.0;
         for (int i = 0; i < NN; ++i)//NN=79  c++   ==.EQ. !=.NE. >.GT. <.LT. >=.GE. <=.LE.
         {//do i=1,79
@@ -1364,8 +1430,10 @@ void DecoderFt8::ft8b(double *dd,bool &newdat,int nQSOProgress,double nfqso,doub
 
         if (xbase<=0.0) //no devide by zero
             xbase=0.001;
+        // debugPrintf("      llrz-7.");
         xsnr=pomAll.db(xsig/xbase - 1.0) - 32.0 - 4.0;
 
+        // debugPrintf("      llrz-8.");
 
         if (nsync<=10 && xsnr<-24.0)    //220rc2 !bail out, likely false decode
         {
@@ -1514,7 +1582,7 @@ void DecoderFt8::get_spectrum_baseline(double *dd,int nfa,int nfb,double *sbase)
             x[z]=dd[ia+z]*window_ft8sbl[z]; //x=dd(ia:ib)*window
         //if (ia+NFFT1-1>178000) qDebug()<<ia+NFFT1-1;
         //qDebug()<<x[10]<<x[1000]<<x[2000]<<x[3000];
-        f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        f2a->four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1
             //ss_[j][i]=cabs(cx[i])*cabs(cx[i]);//fin s(1:NH1,j)=abs(cx(1:NH1))**2
@@ -1822,6 +1890,7 @@ void DecoderFt8::get_spectrum_baseline(double *dd,int nfa,int nfb,double *sbase)
 void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nfqso,
                        double s_[402][1970],double candidate[2][620],int &ncand,double *sbase)
 {
+    //debugPrintf("  sync8 begin.");
     const int NSPS=1920;
     int NSTEP=NSPS/4;//=480
     const int NFFT1=2*NSPS;
@@ -1846,6 +1915,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     double x[NFFT1+20];//=3840     //real x(NFFT1)
     //double *x = new double[NFFT1+20];
     std::complex<double> cx[NFFT1+20]; //2.09 error-> cx[NH1+20];       //complex cx(0:NH1)
+    // debugPrintf("  cx ok.");
 
     // old 76 double sync2d[1920+50][76+20];  //real sync2d(NH1,-JZ:JZ) -JZ=-38 JZ=+38 = 76
     // old 76 double (*sync2d)[76+20]=new double[1920+50][76+20];
@@ -1868,6 +1938,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     double candidate0[3][max_c0+10];//2.00 HV no inaf ->200+5 need 300
     //double savg[NH1+10];
     //pomAll.zero_double_beg_end(savg,0,NH1+2);
+    // debugPrintf("  candidate0.");
 
     int ia =0;
     //int ib =0;
@@ -1885,11 +1956,14 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         //if (((NHSYM-1)*NSTEP+NSPS-1)>180000) qDebug()<<(NHSYM-1)*NSTEP+NSPS-1;
         for (int z = NSPS; z < NFFT1+1; ++z)
             x[z]=0.0;            //x(NSPS+1:)=0.
-        f2a.four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        // debugPrintf("  f2a.four2a_d2c: %d, stack=%p .. %p", j, &dd, &sbase);
+        f2a->four2a_d2c(cx,x,NFFT1,-1,0,decid);  //call four2a(x,NFFT1,1,-1,0)              //!r2c FFT
+        // debugPrintf("  f2a.four2a_d2c ok: %d", j);
         for (int i = 0; i < NH1; ++i)
         {//do i=1,NH1
             s_[j][i]=pomAll.ps_hv(cx[i]);    //s(i,j)=real(cx(i))**2 + aimag(cx(i))**2
             if (isnan(s_[j][i])) {
+                debugPrintf("  nan. abort.");
                 abort();
             }
             //if(j==150)
@@ -1901,6 +1975,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         //qDebug()<<"sync_abc<<sync_bc"<<s_[j][100];
     }
 
+    // debugPrintf("  1975");
     int nfa1 = (int)nfa;
     int nfb1 = (int)nfb;
     if ((nfb-nfa)<2000.0) //2000 HV correction
@@ -1935,6 +2010,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
     int nssy=NSPS/NSTEP;   //! # steps per symbol =4
     int nfos=NFFT1/NSPS;   //! # frequency bin oversampling factor =2
     int jstrt=0.5/tstep;
+    // debugPrintf("  2010");
 
     int k = 0;
     for (int i = 0; i < 3; ++i)
@@ -2101,7 +2177,7 @@ void DecoderFt8::sync8(double *dd,double nfa,double nfb,double syncmin,double nf
         }
         if (i == 0 && k == 0) {
             // not found the cand!
-            std::cout << " !cand1 i " << i << " ia " << ia << " indx[(iz-1)-i] " << indx[(iz - 1) - i] << " n " << n << " red[n] " << red[n] << std::endl;
+            //std::cout << " !cand1 i " << i << " ia " << ia << " indx[(iz-1)-i] " << indx[(iz - 1) - i] << " n " << n << " red[n] " << red[n] << std::endl;
         }
     }
     ncand=k;
@@ -2660,6 +2736,7 @@ void DecoderFt8::PrintMsg(QString tmm,int nsnr,double xdt,double f1,QString mess
 void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqso,bool &have_dec,
                             int id3dec,double w_f00,double w_f01)//,int /*npts no need*/)
 {
+    //debugPrintf("DecoderFt8::ft8_decode");
     outCount = 0;
     have_dec = false;
     int cont_type = 0;
@@ -2922,7 +2999,7 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
 
     for (int ipass = 1; ipass <= npass; ++ipass)
     {
-        //qDebug()<<"ft8_decode  Start========================================"<<ndepth;
+        // debugPrintf("ft8_decode  Start======================================== %d %d", ipass, ndepth);
         int ndeep=ndepth;
         bool newdat=true;  //! Is this a problem? I hijacked newdat.
         double syncmin = 1.3;//1.5; syncmin=1.3
@@ -2977,7 +3054,9 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
         int ncand = 0;
         //qDebug()<<"sync8  Start=========xxxxxxxxxx"<<ipass<<nfa<<nfb<<syncmin;
 
+        // debugPrintf("sync8");
         sync8(dd,nfa,nfb,syncmin,nfqso,s_,candidate,ncand,sbase);
+        // debugPrintf("sync8.");
         //qDebug()<<"sync8  Stop================="<<npass<<ipass<<ncand;
 
         //hv corr v1
@@ -2999,8 +3078,10 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
             }
         }
 
+        // debugPrintf("ncand: %d", ncand);
         for (int icand = 0; icand < ncand; ++icand)
         {//do icand=1,ncand
+            // debugPrintf("  cand: %d", icand);
             //qDebug()<<"ipass=============="<<ipass<<icand<<ncand;
             //double sync=candidate[2][icand];
             double f1 =candidate[0][icand];
@@ -3039,9 +3120,11 @@ void DecoderFt8::ft8_decode(double *dd,int c_dd,double f0a,double f0b,double fqs
             int itone[120];
             //int iappass = 0;
             //lsubtract = false;
+            // debugPrintf("     ft8b: %d", icand);
             ft8b(dd,newdat,nQSOProgress,nfqso,s_nftx8,ndeep,n4pas3int,fl_lapon,napwid, //ndepth
                  lsubtract,nagain,cont_id,cont_type,iaptype,f1,xdt,xbase,apsym2,
                  nharderrors,dmin,nbadcrc,message,xsnr,his_call_f,itone);
+            // debugPrintf("     ft8b. %d", icand);
 
             //if(f1>2098 && f1<2110)
             //qDebug()<<"ft8b Stop"<<nbadcrc<<f1<<xdt<<message;
@@ -3157,9 +3240,10 @@ void DecoderFt8::EmitDecodedTextFt(QStringList lst) {
 //        std::cout << "{" << i << "}" << lst[i].str->c_str() << " ";
     }
     strcat(buf,"\n");
-    fwrite(buf, 1, strlen(buf), stdout);
-    fflush(stdout);
+    // fwrite(buf, 1, strlen(buf), stdout);
+    // fflush(stdout);
+    decodeResultOutput(buf);
     if (resultsCallback) {
-        resultsCallback(11, lst);
+        resultsCallback(buf);
     }
 }

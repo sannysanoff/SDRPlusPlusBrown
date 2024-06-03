@@ -285,7 +285,7 @@ private:
         airspyhf_start(_this->openDev, callback, _this);
 
         _this->running = true;
-        flog::info("AirspyHFSourceModule '{0}': Start!", _this->name);
+        flog::info("AirspyHFSourceModule '{0}': Start! Samplerate = {}", _this->name, _this->sampleRateList[_this->srId]);
     }
 
     static void stop(void* ctx) {
@@ -400,6 +400,7 @@ private:
 
     static void updateSampleRate(AirspyHFSourceModule *_this) {
         core::setInputSampleRate(_this->sampleRate * _this->narrowSamplerate());
+        flog::info("AirspyHFSourceModule '{0}': updateSampleRate: {1} -> {2}", _this->name, _this->sampleRate, _this->sampleRate * _this->narrowSamplerate());
         _this->carving.setSampleRates(_this->sampleRate, _this->sampleRate * _this->narrowSamplerate());
     }
 
@@ -410,7 +411,7 @@ private:
             else if (sampleRate <= 256001) cutoff = 40;
             else if (sampleRate <= 384001) cutoff = 50;
             else if (sampleRate <= 768001) cutoff = 60;
-            else cutoff = 70;
+            else cutoff = 80;
             int reduced = sampleRate - 2*cutoff*1000; // cut 40 khz from both sides
             return reduced / sampleRate;
         } else {
@@ -464,7 +465,7 @@ MOD_EXPORT void _INIT_() {
     json def = json({});
     def["devices"] = json({});
     def["device"] = "";
-    config.setPath(core::args["root"].s() + "/airspyhf_config.json");
+    config.setPath(std::string(core::getRoot()) + "/airspyhf_config.json");
     config.load(def);
     config.enableAutoSave();
 }
@@ -480,4 +481,4 @@ MOD_EXPORT void _DELETE_INSTANCE_(ModuleManager::Instance* instance) {
 MOD_EXPORT void _END_() {
     config.disableAutoSave();
     config.save();
-}
+}   

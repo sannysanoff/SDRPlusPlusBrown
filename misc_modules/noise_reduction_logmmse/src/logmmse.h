@@ -116,8 +116,8 @@ namespace dsp {
                         return;
                     }
                     if (noise->size() != nFFT) {
-                        abort(); // because
-
+                        flog::info("ERROR noise->size() != nFFT: {} {}", (int)noise->size(), nFFT);
+                        return;
                     }
                     noise_history.emplace_back(noise);
                     volk_32f_x2_add_32f(sums->data(), sums->data(), noise->data(), nFFT);
@@ -145,6 +145,7 @@ namespace dsp {
 
 
 #define ADD_STEP_STATS()          ctm2 = currentTimeNanos(); muSum[statIndex++] += ctm2-ctm; ctm = ctm2
+
                 void update_noise_mu2(const ComplexArray &x) {
                     auto sz = x->size();
                     ALLOC_AND_CHECK(x, sz, "update_noise_mu2 point 1.5a")
@@ -245,43 +246,11 @@ namespace dsp {
                                     nmu2[q] = navg[q] * navg[q];
                                 }
                             }
-                            int firstV = -1;
-                            int lastV = -1;
-                            int countZeros = 0;
-                            for(int q=0; q<nFFT; q++) {
-                                float val = nmu2[q];
-                                if(firstV < 0 && val != 0) {
-                                    firstV = q;
-                                }
-                                if (val != 0) {
-                                    if (lastV != -1) {
-                                        if (q - lastV > 1) {
-                                            // fill the gap
-                                            auto d = (val - nmu2[lastV]) / (q - lastV);
-                                            auto running = nmu2[lastV];
-                                            for(int w=lastV+1; w<q; w++) {
-                                                running += d;
-                                                nmu2[w] = running;
-                                            }
-                                        }
-                                    }
-                                    lastV = q;
-                                } else {
-                                    countZeros++;
-                                }
-                            }
-                            if (firstV < 0 || lastV < 0) {
-//                                std::cerr << "Bad noise_mu2 figure. countZeros="+std::to_string(countZeros)+"\n";
+
+                            if (!linearInterpolateHoles(nmu2, nFFT)) {
                                 *noise_mu2 = noise_mu2_copy;
-//                                abort();
-                            } else {
-                                for (int q = firstV - 1; q >= 0; q--) {
-                                    nmu2[q] = nmu2[firstV];
-                                }
-                                for (int q = lastV + 1; q < noise_mu2->size(); q++) {
-                                    nmu2[q] = nmu2[lastV];
-                                }
                             }
+
                             ADD_STEP_STATS();
 
                         }  // end if audio frequency
@@ -302,7 +271,7 @@ namespace dsp {
                     // 768 mu2:        13 8 12 52 195         // after dropping each 10th frame for noise dev calculation
                     // 768 mu2:        13 8 12 52 115         // replaced at() with direct data access.
                     muCount++;
-                    if (muCount == 1000) {
+                    if (muCount == 1000 && false) {
                         std::cout << "mu2: ";
                         for(int z=0; z<statIndex; z++) {
                             std::cout << " " << std::to_string(muSum[z] / 1000);
@@ -453,12 +422,14 @@ namespace dsp {
                     //                   0	    1738	790         // radio src
                     // 768 logmmse_all:  0      920     786
                     // 768 logmmse_all:  0      762     841         //
-                    std::cout << "logmmse_all: ";
-                    for(int z=0; z<statIndex; z++) {
-                        std::cout << " " << std::to_string(muSum[z] / 1000);
-                        muSum[z] = 0;
+                    if (false) {
+                        std::cout << "logmmse_all: ";
+                        for (int z = 0; z < statIndex; z++) {
+                            std::cout << " " << std::to_string(muSum[z] / 1000);
+                            muSum[z] = 0;
+                        }
+                        std::cout << std::endl;
                     }
-                    std::cout << std::endl;
                     muCount = 0;
                 }
                 ADD_STEP_STATS();

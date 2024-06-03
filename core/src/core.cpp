@@ -80,6 +80,13 @@ namespace core {
     ModuleComManager modComManager;
     CommandArgsParser args;
 
+
+    SDRPP_EXPORT const char* getRoot() {
+        static const char* rootPath = strdup(core::args["root"].s().c_str());
+        return rootPath;
+    }
+
+
     void setInputSampleRate(double samplerate) {
         // Forward this to the server
         if (args["server"].b()) {
@@ -301,10 +308,11 @@ extern void test1();
 // main
 int sdrpp_main(int argc, char* argv[]) {
 
+
 #ifdef _WIN32
     setlocale(LC_ALL, ".65001"); // Set locale to UTF-8
 #endif
-    flog::info("SDR++Brown v" VERSION_STR);
+    flog::info("SDR++Brown! v" VERSION_STR);
 
 #ifdef IS_MACOS_BUNDLE
     // If this is a MacOS .app, CD to the correct directory
@@ -314,7 +322,11 @@ int sdrpp_main(int argc, char* argv[]) {
 
     // Define command line options and parse arguments
     core::args.defineAll();
-    if (core::args.parse(argc, argv) < 0) { return -1; }
+    flog::info("Define all OK");
+    if (core::args.parse(argc, argv) < 0) { 
+        flog::info("Unable to parse args.");
+        return -1; 
+    }
 
     // Show help and exit if requested
     if (core::args["help"].b()) {
@@ -322,10 +334,12 @@ int sdrpp_main(int argc, char* argv[]) {
         return 0;
     }
 
+
     bool serverMode = (bool)core::args["server"];
 
     if (!serverMode) {
-        core::startForkServer();
+        // obsolete
+        // core::startForkServer();
     }
 
 #ifdef _WIN32
@@ -446,8 +460,6 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["SDRplay Source"]["enabled"] = true;
     defConfig["moduleInstances"]["SDR++ Server Source"]["module"] = "sdrpp_server_source";
     defConfig["moduleInstances"]["SDR++ Server Source"]["enabled"] = true;
-    defConfig["moduleInstances"]["SoapySDR Source"]["module"] = "soapy_source";
-    defConfig["moduleInstances"]["SoapySDR Source"]["enabled"] = true;
     defConfig["moduleInstances"]["SpyServer Source"]["module"] = "spyserver_source";
     defConfig["moduleInstances"]["SpyServer Source"]["enabled"] = true;
     defConfig["moduleInstances"]["KiwiSDR Source"]["module"] = "kiwisdr_source";
@@ -472,6 +484,8 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["Noise Reduction logmmse"]["enabled"] = true;
     defConfig["moduleInstances"]["FT8/FT4 Decoder"]["module"] = "ft8_decoder";
     defConfig["moduleInstances"]["FT8/FT4 Decoder"]["enabled"] = true;
+    defConfig["moduleInstances"]["VHF Digital Modes"]["module"] = "ch_extravhf_decoder";
+    defConfig["moduleInstances"]["VHF Digital Modes"]["enabled"] = true;
     // defConfig["moduleInstances"]["Rigctl Client"] = "rigctl_client";
     // TODO: Enable rigctl_client when ready
     // defConfig["moduleInstances"]["Scanner"] = "scanner";
@@ -575,6 +589,7 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.conf["modules"][modCount++] = "websdr_view.so";
     core::configManager.conf["modules"][modCount++] = "noise_reduction_logmmse.so";
     core::configManager.conf["modules"][modCount++] = "ft8_decoder.so";
+    core::configManager.conf["modules"][modCount++] = "ch_extravhf_decoder.so";
     core::configManager.conf["modules"][modCount++] = "reports_monitor.so";
 #endif
 

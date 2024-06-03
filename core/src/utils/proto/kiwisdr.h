@@ -101,6 +101,7 @@ struct KiwiSDRClient {
                     scan += REAL_HEADER_SIZE;
 
                     if (scan != msg.data() + REAL_HEADER_SIZE) {
+                        flog::info("ERROR scan != msg.data() + REAL_HEADER_SIZE\n");
                         abort(); // homegrown assert.
                     }
 
@@ -136,6 +137,7 @@ struct KiwiSDRClient {
                     scan += 4;
 
                     if (scan != msg.data() + IQ_HEADER_SIZE) {
+                        flog::info("ERROR scan != msg.data() + IQ_HEADER_SIZE\n");
                         abort(); // homegrown assert.
                     }
 

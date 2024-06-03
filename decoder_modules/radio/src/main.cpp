@@ -26,7 +26,7 @@ SDRPP_MOD_INFO{
 
 MOD_EXPORT void _INIT_() {
     json def = json({});
-    config.setPath(core::args["root"].s() + "/radio_config.json");
+    config.setPath(std::string(core::getRoot()) + "/radio_config.json");
     config.load(def);
     config.enableAutoSave();
 }

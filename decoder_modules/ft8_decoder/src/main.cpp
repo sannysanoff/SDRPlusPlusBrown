@@ -25,6 +25,7 @@
 #include "module_interface.h"
 #include "ft8_etc/gen_ft8.h"
 
+
 using namespace utils;
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
@@ -280,7 +281,7 @@ static std::pair<int,int> calculateVFOCenterOffset(const std::vector<int> &frequ
 
 
 class FT8DecoderModule;
-static std::vector<int> ft8Frequencies = { 1840000, 3573000, 5357000, 7074000, 10136000, 14074000, 18100000, 21074000, 24915000, 28074000, 50313000 };
+static std::vector<int> ft8Frequencies = { 1840000, 3573000, 5357000, 7074000, 10136000, 14074000, 18100000, 21074000, 24915000, 28074000, 50323000, 144174000, 222065000, 432065000  };
 
 struct SingleDecoder {
     FT8DecoderModule *mod;
@@ -1302,7 +1303,9 @@ void SingleDecoder::startBlockProcessing(const std::shared_ptr<std::vector<dsp::
             auto start = currentTimeMillis();
             dsp::ft8::decodeFT8(mod->nthreads, getModeString(), VFO_SAMPLE_RATE, block->data(), block->size(), handler, progress, removeFiles);
             auto end = currentTimeMillis();
-            flog::info("FT8 decoding ({}) took {} ms", this->getModeString(), (int64_t)(end - start));
+            if (noisy_ft8) {
+                flog::info("FT8 decoding ({}) took {} ms", this->getModeString(), (int64_t) (end - start));
+            }
             lastDecodeCount = (int)count;
             lastDecodeTime = (int)(end - start);
             if (time0 == 0) {
@@ -1395,7 +1398,7 @@ void SingleDecoder::destroy() {
 MOD_EXPORT void _INIT_() {
     // Create default recording directory
     json def = json({});
-    config.setPath(core::args["root"].s() + "/ft8_decoder_config.json");
+    config.setPath(std::string(core::getRoot()) + "/ft8_decoder_config.json");
     config.load(def);
     config.enableAutoSave();
     mshv_init();
@@ -1420,7 +1423,9 @@ void SingleDecoder::handleIFData(const std::vector<dsp::stereo_t>& data) {
     long long int curtime = sigpath::iqFrontEnd.getCurrentStreamTime() ;
     double blockNumber = floor((curtime / 1000.0) / getBlockDuration());
     if (blockNumber != prevBlockNumber) {
-        flog::info("handleIFdata new block ({}) : {} ", getModeString(), blockNumber);
+        if (noisy_ft8) {
+            flog::info("handleIFdata new block ({}) : {} ", getModeString(), blockNumber);
+        }
         if (fullBlock) {
             bool shouldStartProcessing = true;
             std::shared_ptr<std::vector<dsp::stereo_t>> processingBlock;
@@ -1455,3 +1460,25 @@ void SingleDecoder::handleIFData(const std::vector<dsp::stereo_t>& data) {
     fullBlock->insert(std::end(*fullBlock), std::begin(data), std::end(data));
     //        flog::info("{} Got {} samples: {}", blockNumber, data.size(), data[0].l);
 }
+
+
+#ifdef NEW_BUILTIN_MODE
+
+extern void doDecode(const char *mode, const char *path, int threads, std::function<void(int mode, std::vector<std::string> result)> callback);
+namespace dsp {
+    namespace ft8 {
+        void invokeDecoder(int nthreads, const std::string &mode, const std::string &wavPath, const std::string &outPath,
+                           const std::string &errPath,
+                           std::function<void(int mode, std::vector<std::string> result, std::atomic<const char *> &progress)> callback1,
+                           std::atomic<const char *> &progress)
+        {
+            ::doDecode(mode.c_str(), wavPath.c_str(), nthreads, [&](int mode2, std::vector<std::string> result) {
+                callback1(mode2, result, progress);
+            });
+        }
+
+    }
+}
+
+
+#endif

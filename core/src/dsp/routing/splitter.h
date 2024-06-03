@@ -64,13 +64,6 @@ namespace dsp::routing {
             int count = base_type::_in->read();
 //            flog::info("Splitter {} got from {}: {}", origin, base_type::_in->origin, count);
             if (count < 0) {
-/*
-                if (workedCount > 0) {              // don't during init and various reconnections
-                    for (const auto& stream : streams) {
-                        stream->stopReader();           // this is for clean shutdown. NOT TESTED WELL YET. This sucks on block enable/disable (eg nr enable/disable)
-                    }
-                }
-*/
                 return -1;
             }
 
