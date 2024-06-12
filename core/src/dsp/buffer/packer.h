@@ -45,7 +45,7 @@ namespace dsp::buffer {
             read = 0;
         }
 
-        int run() {
+        int run() override {
             int count = _in->read();
             if (count < 0) {
                 read = 0;

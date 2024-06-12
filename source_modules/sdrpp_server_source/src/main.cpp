@@ -61,7 +61,7 @@ public:
         serverResample.define("48 KHz", 48000);
         serverResample.define("96 KHz", 96000);
         serverResample.define("128 KHz", 128000);
-        serverResample.define("196 KHz", 196000);
+        serverResample.define("192 KHz", 192000);
         serverResample.define("256 KHz", 256000);
         serverResample.define("384 KHz", 384000);
 

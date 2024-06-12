@@ -151,6 +151,16 @@ namespace percentile {
     }
 
     template<typename T>
+    T percentile_saving(std::vector<T>& arr, double p) {
+        int n = arr.size();
+        if (n == 0) {
+            return 0;
+        }
+        double k = (n - 1) * p;
+        return kthSmallest(arr.data(), 0, n-1, (int)k);
+    }
+
+    template<typename T>
     T percentile_sampling(std::vector<T>& arr, double p) {
         int n = arr.size();
         if (n == 0) {

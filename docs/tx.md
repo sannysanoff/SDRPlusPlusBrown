@@ -25,6 +25,8 @@ Android phone while laying on the sofa and use microphone of your smartphone, an
 Sofa was the primary driving factor for this software development, and I will add everything to make it work better, 
 including small logbook for QSO logging etc. Jokes aside, portable use was primary goal.
 
+Update Spring 2024: You can choose to use the Bluetooth headset on Android. Remote (client/server) SDR++ mode for SSB transmit is now working, too. You can use lossy baseband (waterfall) compression to reduce wifi/mobile traffic. 
+
 See example QSO video [https://www.youtube.com/watch?v=CGCXxUXLwr4](https://www.youtube.com/watch?v=CGCXxUXLwr4)
 
 Audio pipeline test [https://www.youtube.com/watch?v=HNrYdeMvFGE](https://www.youtube.com/watch?v=HNrYdeMvFGE)

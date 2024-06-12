@@ -8,6 +8,9 @@
 #include <string.h>
 #ifndef _WIN32
 #include <unistd.h>
+#include <sys/stat.h>
+#include <stdexcept>
+
 #endif
 
 
@@ -118,20 +121,30 @@ namespace wav {
     public:
 
         std::string error;
+        long long fileSize;
 
         Reader(std::string path) {
             error = "";
             file = std::ifstream(path.c_str(), std::ios::binary);
             if (!file.is_open()) {
                 error = "cannot open file";
+            } else {
+                struct stat st;
+                stat(path.c_str(), &st);
+                fileSize = st.st_size;
+                file.read((char*)&hdr, sizeof(WavHeader_t));
+                valid = false;
+                error = "signature mismatch";
+                if (memcmp(hdr.signature, "RIFF", 4) != 0) { return; }
+                if (memcmp(hdr.fileType, "WAVE", 4) != 0) { return; }
+                error = "";
+                valid = true;
             }
-            file.read((char*)&hdr, sizeof(WavHeader_t));
-            valid = false;
-            error = "signature mismatch";
-            if (memcmp(hdr.signature, "RIFF", 4) != 0) { return; }
-            if (memcmp(hdr.fileType, "WAVE", 4) != 0) { return; }
-            error = "";
-            valid = true;
+
+        }
+
+        long long getSampleCount() {
+             return fileSize / ((getBitDepth() / 8) * getChannelCount());
         }
 
         uint16_t getBitDepth() {
@@ -148,6 +161,29 @@ namespace wav {
 
         bool isValid() {
             return valid;
+        }
+
+        void readComplexSamples(dsp::complex_t* data, size_t nSamples) {
+            int recordSize = getBitDepth() / 8 * getChannelCount();
+            uint8_t *tmpbuf = ((uint8_t *)(data + nSamples))  - recordSize * nSamples;
+            readSamples(tmpbuf, nSamples);
+            switch(getChannelCount()) {
+                default:
+                    throw std::runtime_error("need 2-channel pcm");
+                case 2:
+                    switch(hdr.sampleType) {
+                        default:
+                            throw std::runtime_error("unimplemented non pcm 16 bit");
+                        case 1: // pcm = 16 bit / channel
+                            int16_t *srcPtr = (int16_t*)tmpbuf;
+                            dsp::complex_t *dstPtr = (dsp::complex_t *)data;
+                            for(int i=0; i<nSamples; i++) {
+                                dstPtr[i].re = srcPtr[i*2+0] / 32767.0;
+                                dstPtr[i].im = srcPtr[i*2+1] / 32767.0;
+                            }
+                            break;
+                    }
+            }
         }
 
         void readSamples(void* data, size_t size) {
