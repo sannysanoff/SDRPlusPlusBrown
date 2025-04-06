@@ -30,8 +30,8 @@ namespace dsp::detector {
         dsp::arrays::ComplexArray fftInArray;
         dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
-        std::vector<dsp::arrays::FloatArray> fftResultBuffer;  // stores magnitude spectra
-        int fftResultCount = 0;                  // number of rows currently filled
+        std::vector<float> fftResultBuffer;  // flat 2D buffer: N_FFT_ROWS * fftSize
+        int fftResultCount = 0;              // number of rows currently filled (<= N_FFT_ROWS)
 
         void updateFFTSize();
         void generateWindow();

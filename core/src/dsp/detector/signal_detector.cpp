@@ -88,6 +88,10 @@ namespace dsp::detector {
         // Create FFT plan (forward transform)
         fftPlan = dsp::arrays::allocateFFTWPlan(false, fftSize);
 
+        // Resize rolling FFT magnitude buffer
+        fftResultBuffer.resize(N_FFT_ROWS * fftSize, 0.0f);
+        fftResultCount = 0;
+
         // Generate window function
         generateWindow();
     }
@@ -139,21 +143,29 @@ namespace dsp::detector {
                 // Compute magnitude spectrum
                 auto mag = dsp::arrays::npabsolute(fftPlan->getOutput());
 
-                // Store in buffer
+                // Store magnitude row in flat buffer
                 if (fftResultCount < N_FFT_ROWS) {
-                    fftResultBuffer.push_back(mag);
+                    // Append new row
+                    std::copy(mag->begin(), mag->end(), fftResultBuffer.begin() + fftResultCount * fftSize);
                     fftResultCount++;
                 } else {
                     // Buffer full: call detection before halving
                     perform_detection();
 
-                    // Remove first half
+                    // Shift second half to front
                     int half = N_FFT_ROWS / 2;
-                    fftResultBuffer.erase(fftResultBuffer.begin(), fftResultBuffer.begin() + half);
-                    fftResultCount -= half;
+                    std::memmove(
+                        fftResultBuffer.data(),
+                        fftResultBuffer.data() + half * fftSize,
+                        (N_FFT_ROWS - half) * fftSize * sizeof(float)
+                    );
+                    fftResultCount = N_FFT_ROWS - half;
 
-                    // Append new row
-                    fftResultBuffer.push_back(mag);
+                    // Append new row at the end
+                    std::copy(
+                        mag->begin(), mag->end(),
+                        fftResultBuffer.begin() + fftResultCount * fftSize
+                    );
                     fftResultCount++;
                 }
 
