@@ -183,6 +183,19 @@ namespace dsp::detector {
     }
 
     void SignalDetector::perform_detection() {
+        // Write dimensions
+        FILE* fdim = fopen("/tmp/array.dim", "wb");
+        if (fdim) {
+            fprintf(fdim, "%d %d\n", fftSize, N_FFT_ROWS);
+            fclose(fdim);
+        }
 
+        // Write buffer as float32 binary
+        FILE* fbin = fopen("/tmp/array.bin", "wb");
+        if (fbin) {
+            size_t total = N_FFT_ROWS * fftSize;
+            fwrite(fftResultBuffer.data(), sizeof(float), total, fbin);
+            fclose(fbin);
+        }
     }
 }
