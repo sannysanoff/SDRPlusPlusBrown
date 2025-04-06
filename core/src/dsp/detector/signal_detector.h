@@ -2,6 +2,7 @@
 #include "../processor.h"
 #include <fftw3.h>
 #include <vector>
+#include <utils/arrays.h>
 
 namespace dsp::detector {
     class SignalDetector : public Processor<complex_t, complex_t> {
