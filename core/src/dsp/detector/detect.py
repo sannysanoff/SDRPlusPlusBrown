@@ -30,38 +30,31 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
 
-    # Initial dummy data
-    init_data = np.zeros((20, 1024), dtype=np.float32)
-    im = ax.imshow(init_data, aspect='auto', origin='lower', interpolation='nearest', cmap='inferno')
-    plt.colorbar(im, ax=ax)
-    ax.set_xlabel("Frequency bin")
-    ax.set_ylabel("Time (rows)")
-    ax.set_title("FFT Heatmap")
+    im = None  # will be created dynamically
 
     # Slider axes
     axcolor = 'lightgoldenrodyellow'
     ax_gain = plt.axes([0.15, 0.1, 0.65, 0.03], facecolor=axcolor)
     ax_offset = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor=axcolor)
 
-    # Sliders
     s_gain = Slider(ax_gain, 'Gain', 0.1, 10.0, valinit=1.0)
     s_offset = Slider(ax_offset, 'Offset', -100.0, 100.0, valinit=0.0)
 
     def update(frame):
+        global im
         data, width, height = read_data()
         if data is None:
-            return [im]
+            return [im] if im else []
 
         # Take logarithm of raw data to compress dynamic range
-        log_data = np.log10(np.maximum(data, 1e-20))  # avoid log(0)
+        log_data = np.log10(np.maximum(data, 1e-20))
 
         # Apply brightness/contrast on log data
         gain = s_gain.val
         offset = s_offset.val
         adj_data = log_data * gain + offset
 
-        # Normalize adjusted log data to 0..1
-        # Use percentiles to normalize, ignoring extreme outliers
+        # Normalize with percentiles
         p_low, p_high = np.percentile(adj_data, [5, 95])
         if p_high > p_low:
             norm_data = (adj_data - p_low) / (p_high - p_low)
@@ -69,16 +62,22 @@ if __name__ == "__main__":
         else:
             norm_data = np.zeros_like(adj_data)
 
-        # Apply gamma correction to enhance contrast
-        gamma = 0.5  # adjust as needed
+        # Gamma correction
+        gamma = 0.5
         norm_data = np.power(norm_data, gamma)
 
-        # Print histogram with 20 buckets
-        hist, bin_edges = np.histogram(norm_data, bins=20, range=(0.0, 1.0))
+        # Print histogram
+        hist, _ = np.histogram(norm_data, bins=20, range=(0,1))
         print("Histogram (normalized data, 20 bins):")
         print(hist)
 
-        im.set_data(norm_data)
+        # Create imshow on first valid data
+        if im is None:
+            im = ax.imshow(norm_data, aspect='auto', origin='lower', interpolation='nearest', cmap='inferno')
+            plt.colorbar(im, ax=ax)
+        else:
+            im.set_data(norm_data)
+
         ax.set_title(f"FFT Heatmap ({width} bins x {height} rows)")
         return [im]
 
