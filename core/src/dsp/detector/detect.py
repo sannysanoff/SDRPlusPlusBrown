@@ -1,14 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import time
-import os
 
 DIM_FILE = "/tmp/array.dim"
 BIN_FILE = "/tmp/array.bin"
 
 def read_data():
-    # Read dimensions
     try:
         with open(DIM_FILE, "r") as f:
             dims = f.read().strip().split()
@@ -16,7 +13,6 @@ def read_data():
     except:
         return None, None, None
 
-    # Read binary data
     try:
         data = np.fromfile(BIN_FILE, dtype=np.float32)
         if data.size != width * height:
@@ -27,20 +23,34 @@ def read_data():
 
     return data, width, height
 
+fig, ax = plt.subplots()
+lines = []
+
+# Initialize empty lines (max 20 rows default)
+for _ in range(20):
+    line, = ax.plot([], [], lw=1)
+    lines.append(line)
+
+ax.set_xlabel("Frequency bin")
+ax.set_ylabel("Magnitude")
+ax.set_title("FFT Magnitude Series")
+
 def update(frame):
     data, width, height = read_data()
-    if data is not None:
-        im.set_data(data)
-        ax.set_title(f"FFT Heatmap ({width} bins x {height} rows)")
-    return [im]
+    if data is None:
+        return lines
 
-fig, ax = plt.subplots()
-# Initialize with zeros
-init_data = np.zeros((20, 1024), dtype=np.float32)  # default shape
-im = ax.imshow(init_data, aspect='auto', origin='lower', interpolation='nearest', cmap='viridis')
-ax.set_title("Waiting for data...")
+    # Update or hide lines
+    for idx, line in enumerate(lines):
+        if idx < height:
+            line.set_data(np.arange(width), data[idx])
+            line.set_visible(True)
+        else:
+            line.set_visible(False)
+
+    ax.relim()
+    ax.autoscale_view()
+    return lines
 
 ani = animation.FuncAnimation(fig, update, interval=500, blit=True)
-plt.xlabel("Frequency bin")
-plt.ylabel("Time (rows)")
 plt.show()
