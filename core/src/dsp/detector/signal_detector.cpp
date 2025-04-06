@@ -5,6 +5,8 @@
 
 namespace dsp::detector {
     SignalDetector::SignalDetector() {
+        fftResultBuffer.reserve(N_FFT_ROWS);
+        fftResultCount = 0;
     }
 
     SignalDetector::~SignalDetector() {
@@ -134,8 +136,26 @@ namespace dsp::detector {
                 // Execute FFT
                 dsp::arrays::npfftfft(fftInArray, fftPlan);
 
-                // FFT result is discarded for now as per requirements
-                // In the future, signal detection logic would be implemented here
+                // Compute magnitude spectrum
+                auto mag = dsp::arrays::npabsolute(fftPlan->getOutput());
+
+                // Store in buffer
+                if (fftResultCount < N_FFT_ROWS) {
+                    fftResultBuffer.push_back(mag);
+                    fftResultCount++;
+                } else {
+                    // Buffer full: call detection before halving
+                    perform_detection();
+
+                    // Remove first half
+                    int half = N_FFT_ROWS / 2;
+                    fftResultBuffer.erase(fftResultBuffer.begin(), fftResultBuffer.begin() + half);
+                    fftResultCount -= half;
+
+                    // Append new row
+                    fftResultBuffer.push_back(mag);
+                    fftResultCount++;
+                }
 
                 // Reset buffer position
                 bufferPos = 0;
@@ -149,4 +169,7 @@ namespace dsp::detector {
         if (!base_type::out.swap(count)) { return -1; }
         return count;
     }
+void SignalDetector::perform_detection() {
+    // TODO: implement detection logic
+}
 }

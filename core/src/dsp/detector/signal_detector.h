@@ -18,6 +18,8 @@ namespace dsp::detector {
         int run();
 
     private:
+        static constexpr int N_FFT_ROWS = 20;
+
         double sampleRate = 0.0;
         double centerFrequency = 0.0;
         int fftSize = 0;
@@ -28,7 +30,11 @@ namespace dsp::detector {
         dsp::arrays::ComplexArray fftInArray;
         dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
+        std::vector<dsp::arrays::FloatArray> fftResultBuffer;  // stores magnitude spectra
+        int fftResultCount = 0;                  // number of rows currently filled
+
         void updateFFTSize();
         void generateWindow();
+        void perform_detection();
     };
 }
