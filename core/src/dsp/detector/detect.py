@@ -57,10 +57,11 @@ def update(frame):
     adj_data = log_data * gain + offset
 
     # Normalize adjusted log data to 0..1
-    dmin = np.min(adj_data)
-    dmax = np.max(adj_data)
-    if dmax > dmin:
-        norm_data = (adj_data - dmin) / (dmax - dmin)
+    # Use percentiles to normalize, ignoring extreme outliers
+    p_low, p_high = np.percentile(adj_data, [5, 95])
+    if p_high > p_low:
+        norm_data = (adj_data - p_low) / (p_high - p_low)
+        norm_data = np.clip(norm_data, 0, 1)
     else:
         norm_data = np.zeros_like(adj_data)
 
