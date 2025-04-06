@@ -22,7 +22,7 @@ namespace dsp::detector {
         fftPlan.reset();
     }
 
-    void SignalDetector::init(stream<complex_t>* in) {
+    void SignalDetector::init(stream<complex_t> *in) {
         base_type::init(in);
     }
 
@@ -83,7 +83,7 @@ namespace dsp::detector {
         fftWindowBuf = new float[fftSize];
 
         // Allocate new input array
-        fftInArray = std::make_shared<std::vector<complex_t>>(fftSize);
+        fftInArray = std::make_shared<std::vector<complex_t> >(fftSize);
 
         // Create FFT plan (forward transform)
         fftPlan = dsp::arrays::allocateFFTWPlan(false, fftSize);
@@ -131,7 +131,7 @@ namespace dsp::detector {
             // When buffer is full, perform FFT
             if (bufferPos >= fftSize) {
                 // Apply window function
-                auto& inVec = *fftInArray;
+                auto &inVec = *fftInArray;
                 for (int j = 0; j < fftSize; j++) {
                     inVec[j].re = buffer[j].re * fftWindowBuf[j];
                     inVec[j].im = buffer[j].im * fftWindowBuf[j];
@@ -181,7 +181,8 @@ namespace dsp::detector {
         if (!base_type::out.swap(count)) { return -1; }
         return count;
     }
-void SignalDetector::perform_detection() {
-    // TODO: implement detection logic
-}
+
+    void SignalDetector::perform_detection() {
+
+    }
 }
