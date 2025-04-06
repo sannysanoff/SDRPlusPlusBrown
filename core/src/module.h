@@ -86,6 +86,21 @@ public:
 
     int countModuleInstances(std::string module);
 
+    template <typename T>
+    std::vector<T*> getAllInterfaces(const std::string &interfaceName) {
+        std::vector<T *> retval;
+        for(auto x: instances) {
+            if (x.second.instance == nullptr) {
+                continue;
+            }
+            auto rv = x.second.instance->getInterface(interfaceName.c_str());
+            if (rv != nullptr) {
+                retval.emplace_back((T*)rv);
+            }
+        }
+        return retval;
+    }
+
     void *getInterface(const std::string &name, const std::string &interfaceName) {
         if (name != "") {       //
             auto it = instances.find(name);
@@ -119,6 +134,11 @@ public:
     std::map<std::string, ModuleManager::Module_t> modules;
     std::map<std::string, ModuleManager::Instance_t> instances;
 
+#ifdef BUILD_TESTS
+    // Plugin whitelist for test mode
+    std::vector<std::string> pluginWhitelist;
+    bool useWhitelist = false;
+#endif
 
 };
 

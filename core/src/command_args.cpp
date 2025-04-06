@@ -30,13 +30,20 @@ void CommandArgsParser::defineAll() {
         define('s', "server", "Run in server mode");
         define('\0', "password", "Protect server mode protocol with password",std::string(""));
         define('\0', "autostart", "Automatically start the SDR after loading");
+
+#ifdef BUILD_TESTS
+        // Test-related command line arguments
+        define('t', "test", "Run a specific test", std::string(""));
+        define('e', "enable_plugins", "Whitelist of plugins to enable (comma-separated)", std::string(""));
+        define('\0', "test_root", "Root directory for test files", std::string(""));
+#endif
 }
 
 int CommandArgsParser::parse(int argc, char* argv[]) {
     this->systemArgv = argv;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        
+
         // Check for long and short name arguments
         if (!arg.rfind("--", 0)) {
             arg = arg.substr(2);
@@ -64,7 +71,7 @@ int CommandArgsParser::parse(int argc, char* argv[]) {
 
         // Parse depending on type
         CLIArg& carg = args[arg];
-        
+
         // If not void, make sure an argument is available and retrieve it
         if (carg.type != CLI_ARG_TYPE_VOID && i + 1 >= argc) {
             printf("Missing argument\n");

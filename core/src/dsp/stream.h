@@ -6,6 +6,8 @@
 #include <utils/flog.h>
 #include <condition_variable>
 //#include <volk/volk.h>
+#include <utils/usleep.h>
+
 #include "buffer/buffer.h"
 
 // 1MSample buffer
@@ -38,6 +40,7 @@ namespace dsp {
         bool debugTraffic = false;
         std::function<void(const T*, int)> outputHook;
         std::function<void(const T*, int)> inputHook;
+        int nReaders = 0;
 
         stream() {
             static int streamCount = 0;
@@ -111,21 +114,18 @@ namespace dsp {
 
         virtual inline int read() {
             // Wait for data to be ready or to be stopped
-//            if (this->origin == "merger.out") {
-//                flog::info("stream::read:: called on from merger.out..");
-//            }
+            if (!readBuf0 || !writeBuf) {
+                return -1;
+            }
             std::unique_lock<std::mutex> lck(rdyMtx);
+            nReaders++;
             rdyCV.wait(lck, [this] { return (dataReady || readerStop); });
 
-
             auto rv = readerStop ? -1 : dataSize;
-//            if (this->origin == "merger.out") {
-//                flog::info("stream::read:: has been read from merger.out: {}", rv);
-//            }
             if (debugTraffic) {
                 flog::info("reading stream {}: return {} samples", origin, rv);
             }
-
+            nReaders--;
             return (rv);
         }
 
@@ -170,6 +170,15 @@ namespace dsp {
                 readerStop = true;
             }
             rdyCV.notify_all();
+            while (true) {
+                {
+                    std::unique_lock<std::mutex> lck(rdyMtx);
+                    if (nReaders == 0) {
+                        break;
+                    }
+                }
+                usleep(1000);
+            }
         }
 
         virtual void clearReadStop() {

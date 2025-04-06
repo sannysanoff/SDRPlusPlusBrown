@@ -747,7 +747,7 @@ namespace ImGui {
         return true;
     }
 
-    const int WaterFall::rawFFTIndex(double frequency) const {
+    int WaterFall::rawFFTIndex(double frequency) const {
         return std::clamp<int>(((frequency / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
     }
 

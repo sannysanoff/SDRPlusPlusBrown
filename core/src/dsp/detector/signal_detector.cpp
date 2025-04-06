@@ -55,6 +55,7 @@ namespace dsp::detector {
         // Calculate FFT size as samplerate/10
         int newFFTSize = sampleRate / 10.0;
 
+        /*
         // Round to nearest power of 2 for efficiency
         int powerOf2 = 1;
         while (powerOf2 < newFFTSize) {
@@ -66,6 +67,7 @@ namespace dsp::detector {
             return;
         }
 
+        */
         fftSize = newFFTSize;
         flog::info("Signal detector FFT size set to {0}", fftSize);
 

@@ -28,7 +28,7 @@ namespace core {
         char outPath[500];
         char errPath[500];
         int completeStatus;
-        std::atomic_bool completed = false;
+        bool completed = false; // Changed from std::atomic_bool for test compatibility
         char info[50];
         int pid;
         int seq;

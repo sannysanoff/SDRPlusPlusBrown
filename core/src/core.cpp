@@ -17,6 +17,8 @@
 #include <iostream>
 #include <gui/menus/display.h>
 
+#include "../../tests/test_utils.h"
+
 #ifdef __APPLE__
 #include <sys/wait.h>
 #include <signal.h>
@@ -54,6 +56,10 @@ void setproctitle(const char* fmt, ...) {
 #include <stb_image_resize.h>
 #include <gui/gui.h>
 #include <signal_path/signal_path.h>
+
+#ifdef BUILD_TESTS
+#include "../../tests/test_runner.h"
+#endif
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -346,6 +352,39 @@ int sdrpp_main(int argc, char* argv[]) {
         return 0;
     }
 
+#ifdef BUILD_TESTS
+    // Parse plugin whitelist if provided
+    if (core::args["enable_plugins"].type == CLI_ARG_TYPE_STRING && !core::args["enable_plugins"].s().empty()) {
+        std::string pluginList = core::args["enable_plugins"].s();
+        size_t pos = 0;
+        std::string token;
+        while ((pos = pluginList.find(',')) != std::string::npos) {
+            token = pluginList.substr(0, pos);
+            core::moduleManager.pluginWhitelist.push_back(token);
+            pluginList.erase(0, pos + 1);
+        }
+        if (!pluginList.empty()) {
+            core::moduleManager.pluginWhitelist.push_back(pluginList);
+        }
+
+        core::moduleManager.useWhitelist = true;
+        flog::info("Plugin whitelist enabled with {} plugins", (long long)core::moduleManager.pluginWhitelist.size());
+        for (const auto& plugin : core::moduleManager.pluginWhitelist) {
+            flog::info("  - {}", plugin);
+        }
+    }
+    // Handle test mode if requested
+    if (core::args["test"].type == CLI_ARG_TYPE_STRING && !core::args["test"].s().empty()) {
+        std::string testName = core::args["test"].s();
+        flog::info("Running in test mode: {}", testName);
+
+        // Run the specified test
+        sdrpp::test::TestRegistry::runTest(testName);
+    } else {
+        sdrpp::test::renderLoopHook.verifyResultsFrames = -1;
+    }
+
+#endif
 
     bool serverMode = (bool)core::args["server"];
 
@@ -676,7 +715,6 @@ int sdrpp_main(int argc, char* argv[]) {
 
     if (serverMode) { return server::main(); }
 
-
     core::configManager.acquire();
     std::string resDir = core::configManager.conf["resourcesDirectory"];
     sdrppResourcesDirectory = strdup(resDir.c_str());
@@ -724,6 +762,7 @@ int sdrpp_main(int argc, char* argv[]) {
     backend::renderLoop();
 
     gui::mainWindow.end();
+
     // On android, none of this shutdown should happen due to the way the UI works
 #ifndef __ANDROID__
     // Shut down all modules
@@ -741,7 +780,23 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.save();
 #endif
 
+#ifdef BUILD_TESTS
+    if (core::args["test"].type == CLI_ARG_TYPE_STRING && !core::args["test"].s().empty()) {
+        std::string testName = core::args["test"].s();
+        if (sdrpp::test::failed) {
+            flog::error("TEST FAILED");
+            return 1;
+        } else {
+            flog::info("TEST OK");
+            return 0;
+        }
+
+    }
+#else
     flog::info("Exiting successfully");
+#endif
+
+
     return 0;
 }
 

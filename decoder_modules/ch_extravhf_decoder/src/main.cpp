@@ -122,12 +122,11 @@ public:
             moduleDeleteListener.ctx = this;
             core::moduleManager.onInstanceCreated.bindHandler(&moduleCreatedListener);
             core::moduleManager.onInstanceDelete.bindHandler(&moduleDeleteListener);
-            for(auto x: core::moduleManager.instances) {
-                Instance *pInstance = x.second.instance;
-                auto radio = (RadioModuleInterface *)pInstance->getInterface("RadioModuleInterface");
-                if (radio) {
-                    injectIntoRadio(radio);
-                }
+            int ix = 0;
+            auto radios = core::moduleManager.getAllInterfaces<RadioModuleInterface>("RadioModuleInterface");
+            for (auto &r: radios) {
+                injectIntoRadio(r);
+                ix++;
             }
         }
     }

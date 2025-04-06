@@ -10,18 +10,6 @@ if(CMAKE_INSTALL_PREFIX MATCHES "^/usr")       # default prefix
 else()
     # keep the prefix as user wants
 endif()
-#
-## Configure toolchain for android
-#if (ANDROID)
-#    set(CMAKE_SHARED_LINKER_FLAGS
-#        "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate"
-#    )
-#    set(CMAKE_C_STANDARD 11)
-#    set(CMAKE_CXX_STANDARD 14)
-#    set(CMAKE_CXX14_EXTENSION_COMPILE_OPTION "-std=c++17")
-#    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -s")
-#    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
-#endif (ANDROID)
 
 # Backends
 option(OPT_BACKEND_GLFW "Use the GLFW backend" ON)
@@ -150,6 +138,12 @@ endif (ANDROID)
 
 # Core of SDR++
 add_subdirectory("core")
+
+# Tests are added conditionally
+if(BUILD_TESTS)
+    enable_testing()
+    include(CTest)
+endif()
 
 # Source modules
 if (OPT_BUILD_AIRSPY_SOURCE)
@@ -466,7 +460,7 @@ if (MSVC)
         foreach(DLL IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
             set(REDIST_DLLS_STR COMMAND xcopy /F \"${DLL}\" \"$<TARGET_FILE_DIR:sdrpp>\" /Y ${REDIST_DLLS_STR})
         endforeach()
-        
+
         # Create target
         add_custom_target(do_always_msvc ALL ${REDIST_DLLS_STR})
     endif ()
@@ -514,3 +508,8 @@ configure_file(${CMAKE_SOURCE_DIR}/cmake_uninstall.cmake ${CMAKE_CURRENT_BINARY_
 add_custom_target(uninstall ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 
 # Create headers target
+
+# Test options
+option(BUILD_TESTS "Build test suite" OFF)
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+

@@ -4,6 +4,8 @@
 #include <gui/widgets/waterfall.h>
 #include <config.h>
 #include <utils/event.h>
+#include <gui/style.h>
+
 
 enum DeemphasisMode {
     DEEMP_MODE_22US,

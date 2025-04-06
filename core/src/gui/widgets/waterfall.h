@@ -374,7 +374,7 @@ namespace ImGui {
 
         ImVec2 lastMousePos;
 
-        const int rawFFTIndex(double frequency) const;
+        int rawFFTIndex(double frequency) const;
         void testAlloc(const std::string& where);
     };
 

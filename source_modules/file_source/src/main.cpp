@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include "utils/wstr.h"
 #include "server.h"
+#include "file_source.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -32,7 +33,7 @@ SDRPP_MOD_INFO{
 
 ConfigManager config;
 
-class FileSourceModule : public ModuleManager::Instance {
+class FileSourceModule : public ModuleManager::Instance, public FileSourceInterface {
 public:
     FileSourceModule(std::string name) : fileSelect("", { "Wav IQ Files (*.wav)", "*.wav", "All Files", "*" }) {
         this->name = name;
@@ -138,7 +139,9 @@ public:
         return enabled;
     }
 
+#ifndef BUILD_TESTS
 private:
+#endif
     static void menuSelected(void* ctx) {
         FileSourceModule* _this = (FileSourceModule*)ctx;
         core::setInputSampleRate(_this->sampleRate);
@@ -255,6 +258,14 @@ private:
             ImGui::Checkbox("Float32 Mode##_file_source", &_this->float32Mode);
         }
     }
+
+    void *getInterface(const char *name) override {
+        if (!strcmp(name,"FileSourceInterface")) {
+            return (FileSourceInterface*)this;
+        }
+        return nullptr;
+    }
+
 
     void openPath(const std::string &path) {
         try {

@@ -5,6 +5,7 @@
 #include <gui/gui.h>
 #include <core.h>
 #include <ctm.h>
+#include "signal_path/signal_path.h"
 
 IQFrontEnd::~IQFrontEnd() {
     if (!_init) { return; }
@@ -33,11 +34,14 @@ void IQFrontEnd::init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool b
     decim.init(NULL, _decimRatio);
     dcBlock.init(NULL, genDCBlockRate(effectiveSr));
     conjugate.init(NULL);
+    detectorPreprocessor.init(NULL);
+    detectorPreprocessor.setSampleRate(effectiveSr);
 
     preproc.init(&inBuf.out);
     preproc.addBlock(&decim, _decimRatio > 1);
     preproc.addBlock(&dcBlock, dcBlocking);
     preproc.addBlock(&conjugate, false); // TODO: Replace by parameter
+    preproc.addBlock(&detectorPreprocessor, false);
 
     split.init(preproc.out);
 
@@ -95,6 +99,7 @@ void IQFrontEnd::setSampleRate(double sampleRate) {
     effectiveSr = _sampleRate / _decimRatio;
     onEffectiveSampleRateChange.emit(effectiveSr);
     dcBlock.setRate(genDCBlockRate(effectiveSr));
+    detectorPreprocessor.setSampleRate(effectiveSr);
     for (auto& [name, vfo] : vfos) {
         vfo->setInSamplerate(effectiveSr);
     }

@@ -6,6 +6,37 @@
 ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
     Module_t mod;
 
+#ifdef BUILD_TESTS
+    // Check if we're using a whitelist and if this module is in it
+    if (useWhitelist) {
+        // Extract the filename from the path
+        std::string filename;
+        size_t lastSlash = path.find_last_of("/\\");
+        if (lastSlash != std::string::npos) {
+            filename = path.substr(lastSlash + 1);
+        } else {
+            filename = path;
+        }
+
+        // Check if this plugin is in the whitelist
+        bool allowed = false;
+        for (const auto& plugin : pluginWhitelist) {
+            // Check for exact match or match with extension
+            if (filename == plugin ||
+                filename == plugin + SDRPP_MOD_EXTENTSION) {
+                allowed = true;
+                break;
+            }
+        }
+
+        if (!allowed) {
+            flog::info("Skipping module {0} (not in whitelist)", path);
+            mod.handle = NULL;
+            return mod;
+        }
+    }
+#endif
+
     // On android, the path has to be relative, don't make it absolute
 #ifndef __ANDROID__
     if (!std::filesystem::exists(path)) {

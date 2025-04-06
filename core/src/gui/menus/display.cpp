@@ -19,6 +19,10 @@ namespace displaymenu {
     bool fullWaterfallUpdate = true;
     bool showBattery = true;
     bool showClock = true;
+    bool detectSignals = false;
+
+    // Handler for center frequency changes
+    EventHandler<double> centerFreqChangedHandler;
     std::string currentBatteryLevel = "?";
     int colorMapId = 0;
     std::vector<std::string> colorMapNames;
@@ -135,6 +139,17 @@ namespace displaymenu {
         if (core::configManager.conf.contains("showClock")) {
             showClock = core::configManager.conf["showClock"];
         }
+        if (core::configManager.conf.contains("detectSignals")) {
+            detectSignals = core::configManager.conf["detectSignals"];
+            sigpath::iqFrontEnd.togglePreprocessor(&sigpath::iqFrontEnd.detectorPreprocessor, detectSignals);
+        }
+
+        // Connect to center frequency change event
+        sigpath::sourceManager.onTuneChanged.bindHandler(&centerFreqChangedHandler);
+        centerFreqChangedHandler.ctx = NULL;
+        centerFreqChangedHandler.handler = [](double freq, void* ctx) {
+            sigpath::iqFrontEnd.detectorPreprocessor.setCenterFrequency(freq);
+        };
 
         fftSizeId = 4;
         int fftSize = core::configManager.conf["fftSize"];
@@ -269,6 +284,13 @@ namespace displaymenu {
             gui::waterfall.setFullWaterfallUpdate(fullWaterfallUpdate);
             core::configManager.acquire();
             core::configManager.conf["showClock"] = showClock;
+            core::configManager.release(true);
+        }
+
+        if (ImGui::Checkbox("Detect Signals##_sdrpp", &detectSignals)) {
+            sigpath::iqFrontEnd.togglePreprocessor(&sigpath::iqFrontEnd.detectorPreprocessor, detectSignals);
+            core::configManager.acquire();
+            core::configManager.conf["detectSignals"] = detectSignals;
             core::configManager.release(true);
         }
 

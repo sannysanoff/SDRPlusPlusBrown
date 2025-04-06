@@ -9,6 +9,7 @@
 #include "../dsp/sink/handler_sink.h"
 #include "../dsp/processor.h"
 #include "../dsp/math/conjugate.h"
+#include "../dsp/detector/signal_detector.h"
 #include <fftw3.h>
 #include "utils/event.h"
 #include "utils/arrays.h"
@@ -72,6 +73,8 @@ public:
 
     int secondsAdjustment = 0;  // adjust for ft8 decode when local time mismatches
 
+    // Signal detector preprocessor
+    dsp::detector::SignalDetector detectorPreprocessor;
 
 protected:
     std::atomic<long long> _currentStreamTime = 0; // unix time millis. 0 means realtime, otherwise simulated time.

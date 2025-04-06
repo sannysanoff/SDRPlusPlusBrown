@@ -14,6 +14,11 @@
 #include <gui/gui.h>
 #include <gui/menus/display.h>
 #include <utils/usleep.h>
+#include <dlfcn.h>
+
+#ifdef BUILD_TESTS
+#include "../../tests/test_utils.h"
+#endif
 
 
 namespace backend {
@@ -106,7 +111,7 @@ namespace backend {
     #if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
             glfwWindowHintString(GLFW_WAYLAND_APP_ID, "sdrpp");
     #endif
-            
+
             // Create window with graphics context
             monitor = glfwGetPrimaryMonitor();
             window = glfwCreateWindow(winWidth, winHeight, "SDR++Brown v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
@@ -245,15 +250,26 @@ namespace backend {
         ImGui_ImplGlfw_CursorPosCallback(window, x, y);
     }
 
+    // External test function declaration
+    extern "C" void test_increment_counter();
+
     int renderLoop() {
         // Main loop
         while (!glfwWindowShouldClose(window)) {
+#ifdef BUILD_TESTS
+            // Check if we should exit for testing purposes
+            if (sdrpp::test::renderLoopHook.shouldExitRenderLoop()) {
+                break;
+            }
+            // Increment the render loop counter for testing
+            sdrpp::test::renderLoopHook.insideRenderLoop();
 
+#endif
 
             glfwPollEvents();
 
             beginFrame();
-            
+
 
             if (_maximized != maximized) {
                 _maximized = maximized;
