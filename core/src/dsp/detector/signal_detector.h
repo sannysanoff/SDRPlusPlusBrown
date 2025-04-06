@@ -24,8 +24,8 @@ namespace dsp::detector {
 
         std::vector<complex_t> buffer;
         float* fftWindowBuf = nullptr;
-        fftwf_complex *fftInBuf = nullptr, *fftOutBuf = nullptr;
-        fftwf_plan fftPlan = nullptr;
+        dsp::arrays::ComplexArray fftInArray;
+        dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
         void updateFFTSize();
         void generateWindow();

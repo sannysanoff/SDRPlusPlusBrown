@@ -13,19 +13,11 @@ namespace dsp::detector {
 
         if (fftWindowBuf) {
             delete[] fftWindowBuf;
+            fftWindowBuf = nullptr;
         }
 
-        if (fftPlan) {
-            fftwf_destroy_plan(fftPlan);
-        }
-
-        if (fftInBuf) {
-            fftwf_free(fftInBuf);
-        }
-
-        if (fftOutBuf) {
-            fftwf_free(fftOutBuf);
-        }
+        fftInArray.reset();
+        fftPlan.reset();
     }
 
     void SignalDetector::init(stream<complex_t>* in) {
@@ -79,34 +71,20 @@ namespace dsp::detector {
         buffer.resize(fftSize);
         bufferPos = 0;
 
-        // Clean up old FFT resources
+        // Clean up old window buffer
         if (fftWindowBuf) {
             delete[] fftWindowBuf;
             fftWindowBuf = nullptr;
         }
 
-        if (fftPlan) {
-            fftwf_destroy_plan(fftPlan);
-            fftPlan = nullptr;
-        }
-
-        if (fftInBuf) {
-            fftwf_free(fftInBuf);
-            fftInBuf = nullptr;
-        }
-
-        if (fftOutBuf) {
-            fftwf_free(fftOutBuf);
-            fftOutBuf = nullptr;
-        }
-
-        // Allocate new FFT resources
+        // Allocate window buffer
         fftWindowBuf = new float[fftSize];
-        fftInBuf = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * fftSize);
-        fftOutBuf = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * fftSize);
 
-        // Create FFT plan
-        fftPlan = fftwf_plan_dft_1d(fftSize, fftInBuf, fftOutBuf, FFTW_FORWARD, FFTW_ESTIMATE);
+        // Allocate new input array
+        fftInArray = std::make_shared<std::vector<complex_t>>(fftSize);
+
+        // Create FFT plan (forward transform)
+        fftPlan = dsp::arrays::allocateFFTWPlan(false, fftSize);
 
         // Generate window function
         generateWindow();
@@ -147,13 +125,14 @@ namespace dsp::detector {
             // When buffer is full, perform FFT
             if (bufferPos >= fftSize) {
                 // Apply window function
+                auto& inVec = *fftInArray;
                 for (int j = 0; j < fftSize; j++) {
-                    fftInBuf[j][0] = buffer[j].re * fftWindowBuf[j];
-                    fftInBuf[j][1] = buffer[j].im * fftWindowBuf[j];
+                    inVec[j].re = buffer[j].re * fftWindowBuf[j];
+                    inVec[j].im = buffer[j].im * fftWindowBuf[j];
                 }
 
                 // Execute FFT
-                fftwf_execute(fftPlan);
+                dsp::arrays::npfftfft(fftInArray, fftPlan);
 
                 // FFT result is discarded for now as per requirements
                 // In the future, signal detection logic would be implemented here
