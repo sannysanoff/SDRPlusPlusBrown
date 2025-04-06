@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from matplotlib.widgets import Slider
 
 DIM_FILE = "/tmp/array.dim"
 BIN_FILE = "/tmp/array.bin"
@@ -24,33 +25,37 @@ def read_data():
     return data, width, height
 
 fig, ax = plt.subplots()
-lines = []
+plt.subplots_adjust(bottom=0.25)
 
-# Initialize empty lines (max 20 rows default)
-for _ in range(20):
-    line, = ax.plot([], [], lw=1)
-    lines.append(line)
-
+# Initial dummy data
+init_data = np.zeros((20, 1024), dtype=np.float32)
+im = ax.imshow(init_data, aspect='auto', origin='lower', interpolation='nearest', cmap='viridis')
 ax.set_xlabel("Frequency bin")
-ax.set_ylabel("Magnitude")
-ax.set_title("FFT Magnitude Series")
+ax.set_ylabel("Time (rows)")
+ax.set_title("FFT Heatmap")
+
+# Slider axes
+axcolor = 'lightgoldenrodyellow'
+ax_gain = plt.axes([0.15, 0.1, 0.65, 0.03], facecolor=axcolor)
+ax_offset = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor=axcolor)
+
+# Sliders
+s_gain = Slider(ax_gain, 'Gain', 0.1, 10.0, valinit=1.0)
+s_offset = Slider(ax_offset, 'Offset', -100.0, 100.0, valinit=0.0)
 
 def update(frame):
     data, width, height = read_data()
     if data is None:
-        return lines
+        return [im]
 
-    # Update or hide lines
-    for idx, line in enumerate(lines):
-        if idx < height:
-            line.set_data(np.arange(width), data[idx])
-            line.set_visible(True)
-        else:
-            line.set_visible(False)
+    # Apply brightness/contrast
+    gain = s_gain.val
+    offset = s_offset.val
+    adj_data = data * gain + offset
 
-    ax.relim()
-    ax.autoscale_view()
-    return lines
+    im.set_data(adj_data)
+    ax.set_title(f"FFT Heatmap ({width} bins x {height} rows)")
+    return [im]
 
 ani = animation.FuncAnimation(fig, update, interval=500, blit=True)
 plt.show()
