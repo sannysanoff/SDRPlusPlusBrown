@@ -48,21 +48,21 @@ def update(frame):
     if data is None:
         return [im]
 
-    # Apply brightness/contrast
+    # Take logarithm of raw data to compress dynamic range
+    log_data = np.log10(np.maximum(data, 1e-20))  # avoid log(0)
+
+    # Apply brightness/contrast on log data
     gain = s_gain.val
     offset = s_offset.val
-    adj_data = data * gain + offset
+    adj_data = log_data * gain + offset
 
-    # Take logarithm to compress dynamic range
-    log_data = np.log10(np.maximum(adj_data, 1e-12))  # avoid log(0)
-
-    # Normalize log data to 0..1
-    dmin = np.min(log_data)
-    dmax = np.max(log_data)
+    # Normalize adjusted log data to 0..1
+    dmin = np.min(adj_data)
+    dmax = np.max(adj_data)
     if dmax > dmin:
-        norm_data = (log_data - dmin) / (dmax - dmin)
+        norm_data = (adj_data - dmin) / (dmax - dmin)
     else:
-        norm_data = np.zeros_like(log_data)
+        norm_data = np.zeros_like(adj_data)
 
     # Print histogram with 20 buckets
     hist, bin_edges = np.histogram(norm_data, bins=20, range=(0.0, 1.0))
