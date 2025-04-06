@@ -53,7 +53,20 @@ def update(frame):
     offset = s_offset.val
     adj_data = data * gain + offset
 
-    im.set_data(adj_data)
+    # Normalize to 0..1
+    dmin = np.min(adj_data)
+    dmax = np.max(adj_data)
+    if dmax > dmin:
+        norm_data = (adj_data - dmin) / (dmax - dmin)
+    else:
+        norm_data = np.zeros_like(adj_data)
+
+    # Print histogram with 20 buckets
+    hist, bin_edges = np.histogram(norm_data, bins=20, range=(0.0, 1.0))
+    print("Histogram (normalized data, 20 bins):")
+    print(hist)
+
+    im.set_data(norm_data)
     ax.set_title(f"FFT Heatmap ({width} bins x {height} rows)")
     return [im]
 
