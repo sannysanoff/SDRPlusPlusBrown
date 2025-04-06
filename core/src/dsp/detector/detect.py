@@ -29,7 +29,8 @@ plt.subplots_adjust(bottom=0.25)
 
 # Initial dummy data
 init_data = np.zeros((20, 1024), dtype=np.float32)
-im = ax.imshow(init_data, aspect='auto', origin='lower', interpolation='nearest', cmap='viridis')
+im = ax.imshow(init_data, aspect='auto', origin='lower', interpolation='nearest', cmap='inferno')
+plt.colorbar(im, ax=ax)
 ax.set_xlabel("Frequency bin")
 ax.set_ylabel("Time (rows)")
 ax.set_title("FFT Heatmap")
@@ -64,6 +65,10 @@ def update(frame):
         norm_data = np.clip(norm_data, 0, 1)
     else:
         norm_data = np.zeros_like(adj_data)
+
+    # Apply gamma correction to enhance contrast
+    gamma = 0.5  # adjust as needed
+    norm_data = np.power(norm_data, gamma)
 
     # Print histogram with 20 buckets
     hist, bin_edges = np.histogram(norm_data, bins=20, range=(0.0, 1.0))
