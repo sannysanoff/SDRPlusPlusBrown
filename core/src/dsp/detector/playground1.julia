@@ -302,8 +302,10 @@ try
 
         # --- Plot #2 (Extracted Signal Spectrogram) ---
         println("\n--- Plotting Extracted Signal (Spectrogram) ---") # Plot #2
-        plt2 = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
-        display_plot_with_imgcat(plt2)
+        # Capture the full tuple returned by the function
+        plt2_tuple = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
+        # Pass only the plot object (the first element) to display
+        display_plot_with_imgcat(plt2_tuple[1])
 
         # --- Plot #3 (Extracted Signal Spectrogram with Brightest Point) ---
         println("\n--- Plotting Extracted Signal Spectrogram with Brightest Point (Plot #3) ---")
