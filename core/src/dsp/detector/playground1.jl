@@ -257,7 +257,7 @@ else
             current_label = ""
             if !first_track_plotted1
                 current_label = "Detected Base Freqs"
-                first_track_plotted1 = true
+                global first_track_plotted1 = true
             end
             scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=:blue, label=current_label,
                      markerstrokewidth=0)
