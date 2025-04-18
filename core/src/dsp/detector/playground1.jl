@@ -132,11 +132,14 @@ function try2()
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
     display_plot_with_imgcat(plt_slice)
 
-    # reuse title and ticks formatting from above in heatmap. AI!
     plt = heatmap(fsh, times, mag_db';
         xlabel="Freq [Hz]", ylabel="Time [s]",
-        title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
+        # title="Extracted Spectrogram", # Title removed from top
+        xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
+        xticks = 50, # Suggest more ticks on the x-axis
+        bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
         size=(3600, 700))
+    annotate!(plt, [(0.5, -0.1, Plots.text("Extracted Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     #── store original axes limits AND ticks so the scatter won’t drop them
     orig_xlim, orig_ylim = xlims(plt), ylims(plt)
