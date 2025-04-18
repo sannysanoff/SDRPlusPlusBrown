@@ -201,9 +201,6 @@ for j in hw2+1:ntime-hw2
     f0_final[j] = isempty(seg) ? NaN : median(seg)
 end
 
-    f0_final[j] = isempty(seg) ? NaN : median(seg) # f0_final still holds median pitch
-end
-
 # --- Plot the LOCATION (f1) of each detected harmonic set ---
 all_times = Float64[]
 all_f1s = Float64[]
