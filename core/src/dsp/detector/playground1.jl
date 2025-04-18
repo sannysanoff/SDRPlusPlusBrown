@@ -219,13 +219,25 @@ else
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
+    # enforce minimum USB‐step spacing (~500 Hz) so carriers don’t cluster
+    const MIN_USB_STEP = 500.0
+    stable_f_base_candidates = sort(stable_f_base_candidates)
+    filtered = Float64[]
+    for fb in stable_f_base_candidates
+        if all(abs(fb - g) >= MIN_USB_STEP for g in filtered)
+            push!(filtered, fb)
+        end
+    end
+    stable_f_base_candidates = filtered
+    println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
+
     # require each track to persist in at least X% of slices
     const MIN_TRACK_PERSISTENCE = 0.70       # 70% of the slices
     n_slices_with_candidates = count(!isempty, f0_cands)
     min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
 
     # 4. Track and Plot Closest Candidates
-    const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
+    const TOL_FB = 100.0 # tighter tolerance for USB carrier stability
 
     for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
         track_times = Float64[]
