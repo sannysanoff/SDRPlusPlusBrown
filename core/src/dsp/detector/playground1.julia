@@ -7,6 +7,7 @@ using Printf
 using Base.Filesystem  # for rm, ispath
 using Images
 using Statistics  # for median
+using StatsBase   # for histogram
 
 # --- Path Setup ---
 current_script_dir = @__DIR__
@@ -121,7 +122,7 @@ const MIN_H = 2 # Require fewer harmonics
 const MIN_F0 = 80.0
 const MAX_F0 = 400.0
 const TOL = 25.0
-const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate
+# const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
 
 nfreq, ntime = size(mag_lin)
