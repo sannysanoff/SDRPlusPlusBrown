@@ -26,6 +26,37 @@ print(f"Test File Path: {file_path}")
 print(f"Does file exist? {file_path.exists()}")
 
 
+def display_plot_with_imgcat(plt_obj):
+    """Saves the current matplotlib plot to a temporary file and displays it using imgcat."""
+    tmpfile_path = None # Initialize path variable
+    try:
+        # Save plot to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+            plt_obj.savefig(tmpfile.name, format='png', bbox_inches='tight')
+            tmpfile_path = tmpfile.name
+
+        # Display using imgcat
+        subprocess.run(['imgcat', tmpfile_path], check=True)
+
+    except FileNotFoundError:
+        print("Error: 'imgcat' command not found. Please install imgcat (e.g., via iTerm2 shell integration).")
+        # Fallback or alternative display method could be added here if needed
+        # For now, just print the error. If you want the old behavior as fallback:
+        # plt_obj.show()
+    except subprocess.CalledProcessError as e:
+        print(f"Error running imgcat: {e}")
+    except Exception as e:
+        print(f"An error occurred during plot display: {e}")
+    finally:
+        # Clean up the temporary file
+        if tmpfile_path and os.path.exists(tmpfile_path):
+            try:
+                os.remove(tmpfile_path)
+            except OSError as e:
+                print(f"Error removing temporary file {tmpfile_path}: {e}")
+        plt_obj.close() # Close the plot figure to free memory
+
+
 def plot_complex_signal(signal, sr):
     """Plots the spectrogram of a complex signal.
 
@@ -58,23 +89,7 @@ def plot_complex_signal(signal, sr):
     plt.ylabel('Frequency [Hz]')
     plt.xlabel('Time [sec]')
     plt.tight_layout()
-    # Save plot to a temporary file
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
-        plt.savefig(tmpfile.name, format='png', bbox_inches='tight')
-        tmpfile_path = tmpfile.name
-
-    # Display using imgcat
-    try:
-        subprocess.run(['imgcat', tmpfile_path], check=True)
-    except FileNotFoundError:
-        print("Error: 'imgcat' command not found. Please install imgcat (e.g., via iTerm2 shell integration).")
-    except subprocess.CalledProcessError as e:
-        print(f"Error running imgcat: {e}")
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(tmpfile_path):
-            os.remove(tmpfile_path)
-        plt.close() # Close the plot figure to free memory
+    display_plot_with_imgcat(plt)
 
 y, sr = librosa.load(file_path, sr=None, mono=False)
 
