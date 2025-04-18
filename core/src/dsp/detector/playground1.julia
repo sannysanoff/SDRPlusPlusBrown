@@ -43,10 +43,10 @@ function display_plot_with_imgcat(plot_obj) # Accept a plot object
         # Set cleanup=false as we manage cleanup manually in finally
         base_tmp_path = tempname(; cleanup=false)
         # Append the desired suffix
-        tmpfile_path = base_tmp_path * ".png"
+        tmpfile_path = base_tmp_path * ".jpg" # Changed suffix
 
         # Save plot to the generated temporary file path
-        # savefig will create the file if it doesn't exist
+        # savefig will create the file if it doesn't exist and infer format from extension
         Plots.savefig(plot_obj, tmpfile_path)
 
             # Get and print image dimensions

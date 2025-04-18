@@ -32,8 +32,8 @@ def display_plot_with_imgcat(plt_obj):
     tmpfile_path = None # Initialize path variable
     try:
         # Save plot to a temporary file
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
-            plt_obj.savefig(tmpfile.name, format='png', bbox_inches='tight')
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmpfile: # Changed suffix
+            plt_obj.savefig(tmpfile.name, format='jpg', bbox_inches='tight') # Changed format
             tmpfile_path = tmpfile.name
 
             # Get and print image dimensions
