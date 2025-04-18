@@ -119,16 +119,16 @@ plt = heatmap(fsh, times, mag_db';
     size=(3600, 500))
 
 # --- Unified f₀ Detection ---
-const MIN_H = 3           # ↑ require at least 3 harmonics instead of 2
+const MIN_H = 2           # ↓ allow at least 2 harmonics again
 const MIN_F0 = 80.0
 const MAX_F0 = 400.0
-const TOL = 15.0          # ↓ tighter ±15 Hz matching
-const MIN_PEAK_RATIO = 2.0  # peaks must exceed 2× the noise floor
+const TOL = 20.0          # ↑ loosen matching tolerance to ±20 Hz
+const MIN_PEAK_RATIO = 1.2  # ↓ reduce to 1.2× noise floor
 # const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
 const THR_MULT       = 2.0    # lower threshold ⇒ more peaks
 const F0_MAX_MULT    = 5.0    # allow higher f₀ energies before rejecting
-const MIN_BIN_COUNT  = 5      # ↑ require ≥5 votes per bin
+const MIN_BIN_COUNT  = 4      # ↓ require only ≥4 votes per bin
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
@@ -218,12 +218,15 @@ end
       keep = Tuple{Float64,Float64,Int}[]
       for (est,f1,cnt) in tmp[j]
         f_base = f1 - est
-        # look in slice j-1 or j+1 for a matching base within ±TOL
-        ok = any(
-          j2 in (j-1,j+1) && 1≤j2≤ntime &&
-          any(abs((f2-e2)-f_base) ≤ TOL for (e2,f2,_) in tmp[j2])
-          for j2 in (j-1,j+1)
-        )
+        # look in slices j-2 … j+2 (excluding j) for a matching base within ±TOL
+        ok = false
+        for k in max(1, j-2):min(ntime, j+2)
+            if k == j; continue; end
+            if any(abs((f2-e2)-f_base) ≤ TOL for (e2,f2,_) in tmp[k])
+                ok = true
+                break
+            end
+        end
         if ok
           push!(keep, (est,f1,cnt))
         end
@@ -282,7 +285,7 @@ else
     println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
     # require each track to persist in at least X% of slices
-    const MIN_TRACK_PERSISTENCE = 0.50       # ↑ require 50% persistence
+    const MIN_TRACK_PERSISTENCE = 0.40       # ↓ allow tracks in 40% of slices
     n_slices_with_candidates = count(!isempty, f0_cands)
     min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
 
