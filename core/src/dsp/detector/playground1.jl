@@ -121,6 +121,9 @@ function try2()
 
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
+    # Determine the full frequency range for consistent x-axes
+    fmin_global, fmax_global = minimum(fsh), maximum(fsh)
+
     first_slice_db = mag_db[:, 10]
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
@@ -128,7 +131,8 @@ function try2()
                      # title="First Time Slice of Spectrogram", # Title removed from top
                      xticks = 50, # Suggest more ticks on the x-axis
                      bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
-                     label="", size=(3600, 400))
+                     label="", size=(3600, 400),
+                     xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     # Detect peaks in the slice using custom logic
