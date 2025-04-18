@@ -112,10 +112,11 @@ sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
 mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
 # Plot spectrogram
-plt = heatmap(times, fsh, mag_db;
-    xlabel="Time [s]", ylabel="Freq [Hz]",
+# Plot rotated 90° CW: x=Freq, y=Time; transpose Z and boost vertical size
+plt = heatmap(fsh, times, mag_db';
+    xlabel="Freq [Hz]", ylabel="Time [s]",
     title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
-    size=(500,1800))
+    size=(500,3600))
 
 # --- Unified f₀ Detection ---
 const MIN_H = 2 # Require fewer harmonics
@@ -288,7 +289,7 @@ else
                 current_label = "Detected Base Freqs"
                 global first_track_plotted1 = true
             end
-            scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=:blue, label=current_label,
+            scatter!(plt, track_f_bases, track_times; markersize=2, markercolor=:blue, label=current_label,
                      markerstrokewidth=0)
         end
     end
