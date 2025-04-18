@@ -189,8 +189,8 @@ function extract_signal(signal::Vector{Complex{Float64}}, fs::Real, min_freq::Re
 end
 
 # --- Spectrogram Plotting Function ---
-function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
-    """Plots the spectrogram of a complex signal."""
+function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_suffix::String="")
+    """Plots the spectrogram of a complex signal and returns the plot object."""
 
     # STFT parameters (matching Python script)
     nperseg = 1000
@@ -221,6 +221,10 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
     # Add small epsilon to avoid log10(0)
     magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10)
 
+    # Determine plot title
+    base_title = "Centered Spectrogram"
+    full_title = isempty(title_suffix) ? base_title : "$base_title: $title_suffix"
+
     # Plot using Plots.jl (heatmap is suitable here)
     # Note: heatmap uses the provided coordinates as centers by default.
     println("Heatmap..")
@@ -230,14 +234,16 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
         magnitude_db,
         xlabel="Time [sec]",
         ylabel="Frequency [Hz]",
-        title="Centered Spectrogram of Complex Signal (Julia/Plots.jl)",
+        title=full_title, # Use combined title
         colorbar_title="Magnitude (dB)",
-        cmap=:viridis, # Use a symbol for the colormap
-        size=(1000, 600) # Adjust size as needed (pixels)
+        cmap=:viridis,
+        size=(1000, 600)
     )
 
-    # Display using imgcat function
-    display_plot_with_imgcat(plt) # Pass the plot object 'plt'
+    # --- REMOVE THE DISPLAY CALL FROM HERE ---
+    # display_plot_with_imgcat(plt) # REMOVE THIS LINE
+
+    return plt # Return the plot object
 end
 
 # --- Main Script Logic ---
@@ -284,22 +290,52 @@ try
 
     # Check if the extraction returned a valid signal
     if !isempty(extracted_sig)
-        println("\n--- Plotting Extracted Signal (Spectrogram) ---") # Adjusted print statement
-        # Plot the extracted and resampled signal as a spectrogram
-        # The frequency axis should now be centered around 0 Hz (since we shifted)
-        # and range approximately +/- extracted_fs/2
-        # Note: Since min_freq was 0, the center freq shifted was 25kHz.
-        # The new plot will show frequencies relative to that shifted center.
-        plot_complex_signal(extracted_sig, extracted_fs) # Plot #2
+        # --- Plot #1 (Original Signal - if uncommented earlier) ---
+        # If you uncommented the original plot earlier, modify it like this:
+        # println("\n--- Plotting Original Signal (Spectrogram) ---") # Plot #1
+        # plt1 = plot_complex_signal(complex_signal, sr; title_suffix="Original Signal")
+        # display_plot_with_imgcat(plt1)
 
-            # --- Plot Spectrogram of Extracted Signal Again (as the third plot) ---
-            println("\n--- Plotting Extracted Signal Spectrogram Again (Plot #3) ---")
-            # Call the existing spectrogram function again for the third plot
-            plot_complex_signal(extracted_sig, extracted_fs)
-            # --- End Third Plot ---
+        # --- Plot #2 (Extracted Signal Spectrogram) ---
+        println("\n--- Plotting Extracted Signal (Spectrogram) ---") # Plot #2
+        plt2 = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
+        display_plot_with_imgcat(plt2)
+
+        # --- Plot #3 (Extracted Signal Spectrogram with Random Points) ---
+        println("\n--- Plotting Extracted Signal Spectrogram with Overlay (Plot #3) ---")
+        # Generate the spectrogram plot object first
+        plt3 = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal with Overlay")
+
+        # Generate random points
+        num_points = 50
+        # Time range based on the *duration* of the extracted signal
+        max_time_extracted = length(extracted_sig) / extracted_fs
+        rand_times = rand(num_points) .* max_time_extracted
+        # Frequency range (-25kHz to +25kHz, matching the extracted signal's plot range)
+        min_freq_overlay = -extracted_fs / 2.0 # Use extracted_fs for range
+        max_freq_overlay = extracted_fs / 2.0  # Use extracted_fs for range
+        rand_freqs = rand(num_points) .* (max_freq_overlay - min_freq_overlay) .+ min_freq_overlay
+
+        # Add points to the plot using scatter!
+        # Use bright color, specific marker, and label
+        Plots.scatter!(
+            plt3, # Add to the existing plot object
+            rand_times,
+            rand_freqs,
+            markersize=5,
+            markercolor=:red,
+            markerstrokecolor=:white, # Add outline for visibility
+            markerstrokewidth=0.5,
+            label="Random Points" # Add label for legend
+        )
+        println("Added $num_points random points overlay.")
+
+        # Display the combined plot
+        display_plot_with_imgcat(plt3)
+        # --- End Third Plot ---
 
     else # This 'else' corresponds to 'if !isempty(extracted_sig)'
-        println("Skipping plots of extracted signal as it was empty.") # Adjusted message
+        println("Skipping plots of extracted signal as it was empty.")
     end
 
 catch e
