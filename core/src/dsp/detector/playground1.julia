@@ -105,7 +105,7 @@ I ./= maximum(abs.(I)); Q ./= maximum(abs.(Q))
 sig = I .+ im .* Q
 
 # Extract sub-band 0–50kHz, 0–3s
-sub, subfs = extract_signal(sig, sr, 0.0, 5e4, 0.0, 3.0)
+sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
 
 # Compute spectrogram
 mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
