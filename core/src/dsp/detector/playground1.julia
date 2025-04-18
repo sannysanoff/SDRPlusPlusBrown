@@ -364,7 +364,7 @@ try
                  noise_floor = 1e-12 # Assign a very small floor if slice is essentially silent
             else
                  # Calculate percentile on the non-zero magnitudes
-                 noise_floor = percentile(non_zero_magnitudes, NOISE_FLOOR_PERCENTILE)
+                 noise_floor = Statistics.percentile(non_zero_magnitudes, NOISE_FLOOR_PERCENTILE)
             end
             threshold = noise_floor * PEAK_THRESHOLD_FACTOR
 
