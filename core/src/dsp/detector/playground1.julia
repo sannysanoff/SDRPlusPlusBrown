@@ -43,7 +43,7 @@ function display_plot_with_imgcat(plot_obj) # Accept a plot object
         # Set cleanup=false as we manage cleanup manually in finally
         base_tmp_path = tempname(; cleanup=false)
         # Append the desired suffix
-        tmpfile_path = base_tmp_path * ".jpg" # Changed suffix
+        tmpfile_path = base_tmp_path * ".png" # Reverted suffix back to png
 
         # Save plot to the generated temporary file path
         # savefig will create the file if it doesn't exist and infer format from extension
