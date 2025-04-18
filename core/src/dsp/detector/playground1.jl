@@ -377,12 +377,13 @@ function try2()
     push!(track_times, 0.5)
     push!(track_f_bases, 0.0)
     scatter!(plt, track_f_bases, track_times;
-             markersize=2, markercolor=:blue, label="Hi", markerstrokewidth=0,
-             # restore the heatmap's freq–time limits
-             xlims = orig_xlim,  ylims = orig_ylim,
-             # restore the original ticks (so freq labels reappear, incl. 0 Hz)
-             xticks = (orig_xticks, orig_xtick_labels),
-             yticks = (orig_yticks, orig_ytick_labels))
+             markersize=2, markercolor=:blue, label="Hi", markerstrokewidth=0)
+
+    # Restore the heatmap's freq–time limits and ticks AFTER scatter!
+    xlims!(plt, orig_xlim)
+    ylims!(plt, orig_ylim)
+    xticks!(plt, orig_xticks, orig_xtick_labels)
+    yticks!(plt, orig_yticks, orig_ytick_labels)
 
     # Display
     display_plot_with_imgcat(plt)
