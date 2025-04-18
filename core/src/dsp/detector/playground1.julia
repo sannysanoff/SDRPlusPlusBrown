@@ -219,7 +219,10 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_s
 
     # Compute magnitude in dB
     # Add small epsilon to avoid log10(0)
-    magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10)
+    magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10) # Use this for plotting
+
+    # Compute raw magnitude (needed for finding the maximum)
+    magnitude_raw = abs.(S_shifted) # Use this for finding max
 
     # Determine plot title
     base_title = "Centered Spectrogram"
@@ -243,7 +246,8 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_s
     # --- REMOVE THE DISPLAY CALL FROM HERE ---
     # display_plot_with_imgcat(plt) # REMOVE THIS LINE
 
-    return plt # Return the plot object
+    # Return the plot object AND the data needed to find the max point
+    return plt, magnitude_raw, times, freqs_shifted # MODIFIED RETURN VALUE
 end
 
 # --- Main Script Logic ---
@@ -301,34 +305,44 @@ try
         plt2 = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
         display_plot_with_imgcat(plt2)
 
-        # --- Plot #3 (Extracted Signal Spectrogram with Random Points) ---
-        println("\n--- Plotting Extracted Signal Spectrogram with Overlay (Plot #3) ---")
-        # Generate the spectrogram plot object first
-        plt3 = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal with Overlay")
-
-        # Generate random points
-        num_points = 50
-        # Time range based on the *duration* of the extracted signal
-        max_time_extracted = length(extracted_sig) / extracted_fs
-        rand_times = rand(num_points) .* max_time_extracted
-        # Frequency range (-25kHz to +25kHz, matching the extracted signal's plot range)
-        min_freq_overlay = -extracted_fs / 2.0 # Use extracted_fs for range
-        max_freq_overlay = extracted_fs / 2.0  # Use extracted_fs for range
-        rand_freqs = rand(num_points) .* (max_freq_overlay - min_freq_overlay) .+ min_freq_overlay
-
-        # Add points to the plot using scatter!
-        # Use bright color, specific marker, and label
-        Plots.scatter!(
-            plt3, # Add to the existing plot object
-            rand_times,
-            rand_freqs,
-            markersize=5,
-            markercolor=:red,
-            markerstrokecolor=:white, # Add outline for visibility
-            markerstrokewidth=0.5,
-            label="Random Points" # Add label for legend
+        # --- Plot #3 (Extracted Signal Spectrogram with Brightest Point) ---
+        println("\n--- Plotting Extracted Signal Spectrogram with Brightest Point (Plot #3) ---")
+        # Generate the spectrogram plot object and get data for finding max
+        plt3, magnitude3_raw, times3, freqs_shifted3 = plot_complex_signal(
+            extracted_sig,
+            extracted_fs;
+            title_suffix="Extracted Signal with Brightest Point"
         )
-        println("Added $num_points random points overlay.")
+
+        # Find the index of the maximum value in the raw magnitude data
+        # argmax returns a CartesianIndex (freq_idx, time_idx)
+        if !isempty(magnitude3_raw)
+            max_idx = argmax(magnitude3_raw)
+            freq_idx = max_idx[1] # Index along the frequency dimension
+            time_idx = max_idx[2] # Index along the time dimension
+
+            # Get the corresponding time and frequency values
+            brightest_time = times3[time_idx]
+            brightest_freq = freqs_shifted3[freq_idx]
+            brightest_magnitude_db = 20 * log10(magnitude3_raw[max_idx] + 1e-10) # Calculate dB value for printing
+
+            @printf("Brightest point found at: Time=%.3f s, Freq=%.1f Hz (Magnitude=%.2f dB)\n",
+                    brightest_time, brightest_freq, brightest_magnitude_db)
+
+            # Add the brightest point to the plot using scatter!
+            Plots.scatter!(
+                plt3, # Add to the existing plot object
+                [brightest_time], # Needs to be a vector/iterable
+                [brightest_freq], # Needs to be a vector/iterable
+                markersize=8,
+                markercolor=:red,
+                markerstrokecolor=:white,
+                markerstrokewidth=1,
+                label="Brightest Point" # Add label for legend
+            )
+        else
+            @warn "Magnitude data for plot 3 is empty, cannot find brightest point."
+        end
 
         # Display the combined plot
         display_plot_with_imgcat(plt3)
