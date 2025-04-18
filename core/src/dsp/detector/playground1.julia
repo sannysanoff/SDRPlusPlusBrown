@@ -35,7 +35,7 @@ file_path = joinpath(sdrpproot, "tests", "test_files", "baseband_14174296Hz_11-0
 
 # --- Imgcat Display Function ---
 function display_plot_with_imgcat(plot_obj) # Accept a plot object
-    println("Imgcat..")
+    println("Saving png..")
     """Saves the current Plots.jl plot to a temporary file and displays it using imgcat."""
     tmpfile_path = "" # Initialize path variable
     try
