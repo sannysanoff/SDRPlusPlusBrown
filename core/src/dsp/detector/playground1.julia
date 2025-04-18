@@ -188,6 +188,35 @@ function extract_signal(signal::Vector{Complex{Float64}}, fs::Real, min_freq::Re
     return resampled_signal, new_fs
 end
 
+# --- FFT Plotting Function ---
+function plot_fft_data(freqs::AbstractVector, magnitude_db::AbstractVector, title_str::String; fs::Union{Real, Nothing}=nothing)
+    """Plots FFT magnitude data (dB vs. Frequency)."""
+    println("Plotting FFT data: $title_str")
+
+    plt = Plots.plot(
+        freqs,
+        magnitude_db,
+        xlabel="Frequency [Hz]",
+        ylabel="Magnitude [dB]",
+        title=title_str,
+        label="FFT Magnitude", # Add label for legend
+        legend=:topright,      # Position legend
+        size=(1000, 600)       # Adjust size as needed
+    )
+
+    # Optionally add Nyquist frequency lines if fs is provided
+    if !isnothing(fs)
+        nyquist = fs / 2.0
+        Plots.vline!(plt, [-nyquist, nyquist], label="Nyquist Freq", linestyle=:dash, color=:red)
+        # Adjust xlim slightly beyond Nyquist if needed for visibility
+        current_xlims = Plots.xlims(plt)
+        Plots.xlims!(plt, min(current_xlims[1], -nyquist*1.05), max(current_xlims[2], nyquist*1.05))
+    end
+
+    # Display using imgcat function
+    display_plot_with_imgcat(plt) # Pass the plot object 'plt'
+end
+
 # --- Spectrogram Plotting Function ---
 function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
     """Plots the spectrogram of a complex signal."""
@@ -291,9 +320,38 @@ try
         # Note: Since min_freq was 0, the center freq shifted was 25kHz.
         # The new plot will show frequencies relative to that shifted center.
         plot_complex_signal(extracted_sig, extracted_fs)
-    else
-        println("Skipping plot of extracted signal as it was empty.")
-    end
+
+            # --- Calculate and Plot FFT of Extracted Signal ---
+            println("\n--- Calculating FFT of Extracted Signal ---")
+            N_extracted = length(extracted_sig)
+            if N_extracted > 0
+                # Compute FFT
+                fft_extracted = FFTW.fft(extracted_sig)
+                # Calculate corresponding frequencies for the *new* sample rate
+                freqs_extracted_unsh = FFTW.fftfreq(N_extracted, extracted_fs)
+
+                # Shift FFT and frequencies
+                fft_extracted_shifted = FFTW.fftshift(fft_extracted)
+                freqs_extracted_shifted = FFTW.fftshift(freqs_extracted_unsh)
+
+                # Convert magnitude to dB
+                magnitude_extracted_db = 20 .* log10.(abs.(fft_extracted_shifted) .+ 1e-10) # Add epsilon
+
+                # Plot the FFT magnitude spectrum using the new function
+                plot_fft_data(
+                    freqs_extracted_shifted,
+                    magnitude_extracted_db,
+                    "FFT Magnitude of Extracted Signal (0-50kHz band, shifted & resampled)";
+                    fs=extracted_fs # Pass the *new* sample rate
+                )
+            else
+                println("Extracted signal is empty, skipping FFT plot.")
+            end
+            # --- End FFT of Extracted Signal ---
+
+        else # This 'else' corresponds to 'if !isempty(extracted_sig)'
+            println("Skipping plot of extracted signal as it was empty.")
+        end
 
 catch e
     println("\n--- Error during signal extraction or plotting ---")
