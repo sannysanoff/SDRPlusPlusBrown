@@ -125,6 +125,7 @@ function try2()
     # make ticks in non-scientific format or integer. AI!
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
+                     xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
                      # title="First Time Slice of Spectrogram", # Title removed from top
                      xticks = 50, # Suggest more ticks on the x-axis
                      bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
