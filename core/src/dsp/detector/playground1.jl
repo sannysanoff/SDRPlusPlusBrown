@@ -121,11 +121,12 @@ function try2()
 
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-    # Plot the first time slice
-    first_slice_db = mag_db[:, 1]
+    
+    # on this chart, place title below the chart. AI!
+    first_slice_db = mag_db[:, 20]
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
-                     title="First Time Slice of Spectrogram", label="", size=(800, 400))
+                     title="First Time Slice of Spectrogram", label="", size=(3600, 400))
     display_plot_with_imgcat(plt_slice)
 
     plt = heatmap(fsh, times, mag_db';
