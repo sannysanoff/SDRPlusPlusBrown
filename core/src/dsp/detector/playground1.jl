@@ -133,7 +133,7 @@ function try2()
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     # Detect peaks in the slice
-    peak_indices, peak_vals = findmaxima(first_slice_db)
+    peak_indices, peak_vals = StatsBase.findmaxima(first_slice_db) # Explicitly qualify findmaxima
     peak_freqs = fsh[peak_indices]
     # Add peaks to the plot
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
