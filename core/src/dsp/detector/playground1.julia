@@ -126,6 +126,9 @@ nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
 f0_cands = Vector{Vector{Float64}}(undef, ntime)
 for j in 1:ntime
+    # --- DEBUG: Print info for first 5 time slices ---
+    debug_print = j <= 5
+    if debug_print; println("\n--- Time Slice j=$j (t=$(@sprintf("%.3f", times[j]))s) ---"); end
     slice = mag_lin[:, j]
     # noise floor & threshold
     nz = slice[slice .> 1e-12]
