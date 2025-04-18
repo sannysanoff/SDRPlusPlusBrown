@@ -122,6 +122,7 @@ function try2()
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
     first_slice_db = mag_db[:, 20]
+    # make ticks in non-scientific format or integer. AI!
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
                      # title="First Time Slice of Spectrogram", # Title removed from top
