@@ -130,9 +130,14 @@ for j in 1:ntime
     # noise floor & threshold
     nz = slice[slice .> 1e-12]
     nf = isempty(nz) ? 1e-12 : median(nz)
-    thr = nf * 2.0
+    thr = nf * 5.0 # Keep increased threshold multiplier from previous step
     # find peak indices
     peaks = [k for k in 2:nfreq-1 if slice[k]>thr && slice[k]>slice[k-1] && slice[k]>slice[k+1]]
+    if debug_print
+        peak_freqs = fsh[peaks]
+        println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
+        println(join([@sprintf("%.1f", f) for f in peak_freqs], ", "))
+    end
     cands = Float64[]
     # check harmonic sets
     for p1 in 1:length(peaks)
@@ -150,6 +155,9 @@ for j in 1:ntime
                 # find any peak near tgt
                 found = any(abs.(fsh[peaks] .- tgt) .<= TOL)
                 if found; cnt += 1 else break end
+            end
+            if debug_print && cnt >= MIN_H
+                 println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
             end
             if cnt >= MIN_H
                 push!(cands, est)
