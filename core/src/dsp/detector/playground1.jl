@@ -244,12 +244,12 @@ else
     println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
     # require each track to persist in at least X% of slices
-    const MIN_TRACK_PERSISTENCE = 0.70       # 70% of the slices
+    const MIN_TRACK_PERSISTENCE = 0.30       # 30% of active slices
     n_slices_with_candidates = count(!isempty, f0_cands)
     min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
 
     # 4. Track and Plot Closest Candidates
-    const TOL_FB = 100.0 # tighter tolerance for USB carrier stability
+    const TOL_FB = 200.0  # allow ±200 Hz drift in track matching
 
     for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
         track_times = Float64[]
