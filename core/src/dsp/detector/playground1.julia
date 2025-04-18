@@ -192,10 +192,24 @@ end
 function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_suffix::String="")
     """Plots the spectrogram of a complex signal and returns the plot object."""
 
-    # STFT parameters (matching Python script)
-    nperseg = 5000 # MODIFIED: Increased window size for 10 Hz resolution at 50kHz fs
-    noverlap = 2500 # MODIFIED: Adjusted overlap (nperseg / 2)
-    win = DSP.hanning(nperseg) # Window size automatically uses the new nperseg
+    # --- Dynamically Calculate STFT Parameters ---
+    # Target resolution relationship: nperseg = fs / 10
+    # Ensure nperseg is at least some minimum value, e.g., 16, for meaningful FFT
+    # Also handle fs <= 0, though unlikely here.
+    if fs <= 0
+        error("Sample rate (fs) must be positive.")
+    end
+    nperseg_float = fs / 10.0
+    nperseg = max(16, floor(Int, nperseg_float)) # Use floor and ensure minimum size
+
+    # Set overlap typically to half the window size
+    noverlap = nperseg ÷ 2 # Integer division
+
+    @printf("Dynamic STFT Params: fs=%.1f Hz, Calculated nperseg=%d, noverlap=%d (Target Resolution: %.2f Hz)\n",
+            fs, nperseg, noverlap, fs/nperseg)
+
+    win = DSP.hanning(nperseg) # Window size automatically uses the calculated nperseg
+    # --- End Dynamic Calculation ---
 
     # Compute STFT
     # DSP.stft returns the complex STFT matrix directly for complex input
