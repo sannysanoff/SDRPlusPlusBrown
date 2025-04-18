@@ -124,9 +124,9 @@ const MAX_F0 = 400.0
 const TOL = 25.0
 # const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
-const THR_MULT       = 3.0    # was hard‑coded 5.0
-const F0_MAX_MULT    = 2.0    # max allowed energy (relative to noise floor) at the hypothesized f₀
-const MIN_BIN_COUNT  = 5      # was hard‑coded 7
+const THR_MULT       = 2.0    # lower threshold ⇒ more peaks
+const F0_MAX_MULT    = 5.0    # allow higher f₀ energies before rejecting
+const MIN_BIN_COUNT  = 3      # accept histogram bins with ≥3 votes
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
@@ -221,7 +221,7 @@ if isempty(f_bases_all)
 else
     # Determine histogram range and bins
     min_fb, max_fb = minimum(f_bases_all), maximum(f_bases_all)
-    bin_width = 50.0 # Hz bin width for histogram
+    bin_width = 25.0   # finer bins to split nearby carriers
     bins = range(floor(min_fb / bin_width) * bin_width, ceil(max_fb / bin_width) * bin_width, step=bin_width)
     hist = StatsBase.fit(Histogram, f_bases_all, bins)
 
