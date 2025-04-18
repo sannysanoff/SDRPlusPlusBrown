@@ -321,7 +321,34 @@ try
         # The new plot will show frequencies relative to that shifted center.
         plot_complex_signal(extracted_sig, extracted_fs)
 
-        # --- FFT calculation and plot_fft_data call removed as requested ---
+            # --- Calculate and Plot FFT of Extracted Signal ---
+            println("\n--- Calculating and Plotting FFT of Extracted Signal ---")
+            N_extracted = length(extracted_sig)
+            if N_extracted > 0
+                # Compute FFT
+                fft_extracted = FFTW.fft(extracted_sig)
+                # Calculate corresponding frequencies for the *new* sample rate
+                freqs_extracted_unsh = FFTW.fftfreq(N_extracted, extracted_fs)
+
+                # Shift FFT and frequencies
+                fft_extracted_shifted = FFTW.fftshift(fft_extracted)
+                freqs_extracted_shifted = FFTW.fftshift(freqs_extracted_unsh)
+
+                # Convert magnitude to dB (add epsilon for numerical stability)
+                magnitude_extracted_db = 20 .* log10.(abs.(fft_extracted_shifted) .+ 1e-10)
+
+                # Plot the FFT magnitude spectrum using the plot_fft_data function
+                # This will be the THIRD plot generated.
+                plot_fft_data(
+                    freqs_extracted_shifted,
+                    magnitude_extracted_db,
+                    "FFT Magnitude of Extracted Signal (0-50kHz band, shifted & resampled)";
+                    fs=extracted_fs # Pass the *new* sample rate for Nyquist lines
+                )
+            else
+                println("Extracted signal is empty, skipping FFT plot.")
+            end
+            # --- End FFT of Extracted Signal ---
 
     else # This 'else' corresponds to 'if !isempty(extracted_sig)'
         println("Skipping plot of extracted signal as it was empty.")
