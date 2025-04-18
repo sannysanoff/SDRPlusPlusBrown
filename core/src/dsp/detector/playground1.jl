@@ -152,12 +152,12 @@ function try2()
 
     display_plot_with_imgcat(plt_slice)
 
-    # don't include legend at all. AI!
     plt = heatmap(fsh, times, mag_db';
         xlabel="Freq [Hz]", ylabel="Time [s]",
         # title="Extracted Spectrogram", # Title removed from top
         xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
         xticks = 50, # Suggest more ticks on the x-axis
++        legend = false, # Disable the legend
         bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
         size=(3600, 700))
     annotate!(plt, [(0.5, -0.1, Plots.text("Extracted Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
