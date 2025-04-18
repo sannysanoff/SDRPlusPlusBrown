@@ -313,45 +313,19 @@ try
 
     # Check if the extraction returned a valid signal
     if !isempty(extracted_sig)
-        println("\n--- Plotting Extracted Signal ---")
-        # Plot the extracted and resampled signal
+        println("\n--- Plotting Extracted Signal (Spectrogram) ---") # Adjusted print statement
+        # Plot the extracted and resampled signal as a spectrogram
         # The frequency axis should now be centered around 0 Hz (since we shifted)
         # and range approximately +/- extracted_fs/2
         # Note: Since min_freq was 0, the center freq shifted was 25kHz.
         # The new plot will show frequencies relative to that shifted center.
         plot_complex_signal(extracted_sig, extracted_fs)
 
-            # --- Calculate and Plot FFT of Extracted Signal ---
-            println("\n--- Calculating FFT of Extracted Signal ---")
-            N_extracted = length(extracted_sig)
-            if N_extracted > 0
-                # Compute FFT
-                fft_extracted = FFTW.fft(extracted_sig)
-                # Calculate corresponding frequencies for the *new* sample rate
-                freqs_extracted_unsh = FFTW.fftfreq(N_extracted, extracted_fs)
+        # --- FFT calculation and plot_fft_data call removed as requested ---
 
-                # Shift FFT and frequencies
-                fft_extracted_shifted = FFTW.fftshift(fft_extracted)
-                freqs_extracted_shifted = FFTW.fftshift(freqs_extracted_unsh)
-
-                # Convert magnitude to dB
-                magnitude_extracted_db = 20 .* log10.(abs.(fft_extracted_shifted) .+ 1e-10) # Add epsilon
-
-                # Plot the FFT magnitude spectrum using the new function
-                plot_fft_data(
-                    freqs_extracted_shifted,
-                    magnitude_extracted_db,
-                    "FFT Magnitude of Extracted Signal (0-50kHz band, shifted & resampled)";
-                    fs=extracted_fs # Pass the *new* sample rate
-                )
-            else
-                println("Extracted signal is empty, skipping FFT plot.")
-            end
-            # --- End FFT of Extracted Signal ---
-
-        else # This 'else' corresponds to 'if !isempty(extracted_sig)'
-            println("Skipping plot of extracted signal as it was empty.")
-        end
+    else # This 'else' corresponds to 'if !isempty(extracted_sig)'
+        println("Skipping plot of extracted signal as it was empty.")
+    end
 
 catch e
     println("\n--- Error during signal extraction or plotting ---")
