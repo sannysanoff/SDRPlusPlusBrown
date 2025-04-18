@@ -176,12 +176,18 @@ for j in 1:ntime
                  println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
             end
             if cnt >= MIN_H
-                # reject any f₀ that sits in a high‑energy region
+                # reject any f₀ whose average energy over [f0‑est … f0+est/0.25] is too high
                 f0 = f1 - est
-                _, idx0 = findmin(abs.(fsh .- f0))
-                if slice[idx0] > nf * F0_MAX_MULT
+                lo = f0 - est
+                hi = f0 + est/0.25
+                # collect bin‐indices in that band
+                band_idxs = findall((fsh .>= lo) .& (fsh .<= hi))
+                # if empty, fall back to nearest bin
+                base_idx = argmin(abs.(fsh .- f0))
+                e_avg = isempty(band_idxs) ? slice[base_idx] : mean(slice[band_idxs])
+                if e_avg > nf * F0_MAX_MULT
                     if debug_print
-                        println("    skip f0=$(round(f0, digits=1))Hz: energy=$(round(slice[idx0], sigdigits=3))")
+                        println("    skip f0=$(round(f0, digits=1))Hz: avg_energy=$(round(e_avg, sigdigits=3)) over [$(round(lo)),$(round(hi))]")
                     end
                 else
                     push!(cands, (est, f1, cnt))
