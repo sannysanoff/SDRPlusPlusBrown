@@ -1,6 +1,6 @@
 using WAV
 using DSP
-using StatsBase # Add this if not already implicitly available via Plots/Statistics
+import StatsBase # Change from 'using' to 'import'
 using FFTW
 using Plots
 gr()  # Use GR backend
