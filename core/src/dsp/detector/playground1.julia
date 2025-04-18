@@ -193,9 +193,9 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_s
     """Plots the spectrogram of a complex signal and returns the plot object."""
 
     # STFT parameters (matching Python script)
-    nperseg = 1000
-    noverlap = 512 # This is the number of samples to overlap
-    win = DSP.hanning(nperseg)
+    nperseg = 5000 # MODIFIED: Increased window size for 10 Hz resolution at 50kHz fs
+    noverlap = 2500 # MODIFIED: Adjusted overlap (nperseg / 2)
+    win = DSP.hanning(nperseg) # Window size automatically uses the new nperseg
 
     # Compute STFT
     # DSP.stft returns the complex STFT matrix directly for complex input
