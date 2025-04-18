@@ -126,6 +126,7 @@ function try2()
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
                      # title="First Time Slice of Spectrogram", # Title removed from top
+                     xticks = 15, # Suggest more ticks on the x-axis
                      bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
                      label="", size=(3600, 400))
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
