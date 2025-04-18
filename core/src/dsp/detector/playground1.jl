@@ -121,7 +121,7 @@ function try2()
 
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-    # Plot the 20th time slice (example)
+    # increase x tick density in plot. AI!
     first_slice_db = mag_db[:, 20]
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
