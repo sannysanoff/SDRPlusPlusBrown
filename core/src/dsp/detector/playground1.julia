@@ -216,8 +216,7 @@ else
 
     # 4. Track and Plot Closest Candidates
     const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
-    colors = [:red, :blue, :green, :purple, :orange, :cyan] # Colors for different tracks
-    plot_labels_added = Set{String}()
+    first_track_plotted = false # Flag to handle label for the combined series
 
     for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
         track_times = Float64[]
@@ -250,11 +249,14 @@ else
 
         # Plot this track
         if !isempty(track_times)
-            label_str = @sprintf("Track %.1f Hz", f_base_stable)
-            scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=colors[mod1(track_idx, length(colors))],
-                     label=(label_str ∉ plot_labels_added ? label_str : ""), # Avoid duplicate labels
+            # Use blue for all points, add label only for the first track plotted
+            current_label = ""
+            if !first_track_plotted
+                current_label = "Detected Base Freqs"
+                first_track_plotted = true
+            end
+            scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=:blue, label=current_label,
                      markerstrokewidth=0)
-            push!(plot_labels_added, label_str)
         end
     end
 end
