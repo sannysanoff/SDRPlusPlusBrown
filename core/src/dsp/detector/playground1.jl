@@ -201,7 +201,8 @@ using StatsBase # Add this if not already implicitly available via Plots/Statist
 f_bases_all = [d.f_base for d in all_detections]
 
 # Flag to track if any series has been plotted yet (for legend purposes)
-first_track_plotted = false
+first_track_plotted1 = false
+println("Assigned: ", first_track_plotted1)
 
 if isempty(f_bases_all)
     println("No base frequency candidates found.")
@@ -254,9 +255,9 @@ else
         if !isempty(track_times)
             # Use blue for all points, add label only for the first track plotted
             current_label = ""
-            if !first_track_plotted
+            if !first_track_plotted1
                 current_label = "Detected Base Freqs"
-                first_track_plotted = true
+                first_track_plotted1 = true
             end
             scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=:blue, label=current_label,
                      markerstrokewidth=0)
