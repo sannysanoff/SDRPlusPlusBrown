@@ -1,5 +1,6 @@
 using WAV
 using DSP
+using StatsBase # Add this if not already implicitly available via Plots/Statistics
 using FFTW
 using Plots
 gr()  # Use GR backend
@@ -16,6 +17,14 @@ file_path = joinpath(sdrpproot, "tests", "test_files",  "baseband_14174296Hz_11-
 @printf("Project Root: %s\n", abspath(sdrpproot))
 @printf("Test File Path: %s\n", abspath(file_path))
 @printf("Does file exist? %s\n", isfile(file_path))
+
+# --- Main Processing ---
+println("Loading WAV...")
+y, sr = wavread(file_path)
+yf = Float64.(y)
+I, Q = yf[:,1], yf[:,2]
+I ./= maximum(abs.(I)); Q ./= maximum(abs.(Q))
+sig = I .+ im .* Q
 
 # --- Imgcat Display Function ---
 function display_plot_with_imgcat(plot_obj)
@@ -97,244 +106,274 @@ function compute_spectrogram(sig::Vector{ComplexF64}, fs::Float64)
     return mag_db, mag_lin, times, fsh
 end
 
-# --- Main Processing ---
-println("Loading WAV...")
-y, sr = wavread(file_path)
-yf = Float64.(y)
-I, Q = yf[:,1], yf[:,2]
-I ./= maximum(abs.(I)); Q ./= maximum(abs.(Q))
-sig = I .+ im .* Q
 
-# Extract sub-band 0–50kHz, 0–3s
-sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
+function try1()
 
-# Compute spectrogram
-mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-# Plot spectrogram
-# Plot rotated 90° CW: x=Freq, y=Time; transpose Z and boost vertical size
-plt = heatmap(fsh, times, mag_db';
-    xlabel="Freq [Hz]", ylabel="Time [s]",
-    title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
-    size=(3600, 500))
 
-# --- Unified f₀ Detection ---
-const MIN_H = 2           # ↓ allow at least 2 harmonics again
-const MIN_F0 = 80.0
-const MAX_F0 = 400.0
-const TOL = 20.0          # ↑ loosen matching tolerance to ±20 Hz
-const MIN_PEAK_RATIO = 1.2  # ↓ reduce to 1.2× noise floor
-# const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
-const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
-const THR_MULT       = 2.0    # lower threshold ⇒ more peaks
-const F0_MAX_MULT    = 5.0    # allow higher f₀ energies before rejecting
-const MIN_BIN_COUNT  = 4      # ↓ require only ≥4 votes per bin
+    # Extract sub-band 0–50kHz, 0–3s
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
 
-nfreq, ntime = size(mag_lin)
-# First, collect all fundamental estimates per time slice
-f0_cands = Vector{Vector{Tuple{Float64, Float64, Int}}}(undef, ntime) # Store (est, f1, cnt) pairs
-for j in 1:ntime
-    # --- DEBUG: Print info for first 5 time slices ---
-    debug_print = j <= 5
-    if debug_print; println("\n--- Time Slice j=$j (t=$(@sprintf("%.3f", times[j]))s) ---"); end
-    slice = mag_lin[:, j]
-    # noise floor & threshold
-    nz = slice[slice .> 1e-12]
-    nf = isempty(nz) ? 1e-12 : median(nz)
-    thr = nf * THR_MULT
-    # find peak indices
-    peaks = [ k for k in 2:nfreq-1
-              if slice[k] > thr * MIN_PEAK_RATIO &&
-                 slice[k] > slice[k-1] && slice[k] > slice[k+1] ]
-    if debug_print
-        peak_freqs = fsh[peaks]
-        println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
-        println(join([@sprintf("%.1f", f) for f in peak_freqs], ", "))
-    end
-    cands = Tuple{Float64, Float64, Int}[] # Initialize for tuples (est, f1, cnt)
-    # check harmonic sets
-    for p1 in 1:length(peaks)
-        k1 = peaks[p1]; f1 = fsh[k1]
-        for p2 in p1+1:length(peaks)
-            k2 = peaks[p2]; f2 = fsh[k2]
-            est = f2 - f1
-            if est<MIN_F0 || est>MAX_F0
-                continue
-            end
-            # --- Filter peaks to consider only those near f1 for harmonic check ---
-            relevant_peak_indices = [p for p in 1:length(peaks) if abs(fsh[peaks[p]] - f1) <= MAX_HARMONIC_SPREAD]
-            # Note: We only need the *frequencies* of relevant peaks for the check below.
-            relevant_peak_freqs = fsh[relevant_peak_indices]
-            # --- End Filter ---
+    # Compute spectrogram
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-            # count supporting harmonics
-            cnt = 2
-            for n in 2:6    # only check up to the 6th harmonic
-                tgt = f1 + n*est
-                # find any peak near tgt, using only relevant peaks
-                found = any(abs.(relevant_peak_freqs .- tgt) .<= TOL) # Search only among relevant peaks' frequencies
-                if found; cnt += 1 else break end
-            end
-            if debug_print && cnt >= MIN_H
-                # suppress the noisy f1≈13240, f2≈13330 combination
-                if !(round(f1, digits=1)==13240.0 && round(f2, digits=1)==13330.0)
-                    println("  Harmonic set found: f1=$(round(f1,digits=1)), f2=$(round(f2,digits=1)) => est=$(round(est,digits=1)), num_harmonics=$cnt")
-                end
-            end
-            if cnt >= MIN_H
-                # reject any f₀ whose average energy over [f0‑est … f0+est/0.25] is too high
-                f0 = f1 - est
-                lo = f0 - est
-                hi = f0 + est/0.25
-                # collect bin‐indices in that band
-                band_idxs = findall((fsh .>= lo) .& (fsh .<= hi))
-                # if empty, fall back to nearest bin
-                base_idx = argmin(abs.(fsh .- f0))
-                e_avg = isempty(band_idxs) ? slice[base_idx] : mean(slice[band_idxs])
-                if e_avg > nf * F0_MAX_MULT
-                    if debug_print
-                        println("    skip f0=$(round(f0, digits=1))Hz: avg_energy=$(round(e_avg, sigdigits=3)) over [$(round(lo)),$(round(hi))]")
-                    end
-                else
-                    push!(cands, (est, f1, cnt))
-                    if debug_print
-                        f0 = f1 - est
-                        println("    accept f0=$(round(f0,digits=1))Hz (est=$(round(est,digits=1)), cnt=$cnt)")
-                    end
-                end
-            end
-        end
-    end
-    if debug_print # Update debug print format
-        println("  Final candidates for slice j=$j: $(isempty(cands) ? "None" : join([@sprintf("(%.1f, %.1f)", c[1], c[2]) for c in cands], ", "))")
-    end
-    f0_cands[j] = cands
-end
+    # Plot spectrogram
+    # Plot rotated 90° CW: x=Freq, y=Time; transpose Z and boost vertical size
+    plt = heatmap(fsh, times, mag_db';
+        xlabel="Freq [Hz]", ylabel="Time [s]",
+        title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
+        size=(3600, 700))
 
-  # --- Temporal smoothing: drop candidates that don't appear in prev/next slice ---
-  begin
-    tmp = deepcopy(f0_cands)
+    # --- Unified f₀ Detection ---
+    MIN_H = 2           # ↓ allow at least 2 harmonics again
+    MIN_F0 = 80.0
+    MAX_F0 = 400.0
+    TOL = 20.0          # ↑ loosen matching tolerance to ±20 Hz
+    MIN_PEAK_RATIO = 1.2  # ↓ reduce to 1.2× noise floor
+    MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
+    THR_MULT       = 2.0    # lower threshold ⇒ more peaks
+    F0_MAX_MULT    = 5.0    # allow higher f₀ energies before rejecting
+    MIN_BIN_COUNT  = 4      # ↓ require only ≥4 votes per bin
+
+    first_track_plotted1 = false;
+
+    nfreq, ntime = size(mag_lin)
+    # First, collect all fundamental estimates per time slice
+    f0_cands = Vector{Vector{Tuple{Float64, Float64, Int}}}(undef, ntime) # Store (est, f1, cnt) pairs
     for j in 1:ntime
-      keep = Tuple{Float64,Float64,Int}[]
-      for (est,f1,cnt) in tmp[j]
-        f_base = f1 - est
-        # look in slices j-2 … j+2 (excluding j) for a matching base within ±TOL
-        ok = false
-        for k in max(1, j-2):min(ntime, j+2)
-            if k == j; continue; end
-            if any(abs((f2-e2)-f_base) ≤ TOL for (e2,f2,_) in tmp[k])
-                ok = true
-                break
-            end
+        # --- DEBUG: Print info for first 5 time slices ---
+        debug_print = j <= 5
+        if debug_print; println("\n--- Time Slice j=$j (t=$(@sprintf("%.3f", times[j]))s) ---"); end
+        slice = mag_lin[:, j]
+        # noise floor & threshold
+        nz = slice[slice .> 1e-12]
+        nf = isempty(nz) ? 1e-12 : median(nz)
+        thr = nf * THR_MULT
+        # find peak indices
+        peaks = [ k for k in 2:nfreq-1
+                if slice[k] > thr * MIN_PEAK_RATIO &&
+                    slice[k] > slice[k-1] && slice[k] > slice[k+1] ]
+        if debug_print
+            peak_freqs = fsh[peaks]
+            println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
+            println(join([@sprintf("%.1f", f) for f in peak_freqs], ", "))
         end
-        if ok
-          push!(keep, (est,f1,cnt))
-        end
-      end
-      f0_cands[j] = keep
-    end
-  end
+        cands = Tuple{Float64, Float64, Int}[] # Initialize for tuples (est, f1, cnt)
+        # check harmonic sets
+        for p1 in 1:length(peaks)
+            k1 = peaks[p1]; f1 = fsh[k1]
+            for p2 in p1+1:length(peaks)
+                k2 = peaks[p2]; f2 = fsh[k2]
+                est = f2 - f1
+                if est<MIN_F0 || est>MAX_F0
+                    continue
+                end
+                # --- Filter peaks to consider only those near f1 for harmonic check ---
+                relevant_peak_indices = [p for p in 1:length(peaks) if abs(fsh[peaks[p]] - f1) <= MAX_HARMONIC_SPREAD]
+                # Note: We only need the *frequencies* of relevant peaks for the check below.
+                relevant_peak_freqs = fsh[relevant_peak_indices]
+                # --- End Filter ---
 
-# --- Find Stable Base Frequencies using Histogram ---
-
-# 1. Collect all f_base values with their time and count
-all_detections = []
-for j in 1:ntime
-    for (est, f1, cnt) in f0_cands[j]
-        # Only consider candidates with at least MIN_H harmonics
-        if cnt >= MIN_H
-            f_base = f1 - est
-            push!(all_detections, (time=times[j], f_base=f_base, count=cnt))
-        end
-    end
-end
-
-# 2. Create Histogram
-using StatsBase # Add this if not already implicitly available via Plots/Statistics
-f_bases_all = [d.f_base for d in all_detections]
-
-# Flag to track if any series has been plotted yet (for legend purposes)
-first_track_plotted1 = false
-println("Assigned: ", first_track_plotted1)
-
-if isempty(f_bases_all)
-    println("No base frequency candidates found.")
-else
-    # Determine histogram range and bins
-    min_fb, max_fb = minimum(f_bases_all), maximum(f_bases_all)
-    bin_width = 25.0   # finer bins to split nearby carriers
-    bins = range(floor(min_fb / bin_width) * bin_width, ceil(max_fb / bin_width) * bin_width, step=bin_width)
-    hist = StatsBase.fit(Histogram, f_bases_all, bins)
-
-    # 3. Identify Peaks (simple approach: bins with counts above a threshold)
-    min_bin_count = MIN_BIN_COUNT
-    peak_bin_indices = findall(hist.weights .>= min_bin_count)
-    stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
-    println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
-
-    # enforce minimum USB‐step spacing (~500 Hz) so carriers don’t cluster
-    const MIN_USB_STEP = 500.0
-    stable_f_base_candidates = sort(stable_f_base_candidates)
-    filtered = Float64[]
-    for fb in stable_f_base_candidates
-        if all(abs(fb - g) >= MIN_USB_STEP for g in filtered)
-            push!(filtered, fb)
-        end
-    end
-    stable_f_base_candidates = filtered
-    println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
-
-    # require each track to persist in at least X% of slices
-    const MIN_TRACK_PERSISTENCE = 0.40       # ↓ allow tracks in 40% of slices
-    n_slices_with_candidates = count(!isempty, f0_cands)
-    min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
-
-    # 4. Track and Plot Closest Candidates
-    const TOL_FB = 200.0  # allow ±200 Hz drift in track matching
-
-    for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
-        track_times = Float64[]
-        track_f_bases = Float64[]
-        for j in 1:ntime
-            best_match_fbase = NaN
-            min_diff = TOL_FB
-            best_cnt = -1
-            # Find the best candidate in this slice matching the stable frequency
-            for (est, f1, cnt) in f0_cands[j]
-                 if cnt >= MIN_H # Ensure we only consider valid candidates from the start
-                    f_base_cand = f1 - est
-                    diff = abs(f_base_cand - f_base_stable)
-                    if diff < min_diff # Prioritize closer match
-                        min_diff = diff
-                        best_match_fbase = f_base_cand
-                        best_cnt = cnt
-                    elseif diff == min_diff && cnt > best_cnt # If equally close, prefer higher harmonic count
-                        best_match_fbase = f_base_cand
-                        best_cnt = cnt
+                # count supporting harmonics
+                cnt = 2
+                for n in 2:6    # only check up to the 6th harmonic
+                    tgt = f1 + n*est
+                    # find any peak near tgt, using only relevant peaks
+                    found = any(abs.(relevant_peak_freqs .- tgt) .<= TOL) # Search only among relevant peaks' frequencies
+                    if found; cnt += 1 else break end
+                end
+                if debug_print && cnt >= MIN_H
+                    # suppress the noisy f1≈13240, f2≈13330 combination
+                    if !(round(f1, digits=1)==13240.0 && round(f2, digits=1)==13330.0)
+                        println("  Harmonic set found: f1=$(round(f1,digits=1)), f2=$(round(f2,digits=1)) => est=$(round(est,digits=1)), num_harmonics=$cnt")
+                    end
+                end
+                if cnt >= MIN_H
+                    # reject any f₀ whose average energy over [f0‑est … f0+est/0.25] is too high
+                    f0 = f1 - est
+                    lo = f0 - est
+                    hi = f0 + est/0.25
+                    # collect bin‐indices in that band
+                    band_idxs = findall((fsh .>= lo) .& (fsh .<= hi))
+                    # if empty, fall back to nearest bin
+                    base_idx = argmin(abs.(fsh .- f0))
+                    e_avg = isempty(band_idxs) ? slice[base_idx] : mean(slice[band_idxs])
+                    if e_avg > nf * F0_MAX_MULT
+                        if debug_print
+                            println("    skip f0=$(round(f0, digits=1))Hz: avg_energy=$(round(e_avg, sigdigits=3)) over [$(round(lo)),$(round(hi))]")
+                        end
+                    else
+                        push!(cands, (est, f1, cnt))
+                        if debug_print
+                            f0 = f1 - est
+                            println("    accept f0=$(round(f0,digits=1))Hz (est=$(round(est,digits=1)), cnt=$cnt)")
+                        end
                     end
                 end
             end
-            # If a suitable candidate was found in this slice, add it to the track
-            if !isnan(best_match_fbase)
-                push!(track_times, times[j])
-                push!(track_f_bases, best_match_fbase)
+        end
+        if debug_print # Update debug print format
+            println("  Final candidates for slice j=$j: $(isempty(cands) ? "None" : join([@sprintf("(%.1f, %.1f)", c[1], c[2]) for c in cands], ", "))")
+        end
+        f0_cands[j] = cands
+    end
+
+    # --- Temporal smoothing: drop candidates that don't appear in prev/next slice ---
+    begin
+        tmp = deepcopy(f0_cands)
+        for j in 1:ntime
+        keep = Tuple{Float64,Float64,Int}[]
+        for (est,f1,cnt) in tmp[j]
+            f_base = f1 - est
+            # look in slices j-2 … j+2 (excluding j) for a matching base within ±TOL
+            ok = false
+            for k in max(1, j-2):min(ntime, j+2)
+                if k == j; continue; end
+                if any(abs((f2-e2)-f_base) ≤ TOL for (e2,f2,_) in tmp[k])
+                    ok = true
+                    break
+                end
+            end
+            if ok
+            push!(keep, (est,f1,cnt))
             end
         end
-
-        # Plot this track
-        if length(track_times) >= min_required_slices
-            # Use blue for all points, add label only for the first track plotted
-            current_label = ""
-            if !first_track_plotted1
-                current_label = "Detected Base Freqs"
-                global first_track_plotted1 = true
-            end
-            scatter!(plt, track_f_bases, track_times; markersize=2, markercolor=:blue, label=current_label,
-                     markerstrokewidth=0)
+        f0_cands[j] = keep
         end
     end
+
+    # --- Find Stable Base Frequencies using Histogram ---
+
+    # 1. Collect all f_base values with their time and count
+    all_detections = []
+    for j in 1:ntime
+        for (est, f1, cnt) in f0_cands[j]
+            # Only consider candidates with at least MIN_H harmonics
+            if cnt >= MIN_H
+                f_base = f1 - est
+                push!(all_detections, (time=times[j], f_base=f_base, count=cnt))
+            end
+        end
+    end
+
+    # 2. Create Histogram
+    f_bases_all = [d.f_base for d in all_detections]
+
+    # Flag to track if any series has been plotted yet (for legend purposes)
+    global first_track_plotted1 = false
+    println("Assigned: ", first_track_plotted1)
+
+    if isempty(f_bases_all)
+        println("No base frequency candidates found.")
+    else
+        # Determine histogram range and bins
+        min_fb, max_fb = minimum(f_bases_all), maximum(f_bases_all)
+        bin_width = 25.0   # finer bins to split nearby carriers
+        bins = range(floor(min_fb / bin_width) * bin_width, ceil(max_fb / bin_width) * bin_width, step=bin_width)
+        hist = StatsBase.fit(Histogram, f_bases_all, bins)
+
+        # 3. Identify Peaks (simple approach: bins with counts above a threshold)
+        min_bin_count = MIN_BIN_COUNT
+        peak_bin_indices = findall(hist.weights .>= min_bin_count)
+        stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
+        println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
+
+        # enforce minimum USB‐step spacing (~500 Hz) so carriers don’t cluster
+        MIN_USB_STEP = 500.0
+        stable_f_base_candidates = sort(stable_f_base_candidates)
+        filtered = Float64[]
+        for fb in stable_f_base_candidates
+            if all(abs(fb - g) >= MIN_USB_STEP for g in filtered)
+                push!(filtered, fb)
+            end
+        end
+        stable_f_base_candidates = filtered
+        println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
+
+        # require each track to persist in at least X% of slices
+        MIN_TRACK_PERSISTENCE = 0.40       # ↓ allow tracks in 40% of slices
+        n_slices_with_candidates = count(!isempty, f0_cands)
+        min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
+
+        # 4. Track and Plot Closest Candidates
+        TOL_FB = 200.0  # allow ±200 Hz drift in track matching
+
+        for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
+            track_times = Float64[]
+            track_f_bases = Float64[]
+            for j in 1:ntime
+                best_match_fbase = NaN
+                min_diff = TOL_FB
+                best_cnt = -1
+                # Find the best candidate in this slice matching the stable frequency
+                for (est, f1, cnt) in f0_cands[j]
+                    if cnt >= MIN_H # Ensure we only consider valid candidates from the start
+                        f_base_cand = f1 - est
+                        diff = abs(f_base_cand - f_base_stable)
+                        if diff < min_diff # Prioritize closer match
+                            min_diff = diff
+                            best_match_fbase = f_base_cand
+                            best_cnt = cnt
+                        elseif diff == min_diff && cnt > best_cnt # If equally close, prefer higher harmonic count
+                            best_match_fbase = f_base_cand
+                            best_cnt = cnt
+                        end
+                    end
+                end
+                # If a suitable candidate was found in this slice, add it to the track
+                if !isnan(best_match_fbase)
+                    push!(track_times, times[j])
+                    push!(track_f_bases, best_match_fbase)
+                end
+            end
+
+            # Plot this track
+            
+            if length(track_times) >= min_required_slices
+                # Use blue for all points, add label only for the first track plotted
+                current_label = ""
+                if !first_track_plotted1
+                    current_label = "Detected Base Freqs"
+                    global first_track_plotted1 = true
+                end
+                scatter!(plt, track_f_bases, track_times; markersize=2, markercolor=:blue, label=current_label,
+                        markerstrokewidth=0)
+            end
+        end
+    end
+
+
+    # Display
+    display_plot_with_imgcat(plt)
+    println("Done2.")
 end
 
-# Display
-display_plot_with_imgcat(plt)
-println("Done.")
+
+
+
+function rev1()
+    println("Rev1234")
+end
+
+
+
+function try2()
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
+    plt = heatmap(fsh, times, mag_db';
+        xlabel="Freq [Hz]", ylabel="Time [s]",
+        title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
+        size=(3600, 700))
+
+    track_times = Float64[]
+    track_f_bases = Float64[]
+
+    push!(track_times, 0.5)
+    push!(track_f_bases, 0.0)
+    scatter!(plt, track_f_bases, track_times; markersize=2, markercolor=:blue, label="Hi",
+            markerstrokewidth=0)
+
+    # Display
+    display_plot_with_imgcat(plt)
+    println("Done2.")
+end
