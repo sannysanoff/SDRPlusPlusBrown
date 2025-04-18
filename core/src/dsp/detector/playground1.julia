@@ -125,7 +125,7 @@ const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
-f0_cands = Vector{Vector{Float64}}(undef, ntime)
+f0_cands = Vector{Vector{Tuple{Float64, Float64}}}(undef, ntime) # Store (est, f1) pairs
 for j in 1:ntime
     # --- DEBUG: Print info for first 5 time slices ---
     debug_print = j <= 5
@@ -141,8 +141,8 @@ for j in 1:ntime
         peak_freqs = fsh[peaks]
         println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
         println(join([@sprintf("%.1f", f) for f in peak_freqs], ", "))
-    end
-    cands = Float64[]
+    end # Removed redundant cands = Float64[] initialization here
+    cands = Tuple{Float64, Float64}[] # Initialize for tuples
     # check harmonic sets
     for p1 in 1:length(peaks)
         k1 = peaks[p1]; f1 = fsh[k1]
@@ -170,12 +170,12 @@ for j in 1:ntime
                  println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
             end
             if cnt >= MIN_H
-                push!(cands, est)
+                push!(cands, (est, f1)) # Store the pair
             end
         end
     end
-    if debug_print
-        println("  Final candidates for slice j=$j: $(isempty(cands) ? "None" : join([@sprintf("%.1f", c) for c in cands], ", "))")
+    if debug_print # Update debug print format
+        println("  Final candidates for slice j=$j: $(isempty(cands) ? "None" : join([@sprintf("(%.1f, %.1f)", c[1], c[2]) for c in cands], ", "))")
     end
     f0_cands[j] = cands
 end
@@ -184,10 +184,14 @@ end
 # Stage 1: window=5
 w1, hw1 = 5, 2
 f0_stage1 = fill(NaN, ntime)
+# --- NOTE: Smoothing logic below operates on pitch (est) only. ---
+# --- We will ignore its output (f0_final) for plotting for now. ---
 for j in hw1+1:ntime-hw1
-    pool = vcat(f0_cands[j-hw1:j+hw1]...)
-    f0_stage1[j] = isempty(pool) ? NaN : median(pool)
+    pool_pairs = vcat(f0_cands[j-hw1:j+hw1]...)
+    pool_est = [p[1] for p in pool_pairs] # Extract only 'est' for median calc
+    f0_stage1[j] = isempty(pool_est) ? NaN : median(pool_est)
 end
+
 # Stage 2: window=20
 w2, hw2 = 20, 10
 f0_final = fill(NaN, ntime)
@@ -197,15 +201,21 @@ for j in hw2+1:ntime-hw2
     f0_final[j] = isempty(seg) ? NaN : median(seg)
 end
 
-# Plot detected fundamentals (red) and f₀ estimates (blue)
-# (Optional: show red peaks from first harmonic)
-# scatter!(plt, times, [first(c)!=nothing ? fsh[first([peaks for peaks in 1])] for ???])
-# Instead, plot f₀:
-x_f0 = times
-y_f0 = f0_final
-scatter!(plt, x_f0, y_f0; markersize=4, markercolor=:blue,
-         markerstrokecolor=:white, markerstrokewidth=0.5,
-         label="Estimated f₀")
+    f0_final[j] = isempty(seg) ? NaN : median(seg) # f0_final still holds median pitch
+end
+
+# --- Plot the LOCATION (f1) of each detected harmonic set ---
+all_times = Float64[]
+all_f1s = Float64[]
+for j in 1:ntime
+    if !isempty(f0_cands[j])
+        for (est, f1) in f0_cands[j]
+            push!(all_times, times[j])
+            push!(all_f1s, f1)
+        end
+    end
+end
+scatter!(plt, all_times, all_f1s; markersize=1, markercolor=:red, alpha=0.5, label="Detected f1 locations")
 
 # Display
 display_plot_with_imgcat(plt)
