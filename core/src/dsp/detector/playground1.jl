@@ -131,8 +131,16 @@ function try2()
                      label="", size=(3600, 400))
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
-    # Detect peaks in the slice
-    peak_indices, peak_vals = StatsBase.findmaxima(first_slice_db) # Explicitly qualify findmaxima
+    # Detect peaks in the slice using custom logic
+    MIN_PEAK_RATIO = 1.2 # Threshold factor relative to noise floor
+    nfreq = length(first_slice_db)
+    # Estimate noise floor using median
+    thr = median(first_slice_db)
+    # Find peak indices based on local maxima and threshold
+    peak_indices = [ k for k in 2:nfreq-1
+                     if first_slice_db[k] > thr + 20*log10(MIN_PEAK_RATIO) && # Compare in dB domain
+                        first_slice_db[k] > first_slice_db[k-1] && first_slice_db[k] > first_slice_db[k+1] ]
+    peak_vals = first_slice_db[peak_indices]
     peak_freqs = fsh[peak_indices]
     # Add peaks to the plot
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
