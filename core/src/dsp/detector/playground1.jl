@@ -199,6 +199,10 @@ end
 # 2. Create Histogram
 using StatsBase # Add this if not already implicitly available via Plots/Statistics
 f_bases_all = [d.f_base for d in all_detections]
+
+# Flag to track if any series has been plotted yet (for legend purposes)
+first_track_plotted = false
+
 if isempty(f_bases_all)
     println("No base frequency candidates found.")
 else
@@ -213,9 +217,6 @@ else
     peak_bin_indices = findall(hist.weights .>= min_bin_count)
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
-
-    # Flag to track if any series has been plotted yet (for legend purposes)
-    first_track_plotted = false
 
     # 4. Track and Plot Closest Candidates
     const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
