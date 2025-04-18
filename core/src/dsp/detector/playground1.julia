@@ -16,6 +16,7 @@ gr() # Set the GR backend for Plots.jl
 using Printf
 using Base.Filesystem # For rm, ispath
 using Images
+using Statistics # ADDED for percentile
 
 # --- Path Setup ---
 # Get the directory containing the current script (playground1.julia)
@@ -332,75 +333,155 @@ try
             plot_size=(500, 1800) # MODIFIED SIZE HERE (500x1800)
         )
 
-        # Find the brightest point within each time interval
-        if !isempty(magnitude3_raw) && !isempty(times3)
-            time_step = 0.05 # Interval duration in seconds
-            max_time = times3[end]
-            num_intervals = ceil(Int, max_time / time_step)
+        # --- Harmonic Voice Detection Logic ---
+        println("\n--- Detecting Voice Harmonics (Plot #3) ---")
 
-            brightest_times_in_intervals = Float64[]
-            brightest_freqs_in_intervals = Float64[]
+        # Parameters for Harmonic Detection
+        const NOISE_FLOOR_PERCENTILE = 50.0 # Use median as noise floor estimate
+        const PEAK_THRESHOLD_FACTOR = 5.0 # Peak must be this factor above noise floor (linear magnitude)
+        const MIN_HARMONICS = 3           # Minimum number of harmonics (including fundamental) to detect
+        const MIN_FUNDAMENTAL_HZ = 80.0   # Plausible range for voice fundamental frequency
+        const MAX_FUNDAMENTAL_HZ = 400.0
+        const FREQ_TOLERANCE_HZ = 25.0    # Tolerance for matching harmonic frequencies
 
-            println("Finding brightest points in $num_intervals intervals (step: $(time_step)s)...")
+        detected_times = Float64[]
+        detected_freqs = Float64[] # Store the frequency of the *lowest* detected harmonic
 
-            for i = 0:(num_intervals-1)
-                t_start = i * time_step
-                t_end = (i + 1) * time_step
+        num_time_slices = size(magnitude3_raw, 2)
+        num_freq_bins = size(magnitude3_raw, 1)
 
-                # Find time indices within the current interval [t_start, t_end)
-                time_indices_in_interval = findall(t -> t_start <= t < t_end, times3)
+        println("Scanning $num_time_slices time slices for harmonic patterns...")
 
-                # Skip if no time frames fall into this interval
-                if isempty(time_indices_in_interval)
+        for j in 1:num_time_slices # Iterate through each time slice (column)
+            current_time = times3[j]
+            magnitude_slice = magnitude3_raw[:, j] # Linear magnitude for this time slice
+            freqs_slice = freqs_shifted3 # Frequencies are the same for all slices
+
+            # --- 1. Estimate Noise Floor for this slice ---
+            # Avoid potential issues with zero magnitudes if using percentile directly
+            non_zero_magnitudes = magnitude_slice[magnitude_slice .> 1e-12] # Filter out near-zeros
+            if isempty(non_zero_magnitudes)
+                 noise_floor = 1e-12 # Assign a very small floor if slice is essentially silent
+            else
+                 # Calculate percentile on the non-zero magnitudes
+                 noise_floor = percentile(non_zero_magnitudes, NOISE_FLOOR_PERCENTILE)
+            end
+            threshold = noise_floor * PEAK_THRESHOLD_FACTOR
+
+            # --- 2. Find Peaks above Threshold ---
+            peak_indices = Int[]
+            # Iterate from 2nd to second-to-last bin to check neighbors
+            for k in 2:(num_freq_bins - 1)
+                mag = magnitude_slice[k]
+                # Check if it's a local maximum and above threshold
+                if mag > threshold && mag > magnitude_slice[k-1] && mag > magnitude_slice[k+1]
+                    push!(peak_indices, k)
+                end
+            end
+
+            if isempty(peak_indices) || length(peak_indices) < MIN_HARMONICS
+                continue # Not enough peaks in this slice to form harmonics
+            end
+
+            # --- 3. Search for Harmonic Patterns ---
+            # Keep track of fundamental peaks already used in a detected set within this slice
+            # to avoid redundant detections of the same signal based on higher harmonics.
+            used_fundamental_indices = Set{Int}()
+
+            # Iterate through peaks as potential fundamentals (lowest harmonic)
+            for p1_idx in 1:length(peak_indices)
+                k1 = peak_indices[p1_idx]
+                # Skip if this peak was already part of a detected harmonic set in this slice
+                if k1 in used_fundamental_indices
                     continue
                 end
+                freq1 = freqs_slice[k1]
 
-                # Extract the magnitude data for this time interval
-                magnitude_interval = magnitude3_raw[:, time_indices_in_interval]
+                # Iterate through subsequent peaks as potential second harmonics
+                for p2_idx in (p1_idx + 1):length(peak_indices)
+                    k2 = peak_indices[p2_idx]
+                    freq2 = freqs_slice[k2]
 
-                # Find the index of the maximum value within this interval's sub-matrix
-                # max_idx_interval is CartesianIndex(freq_idx, sub_time_idx) relative to magnitude_interval
-                max_idx_interval = argmax(magnitude_interval)
+                    # Estimate fundamental frequency from the first two peaks
+                    fundamental_est = freq2 - freq1
+                    if !(MIN_FUNDAMENTAL_HZ <= fundamental_est <= MAX_FUNDAMENTAL_HZ)
+                        continue # Estimated fundamental is outside plausible voice range
+                    end
 
-                # Get the frequency index (relative to the full frequency axis)
-                freq_idx_global = max_idx_interval[1]
+                    # Now, look for higher harmonics based on this fundamental estimate
+                    harmonics_found = [k1, k2] # Start with the first two peaks
+                    current_fundamental = fundamental_est # Use the estimate from the first pair
 
-                # Get the time index within the *original* times3 vector
-                # max_idx_interval[2] is the index within time_indices_in_interval
-                time_idx_global = time_indices_in_interval[max_idx_interval[2]]
+                    # Search for the 3rd, 4th, ... harmonics
+                    for n in 2:10 # Look for up to 10 harmonics (arbitrary limit)
+                        target_freq = freq1 + n * current_fundamental
+                        found_higher = false
+                        # Check peaks *after* k2 for a match within tolerance
+                        for pk_idx in (p2_idx + 1):length(peak_indices)
+                             k_higher = peak_indices[pk_idx]
+                             freq_higher = freqs_slice[k_higher]
+                             if abs(freq_higher - target_freq) <= FREQ_TOLERANCE_HZ
+                                 push!(harmonics_found, k_higher)
+                                 # Optional: Refine fundamental estimate based on this new point? (Could add complexity)
+                                 found_higher = true
+                                 break # Found the nth harmonic, move to n+1
+                             elseif freq_higher > target_freq + FREQ_TOLERANCE_HZ
+                                 # Optimization: Since peaks are sorted by freq, if we overshoot, stop searching for this 'n'
+                                 break
+                             end
+                        end
+                        # If we didn't find the nth harmonic, we can't expect n+1, n+2 etc.
+                        # based on *this* fundamental estimate starting from freq1.
+                        # However, a different fundamental might exist, so we only break the inner 'n' loop.
+                        if !found_higher && n >= MIN_HARMONICS -1 # Check if we should stop searching for higher harmonics for *this* fundamental
+                             # If we haven't even found the minimum required number yet (e.g., looking for n=2 for MIN_HARMONICS=3)
+                             # and didn't find it, this fundamental candidate (freq1, freq2 pair) is invalid.
+                             break # Stop searching for higher harmonics (n loop) for this (k1, k2) pair
+                        end
 
-                # Get the corresponding time and frequency values
-                brightest_time = times3[time_idx_global]
-                brightest_freq = freqs_shifted3[freq_idx_global]
+                    end # End loop searching for n=2, 3,... harmonics
 
-                # Store the found point
-                push!(brightest_times_in_intervals, brightest_time)
-                push!(brightest_freqs_in_intervals, brightest_freq)
+                    # Check if we found enough harmonics for this candidate fundamental
+                    if length(harmonics_found) >= MIN_HARMONICS
+                        # Success! Detected a voice signal based on this harmonic set.
+                        # Store the time and the frequency of the *lowest* harmonic (freq1)
+                        push!(detected_times, current_time)
+                        push!(detected_freqs, freq1)
 
-                # Optional: Print info for each interval found
-                # brightest_magnitude_db = 20 * log10(magnitude_interval[max_idx_interval] + 1e-10)
-                # @printf("  Interval [%.3f, %.3f): Brightest at Time=%.3f s, Freq=%.1f Hz (Mag=%.2f dB)\n",
-                #         t_start, t_end, brightest_time, brightest_freq, brightest_magnitude_db)
-            end
+                        # Mark all peaks in this found set as 'used' for this time slice
+                        # to prevent them from starting *another* detection in the same slice.
+                        for k_used in harmonics_found
+                            push!(used_fundamental_indices, k_used)
+                        end
 
-            @printf("Found %d brightest points across intervals.\n", length(brightest_times_in_intervals))
+                        # Since we found a set starting with k1, we can break from the p2_idx loop
+                        # and move to the next potential fundamental (next p1_idx).
+                        # This assumes one voice signal won't perfectly overlap another
+                        # starting at the *exact* same lowest harmonic frequency bin.
+                        break # Go to next p1_idx
 
-            # Add all found brightest points to the plot using scatter!
-            if !isempty(brightest_times_in_intervals)
-                Plots.scatter!(
-                    plt3, # Add to the existing plot object
-                    brightest_times_in_intervals,
-                    brightest_freqs_in_intervals,
-                    markersize=5, # Slightly smaller marker for potentially many points
-                    markercolor=:red,
-                    markerstrokecolor=:white,
-                    markerstrokewidth=0.5,
-                    label="Brightest Point per Interval" # Updated label
-                )
-            end
-        else
-            @warn "Magnitude data or time data for plot 3 is empty, cannot find brightest points."
+                    end # End if enough harmonics found
+
+                end # End loop p2_idx (potential second harmonic)
+            end # End loop p1_idx (potential fundamental)
+        end # End loop j (time slices)
+
+        @printf("Found %d potential voice harmonic starting points.\n", length(detected_times))
+
+        # Add the detected points to the plot
+        if !isempty(detected_times)
+            Plots.scatter!(
+                plt3, # Add to the existing plot object
+                detected_times,
+                detected_freqs,
+                markersize=4, # Smaller marker size
+                markercolor=:red,
+                markerstrokecolor=:white,
+                markerstrokewidth=0.5,
+                label="Detected Voice Harmonic Start" # Updated label
+            )
         end
+        # --- End Harmonic Voice Detection Logic ---
 
         # Display the combined plot
         display_plot_with_imgcat(plt3)
