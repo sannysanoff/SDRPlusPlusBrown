@@ -157,7 +157,7 @@ for j in 1:ntime
             # --- Filter peaks to consider only those near f1 for harmonic check ---
             relevant_peak_indices = [p for p in 1:length(peaks) if abs(fsh[peaks[p]] - f1) <= MAX_HARMONIC_SPREAD]
             # Note: We only need the *frequencies* of relevant peaks for the check below.
-            relevant_peak_freqs = fsh[peaks[relevant_peak_indices]]
+            relevant_peak_freqs = fsh[relevant_peak_indices]
             # --- End Filter ---
 
             # count supporting harmonics
@@ -182,41 +182,82 @@ for j in 1:ntime
     f0_cands[j] = cands
 end
 
-# Sliding-window median smoothing applied to f_base
-# Stage 1: window=5
-w1, hw1 = 5, 2 # Window size and half-window
-f_base_stage1 = fill(NaN, ntime) # Store stage 1 smoothed f_base
-for j in hw1+1:ntime-hw1
-    # Collect strong candidates from the window
-    pool_triples = vcat(f0_cands[j-hw1:j+hw1]...)
-    strong_triples = filter(t -> t[3] >= MIN_STRONG_H, pool_triples)
-    # Calculate f_base for strong candidates
-    pool_f_base = [t[2] - t[1] for t in strong_triples] # f_base = f1 - est
-    # Compute median f_base for this time step
-    f_base_stage1[j] = isempty(pool_f_base) ? NaN : median(pool_f_base)
+# --- Find Stable Base Frequencies using Histogram ---
+
+# 1. Collect all f_base values with their time and count
+all_detections = []
+for j in 1:ntime
+    for (est, f1, cnt) in f0_cands[j]
+        # Only consider candidates with at least MIN_H harmonics
+        if cnt >= MIN_H
+            f_base = f1 - est
+            push!(all_detections, (time=times[j], f_base=f_base, count=cnt))
+        end
+    end
 end
 
-# Stage 2: window=20
-w2, hw2 = 20, 10 # Window size and half-window
-f_base_final = fill(NaN, ntime) # Store final smoothed f_base
-for j in hw2+1:ntime-hw2
-    # Get the segment from stage 1 results
-    seg = f_base_stage1[j-hw2:j+hw2]
-    # Filter out NaNs
-    seg = seg[.!isnan.(seg)]
-    # Compute median of the valid values in the segment
-    f_base_final[j] = isempty(seg) ? NaN : median(seg) # Corrected variable name
+# 2. Create Histogram
+using StatsBase # Add this if not already implicitly available via Plots/Statistics
+f_bases_all = [d.f_base for d in all_detections]
+if isempty(f_bases_all)
+    println("No base frequency candidates found.")
+else
+    # Determine histogram range and bins
+    min_fb, max_fb = minimum(f_bases_all), maximum(f_bases_all)
+    bin_width = 50.0 # Hz bin width for histogram
+    bins = range(floor(min_fb / bin_width) * bin_width, ceil(max_fb / bin_width) * bin_width, step=bin_width)
+    hist = StatsBase.fit(Histogram, f_bases_all, bins)
+
+    # 3. Identify Peaks (simple approach: bins with counts above a threshold)
+    min_bin_count = 10 # Require at least this many detections in a bin to consider it stable
+    peak_bin_indices = findall(hist.weights .>= min_bin_count)
+    stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
+    println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
+
+    # 4. Track and Plot Closest Candidates
+    const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
+    colors = [:red, :blue, :green, :purple, :orange, :cyan] # Colors for different tracks
+    plot_labels_added = Set{String}()
+
+    for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
+        track_times = Float64[]
+        track_f_bases = Float64[]
+        for j in 1:ntime
+            best_match_fbase = NaN
+            min_diff = TOL_FB
+            best_cnt = -1
+            # Find the best candidate in this slice matching the stable frequency
+            for (est, f1, cnt) in f0_cands[j]
+                 if cnt >= MIN_H # Ensure we only consider valid candidates from the start
+                    f_base_cand = f1 - est
+                    diff = abs(f_base_cand - f_base_stable)
+                    if diff < min_diff # Prioritize closer match
+                        min_diff = diff
+                        best_match_fbase = f_base_cand
+                        best_cnt = cnt
+                    elseif diff == min_diff && cnt > best_cnt # If equally close, prefer higher harmonic count
+                        best_match_fbase = f_base_cand
+                        best_cnt = cnt
+                    end
+                end
+            end
+            # If a suitable candidate was found in this slice, add it to the track
+            if !isnan(best_match_fbase)
+                push!(track_times, times[j])
+                push!(track_f_bases, best_match_fbase)
+            end
+        end
+
+        # Plot this track
+        if !isempty(track_times)
+            label_str = @sprintf("Track %.1f Hz", f_base_stable)
+            scatter!(plt, track_times, track_f_bases; markersize=2, markercolor=colors[mod1(track_idx, length(colors))],
+                     label=(label_str ∉ plot_labels_added ? label_str : ""), # Avoid duplicate labels
+                     markerstrokewidth=0)
+            push!(plot_labels_added, label_str)
+        end
+    end
 end
-
-# --- Plot the FINAL SMOOTHED Estimated Base Frequency ---
-x_plot = times
-y_plot = f_base_final
-
-# Filter out NaN values for plotting
-valid_indices = .!isnan.(y_plot)
-scatter!(plt, x_plot[valid_indices], y_plot[valid_indices]; markersize=3, markercolor=:red,
-         markerstrokecolor=:white, markerstrokewidth=0.5,
-         label="Smoothed Est. Base Freq (cnt >= $MIN_STRONG_H)")
 
 # Display
 display_plot_with_imgcat(plt)
