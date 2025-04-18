@@ -263,4 +263,43 @@ complex_signal = I + im .* Q # Use 'im' for the imaginary unit in Julia
 # Plot the spectrogram
 plot_complex_signal(complex_signal, sr)
 
+# --- Extract and Plot Sub-band ---
+println("\n--- Extracting and Plotting Sub-band (0-50kHz, 0-3s) ---")
+# Define parameters for extraction
+extract_min_freq = 0.0       # Minimum frequency (Hz)
+extract_max_freq = 50000.0   # Maximum frequency (Hz) = 50 kHz
+extract_start_time = 0.0     # Start time (seconds)
+extract_end_time = 3.0       # End time (seconds)
+
+try
+    # Call the extraction function
+    extracted_sig, extracted_fs = extract_signal(
+        complex_signal,
+        sr,
+        extract_min_freq,
+        extract_max_freq,
+        extract_start_time,
+        extract_end_time
+    )
+
+    # Check if the extraction returned a valid signal
+    if !isempty(extracted_sig)
+        println("\n--- Plotting Extracted Signal ---")
+        # Plot the extracted and resampled signal
+        # The frequency axis should now be centered around 0 Hz (since we shifted)
+        # and range approximately +/- extracted_fs/2
+        # Note: Since min_freq was 0, the center freq shifted was 25kHz.
+        # The new plot will show frequencies relative to that shifted center.
+        plot_complex_signal(extracted_sig, extracted_fs)
+    else
+        println("Skipping plot of extracted signal as it was empty.")
+    end
+
+catch e
+    println("\n--- Error during signal extraction or plotting ---")
+    showerror(stdout, e)
+    println() # Newline after error
+end
+
+# Final message will now appear after the extraction attempt
 println("Script finished.")
