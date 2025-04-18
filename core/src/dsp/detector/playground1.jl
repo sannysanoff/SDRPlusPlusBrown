@@ -163,7 +163,8 @@ function try2()
         xticks = 50, # Suggest more ticks on the x-axis
         legend = false, # Disable the legend
         bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
-        size=(3600, 700))
+        size=(3600, 700),
+        xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt, [(0.5, -0.1, Plots.text("Extracted Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     #── store original axes limits AND ticks so the scatter won’t drop them
