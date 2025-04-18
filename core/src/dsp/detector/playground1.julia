@@ -329,7 +329,7 @@ try
             extracted_sig,
             extracted_fs;
             title_suffix="Extracted Signal with Brightest Points per Interval", # Updated title
-            plot_size=(1000, 1800) # SET NEW SIZE HERE (1000x1800)
+            plot_size=(500, 1800) # MODIFIED SIZE HERE (500x1800)
         )
 
         # Find the brightest point within each time interval
