@@ -214,7 +214,7 @@ else
     hist = StatsBase.fit(Histogram, f_bases_all, bins)
 
     # 3. Identify Peaks (simple approach: bins with counts above a threshold)
-    min_bin_count = 10 # Require at least this many detections in a bin to consider it stable
+    min_bin_count = 7 # increase sensitivity: accept carriers down to 7 hits
     peak_bin_indices = findall(hist.weights .>= min_bin_count)
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
