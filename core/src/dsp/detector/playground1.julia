@@ -70,12 +70,7 @@ function display_plot_with_imgcat(plot_obj) # Accept a plot object
                 @warn "Error removing temporary file $tmpfile_path: $err"
             end
         end
-        # Close the plot figure to free memory, regardless of display success
-        try
-            plt_module.close()
-        catch err
-             # Ignore errors if plot is already closed or doesn't exist
-        end
+        # No need to explicitly close the plot object in Plots.jl like in PyPlot
     end
 end
 
