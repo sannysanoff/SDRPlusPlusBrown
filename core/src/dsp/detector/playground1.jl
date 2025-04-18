@@ -1,7 +1,6 @@
 using WAV
 using DSP
 using StatsBase # Add this if not already implicitly available via Plots/Statistics
-using StatsBase: findmaxima # Explicitly import findmaxima
 using FFTW
 using Plots
 gr()  # Use GR backend
