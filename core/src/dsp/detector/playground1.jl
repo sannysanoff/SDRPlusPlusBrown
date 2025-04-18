@@ -365,9 +365,10 @@ function try2()
         title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
         size=(3600, 700))
 
-    #── store original axes limits so that adding a single scatter point
-    #   doesn't collapse the x–axis to [0,0]
+    #── store original axes limits AND ticks so the scatter won’t drop them
     orig_xlim, orig_ylim = xlims(plt), ylims(plt)
+    orig_xticks, orig_xtick_labels = xticks(plt)
+    orig_yticks, orig_ytick_labels = yticks(plt)
 
     track_times = Float64[]
     track_f_bases = Float64[]
@@ -376,8 +377,11 @@ function try2()
     push!(track_f_bases, 0.0)
     scatter!(plt, track_f_bases, track_times;
              markersize=2, markercolor=:blue, label="Hi", markerstrokewidth=0,
-             # restore the heatmap's freq & time limits
-             xlims=orig_xlim, ylims=orig_ylim)
+             # restore the heatmap's freq–time limits
+             xlims = orig_xlim,  ylims = orig_ylim,
+             # restore the original ticks (so freq labels reappear, incl. 0 Hz)
+             xticks = (orig_xticks, orig_xtick_labels),
+             yticks = (orig_yticks, orig_ytick_labels))
 
     # Display
     display_plot_with_imgcat(plt)
