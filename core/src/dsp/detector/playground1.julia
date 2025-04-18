@@ -201,18 +201,19 @@ for j in hw2+1:ntime-hw2
     f0_final[j] = isempty(seg) ? NaN : median(seg)
 end
 
-# --- Plot the LOCATION (f1) of each detected harmonic set ---
+# --- Plot the ESTIMATED BASE FREQUENCY (f1 - est) of each detected harmonic set ---
 all_times = Float64[]
-all_f1s = Float64[]
+all_f_bases = Float64[] # Changed variable name for clarity
 for j in 1:ntime
     if !isempty(f0_cands[j])
         for (est, f1) in f0_cands[j]
+            f_base = f1 - est # Calculate estimated base frequency
             push!(all_times, times[j])
-            push!(all_f1s, f1)
+            push!(all_f_bases, f_base) # Store the base frequency
         end
     end
 end
-scatter!(plt, all_times, all_f1s; markersize=1, markercolor=:red, alpha=0.5, label="Detected f1 locations")
+scatter!(plt, all_times, all_f_bases; markersize=1, markercolor=:red, alpha=0.5, label="Est. Base Freq (f1-est)") # Update plot call and label
 
 # Display
 display_plot_with_imgcat(plt)
