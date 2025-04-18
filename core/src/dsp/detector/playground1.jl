@@ -1,6 +1,7 @@
 using WAV
 using DSP
 using StatsBase # Add this if not already implicitly available via Plots/Statistics
+using StatsBase: findmaxima # Explicitly import findmaxima
 using FFTW
 using Plots
 gr()  # Use GR backend
@@ -130,7 +131,13 @@ function try2()
                      bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
                      label="", size=(3600, 400))
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
-    # detect peaks and draw as red dots on the same chart. AI!
+
+    # Detect peaks in the slice
+    peak_indices, peak_vals = findmaxima(first_slice_db)
+    peak_freqs = fsh[peak_indices]
+    # Add peaks to the plot
+    scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
+
     display_plot_with_imgcat(plt_slice)
 
     plt = heatmap(fsh, times, mag_db';
