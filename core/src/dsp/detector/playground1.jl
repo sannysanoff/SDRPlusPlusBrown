@@ -119,15 +119,16 @@ plt = heatmap(fsh, times, mag_db';
     size=(3600, 500))
 
 # --- Unified f₀ Detection ---
-const MIN_H = 2 # Require fewer harmonics
+const MIN_H = 3           # ↑ require at least 3 harmonics instead of 2
 const MIN_F0 = 80.0
 const MAX_F0 = 400.0
-const TOL = 25.0
+const TOL = 15.0          # ↓ tighter ±15 Hz matching
+const MIN_PEAK_RATIO = 2.0  # peaks must exceed 2× the noise floor
 # const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
 const THR_MULT       = 2.0    # lower threshold ⇒ more peaks
 const F0_MAX_MULT    = 5.0    # allow higher f₀ energies before rejecting
-const MIN_BIN_COUNT  = 3      # accept histogram bins with ≥3 votes
+const MIN_BIN_COUNT  = 5      # ↑ require ≥5 votes per bin
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
@@ -142,7 +143,9 @@ for j in 1:ntime
     nf = isempty(nz) ? 1e-12 : median(nz)
     thr = nf * THR_MULT
     # find peak indices
-    peaks = [k for k in 2:nfreq-1 if slice[k]>thr && slice[k]>slice[k-1] && slice[k]>slice[k+1]]
+    peaks = [ k for k in 2:nfreq-1
+              if slice[k] > thr * MIN_PEAK_RATIO &&
+                 slice[k] > slice[k-1] && slice[k] > slice[k+1] ]
     if debug_print
         peak_freqs = fsh[peaks]
         println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
@@ -166,7 +169,7 @@ for j in 1:ntime
 
             # count supporting harmonics
             cnt = 2
-            for n in 2:10
+            for n in 2:6    # only check up to the 6th harmonic
                 tgt = f1 + n*est
                 # find any peak near tgt, using only relevant peaks
                 found = any(abs.(relevant_peak_freqs .- tgt) .<= TOL) # Search only among relevant peaks' frequencies
@@ -207,6 +210,27 @@ for j in 1:ntime
     end
     f0_cands[j] = cands
 end
+
+  # --- Temporal smoothing: drop candidates that don't appear in prev/next slice ---
+  begin
+    tmp = deepcopy(f0_cands)
+    for j in 1:ntime
+      keep = Tuple{Float64,Float64,Int}[]
+      for (est,f1,cnt) in tmp[j]
+        f_base = f1 - est
+        # look in slice j-1 or j+1 for a matching base within ±TOL
+        ok = any(
+          j2 in (j-1,j+1) && 1≤j2≤ntime &&
+          any(abs((f2-e2)-f_base) ≤ TOL for (e2,f2,_) in tmp[j2])
+          for j2 in (j-1,j+1)
+        )
+        if ok
+          push!(keep, (est,f1,cnt))
+        end
+      end
+      f0_cands[j] = keep
+    end
+  end
 
 # --- Find Stable Base Frequencies using Histogram ---
 
@@ -258,7 +282,7 @@ else
     println("Filtered f_base (≥500 Hz apart): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
     # require each track to persist in at least X% of slices
-    const MIN_TRACK_PERSISTENCE = 0.30       # 30% of active slices
+    const MIN_TRACK_PERSISTENCE = 0.50       # ↑ require 50% persistence
     n_slices_with_candidates = count(!isempty, f0_cands)
     min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
 
