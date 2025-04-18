@@ -219,6 +219,11 @@ else
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
+    # require each track to persist in at least X% of slices
+    const MIN_TRACK_PERSISTENCE = 0.70       # 70% of the slices
+    n_slices_with_candidates = count(!isempty, f0_cands)
+    min_required_slices   = ceil(Int, MIN_TRACK_PERSISTENCE * n_slices_with_candidates)
+
     # 4. Track and Plot Closest Candidates
     const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
 
@@ -252,7 +257,7 @@ else
         end
 
         # Plot this track
-        if !isempty(track_times)
+        if length(track_times) >= min_required_slices
             # Use blue for all points, add label only for the first track plotted
             current_label = ""
             if !first_track_plotted1
