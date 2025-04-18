@@ -173,7 +173,10 @@ for j in 1:ntime
                 if found; cnt += 1 else break end
             end
             if debug_print && cnt >= MIN_H
-                 println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
+                # suppress the noisy f1≈13240, f2≈13330 combination
+                if !(round(f1, digits=1)==13240.0 && round(f2, digits=1)==13330.0)
+                    println("  Harmonic set found: f1=$(round(f1,digits=1)), f2=$(round(f2,digits=1)) => est=$(round(est,digits=1)), num_harmonics=$cnt")
+                end
             end
             if cnt >= MIN_H
                 # reject any f₀ whose average energy over [f0‑est … f0+est/0.25] is too high
@@ -191,6 +194,10 @@ for j in 1:ntime
                     end
                 else
                     push!(cands, (est, f1, cnt))
+                    if debug_print
+                        f0 = f1 - est
+                        println("    accept f0=$(round(f0,digits=1))Hz (est=$(round(est,digits=1)), cnt=$cnt)")
+                    end
                 end
             end
         end
