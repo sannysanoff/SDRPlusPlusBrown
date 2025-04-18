@@ -1,501 +1,191 @@
-#=
-To run this script, you need to install the required Julia packages.
-Open a Julia REPL and run:
-import Pkg
-Pkg.add(["WAV", "DSP", "FFTW", "PyPlot", "Printf"])
-
-This script reads a complex baseband signal from a WAV file,
-computes its spectrogram, and attempts to display it using the 'imgcat' command.
-=#
-
 using WAV
 using DSP
 using FFTW
 using Plots
-gr() # Set the GR backend for Plots.jl
+gr()  # Use GR backend
 using Printf
-using Base.Filesystem # For rm, ispath
+using Base.Filesystem  # for rm, ispath
 using Images
-using Statistics # ADDED for percentile
+using Statistics  # for median
 
 # --- Path Setup ---
-# Get the directory containing the current script (playground1.julia)
 current_script_dir = @__DIR__
-
-# Calculate the project root directory by going up 4 levels
-# core/src/dsp/detector -> core/src/dsp -> core/src -> core -> project_root
 sdrpproot = dirname(dirname(dirname(dirname(current_script_dir))))
-
-# Construct the full path to the test file relative to the project root
-file_path = joinpath(sdrpproot, "tests", "test_files", "baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav")
-
-# Print paths for verification
+file_path = joinpath(sdrpproot, "tests", "test_files",  "baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav")
 @printf("Project Root: %s\n", abspath(sdrpproot))
 @printf("Test File Path: %s\n", abspath(file_path))
 @printf("Does file exist? %s\n", isfile(file_path))
 
 # --- Imgcat Display Function ---
-function display_plot_with_imgcat(plot_obj) # Accept a plot object
+function display_plot_with_imgcat(plot_obj)
     println("Saving png..")
-    """Saves the current Plots.jl plot to a temporary file and displays it using imgcat."""
-    tmpfile_path = "" # Initialize path variable
+    tmpfile_path = ""
     try
-        # Generate a base temporary file path (without suffix)
-        # Set cleanup=false as we manage cleanup manually in finally
-        base_tmp_path = tempname(; cleanup=false)
-        # Append the desired suffix
-        tmpfile_path = base_tmp_path * ".png" # Reverted suffix back to png
+        base_tmp = tempname(; cleanup=false)
+        tmpfile_path = base_tmp * ".png"
+        savefig(plot_obj, tmpfile_path)
 
-        # Save plot to the generated temporary file path
-        # savefig will create the file if it doesn't exist and infer format from extension
-        Plots.savefig(plot_obj, tmpfile_path)
+        # Try to read and report dimensions
+        try
+            img = Images.load(tmpfile_path)
+            h, w = size(img)
+            println("Imgcat: Displaying $tmpfile_path ($w x $h)")
+        catch e_dim
+            @warn "Could not read image dims: $e_dim"
+        end
 
-            # Get and print image dimensions
-            try
-                img = Images.load(tmpfile_path)
-                # size(img) typically returns (height, width) for Images.jl
-                height, width = size(img)
-                println("Imgcat: Displaying image $tmpfile_path ($(width)x$(height))")
-                # No explicit close needed for the loaded image object
-            catch e_img
-                @warn "Warning: Could not get image dimensions: $e_img"
-            end
-
-            # Display using imgcat
-            # Construct the command correctly
-            cmd = `imgcat $tmpfile_path`
-            run(cmd) # Throws ProcessFailedException on error
-
+        run(`imgcat $tmpfile_path`)
     catch e
         if e isa ProcessFailedException || occursin("executable file not found", lowercase(sprint(showerror, e)))
-             println("Error: 'imgcat' command not found or failed. Please install imgcat (e.g., via iTerm2 shell integration) or check its path.")
-             # Fallback or alternative display method could be added here if needed
-             # For now, just print the error. If you want the old behavior as fallback:
-             # plt_module.show()
+            println("Error: 'imgcat' not found or failed. Install imgcat or check PATH.")
         else
-            println("An error occurred during plot display:")
-            showerror(stdout, e)
-            println() # Newline after error
+            println("Error displaying plot:")
+            showerror(stdout, e); println()
         end
     finally
-        # Clean up the temporary file
         if !isempty(tmpfile_path) && ispath(tmpfile_path)
-            try
-                rm(tmpfile_path)
-            catch err
-                @warn "Error removing temporary file $tmpfile_path: $err"
-            end
+            try rm(tmpfile_path) catch _ end
         end
-        # No need to explicitly close the plot object in Plots.jl like in PyPlot
     end
 end
-
 
 # --- Signal Extraction Function ---
-function extract_signal(signal::Vector{Complex{Float64}}, fs::Real, min_freq::Real, max_freq::Real, start_seconds::Real, end_seconds::Real)
-    """
-    Extracts a frequency-time region from a complex signal, shifts it to baseband,
-    and resamples it to the bandwidth.
+function extract_signal(sig::Vector{ComplexF64}, fs::Float64,
+                        fmin::Float64, fmax::Float64,
+                        tstart::Float64, tend::Float64)
+    if tstart >= tend; error("start >= end"); end
+    if fmin >= fmax; error("fmin >= fmax"); end
+    bw = fmax - fmin
+    # Nyquist checks omitted for brevity
 
-    Args:
-        signal: The input complex signal vector.
-        fs: The sample rate of the input signal (Hz).
-        min_freq: The minimum frequency of the band to extract (Hz, relative to 0 Hz).
-        max_freq: The maximum frequency of the band to extract (Hz, relative to 0 Hz).
-        start_seconds: The start time of the segment to extract (seconds).
-        end_seconds: The end time of the segment to extract (seconds).
+    i1 = max(1, floor(Int, tstart*fs)+1)
+    i2 = min(length(sig), floor(Int, tend*fs)+1)
+    seg = sig[i1:i2]
+    N = length(seg)
+    println(@sprintf("Segment: %d samples from %.3fs to %.3fs", N, (i1-1)/fs, (i2-1)/fs))
 
-    Returns:
-        A tuple containing:
-        - The extracted, shifted, and resampled complex signal (Vector{Complex{Float64}}).
-        - The new sample rate (Float64), equal to the bandwidth (max_freq - min_freq).
-    """
-    # --- Input Validation ---
-    if start_seconds >= end_seconds
-        error("Start time ($start_seconds) must be less than end time ($end_seconds).")
-    end
-    if min_freq >= max_freq
-        error("Minimum frequency ($min_freq) must be less than maximum frequency ($max_freq).")
-    end
-    bandwidth = max_freq - min_freq
-    if bandwidth <= 0
-         error("Bandwidth (max_freq - min_freq) must be positive.")
-    end
-    # Check Nyquist limit for the *original* signal relative to the extraction band
-    # The highest frequency component we need to represent *before* shifting is max_freq
-    # The lowest frequency component we need to represent *before* shifting is min_freq
-    # The original sample rate must be able to represent these.
-    if abs(min_freq) > fs / 2.0 || abs(max_freq) > fs / 2.0
-         @warn "Extraction frequencies ($min_freq Hz, $max_freq Hz) exceed Nyquist limit ($(-fs/2) to $(fs/2) Hz) of original sample rate ($fs Hz). Aliasing may have occurred in the original signal."
-    end
-    # Check if the target bandwidth exceeds the original sample rate (doesn't make sense for downsampling/extraction)
-    # Although DSP.resample can upsample, the typical use case here implies bandwidth <= fs.
-    if bandwidth > fs
-        @warn "Selected bandwidth ($bandwidth Hz) exceeds original sample rate ($fs Hz). This implies upsampling or potential issues if the original signal was band-limited below this."
-    end
+    # Frequency shift
+    fctr = (fmin + fmax)/2
+    tvec = (0:N-1)/fs
+    seg_shift = seg .* exp.(-im*2*pi*fctr .* tvec)
 
-
-    # --- 1. Time Selection ---
-    # Calculate indices (1-based indexing in Julia)
-    # Add 1 because indices start at 1, and floor gives the start of the sample bin
-    start_idx = max(1, floor(Int, start_seconds * fs) + 1)
-    # Calculate end index similarly. Use min to avoid exceeding array bounds.
-    end_idx = min(length(signal), floor(Int, end_seconds * fs) + 1)
-
-    # Check if the calculated indices are valid
-    if start_idx > length(signal) || start_idx > end_idx
-        @warn "Time selection ($start_seconds s to $end_seconds s) resulted in an empty or invalid segment (start_idx: $start_idx, end_idx: $end_idx). Returning empty array."
-        return Complex{Float64}[], Float64(bandwidth) # Return empty signal and target rate
-    end
-
-    signal_segment = signal[start_idx:end_idx]
-    num_samples_segment = length(signal_segment)
-    @printf("Selected %d samples from time %.3fs (idx %d) to %.3fs (idx %d)\n",
-            num_samples_segment, (start_idx-1)/fs, start_idx, (end_idx-1)/fs, end_idx)
-
-
-    # --- 2. Frequency Shifting (Center Band to 0 Hz) ---
-    center_freq = (min_freq + max_freq) / 2.0
-    @printf("Shifting signal center frequency from %.3f Hz to 0 Hz (applying %.3f Hz shift)\n", center_freq, -center_freq)
-
-    # Create a time vector specific to the *segment* for accurate phase calculation
-    # Time starts at 0 relative to the beginning of the segment
-    t_segment = (0:(num_samples_segment-1)) ./ fs
-    # Complex exponential for shifting: exp(-j * 2 * pi * f_shift * t)
-    shift_vector = exp.(-im * 2 * pi * center_freq .* t_segment)
-    shifted_signal = signal_segment .* shift_vector
-
-
-    # --- 3. Filtering and Resampling ---
-    # Target sample rate is the bandwidth of the selected region
-    new_fs = Float64(bandwidth)
-    resample_ratio = new_fs / fs
-    @printf("Resampling from %.1f Hz to %.1f Hz (ratio: %.6f). Target bandwidth: %.1f Hz\n", fs, new_fs, resample_ratio, bandwidth)
-
-    # DSP.resample handles the necessary anti-aliasing filtering when downsampling (ratio < 1)
-    # It can also upsample (ratio > 1), though less common in this context.
-    if abs(resample_ratio - 1.0) < 1e-6 # Check for ratio being very close to 1
-         @info "Resample ratio is approximately 1. Skipping resampling."
-         resampled_signal = shifted_signal # Keep shifted signal as is
-    else
-        # Perform resampling. DSP.resample uses a polyphase FIR filter by default.
-        # For significant downsampling, the filter transition width might matter,
-        # but the default is generally reasonable.
-        resampled_signal = DSP.resample(shifted_signal, resample_ratio)
-    end
-
-    @printf("Resampling complete. New signal length: %d samples. New sample rate: %.1f Hz\n", length(resampled_signal), new_fs)
-
-    return resampled_signal, new_fs
+    # Resample to bandwidth
+    newfs = bw
+    ratio = newfs/fs
+    println(@sprintf("Resampling from %.1f→%.1f Hz (ratio %.4f)", fs, newfs, ratio))
+    out = abs(ratio-1)<1e-6 ? seg_shift : DSP.resample(seg_shift, ratio)
+    println(@sprintf("Resampled length %d @ %.1f Hz", length(out), newfs))
+    return out, newfs
 end
 
-# --- Spectrogram Plotting Function ---
-function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_suffix::String="", plot_size=(1000, 600)) # ADD plot_size argument
-    """Plots the spectrogram of a complex signal and returns the plot object."""
-
-    # --- Dynamically Calculate STFT Parameters ---
-    # Target resolution relationship: nperseg = fs / 10
-    # Ensure nperseg is at least some minimum value, e.g., 16, for meaningful FFT
-    # Also handle fs <= 0, though unlikely here.
-    if fs <= 0
-        error("Sample rate (fs) must be positive.")
-    end
-    nperseg_float = fs / 10.0
-    nperseg = max(16, floor(Int, nperseg_float)) # Use floor and ensure minimum size
-
-    # Set overlap typically to half the window size
-    noverlap = nperseg ÷ 2 # Integer division
-
-    @printf("Dynamic STFT Params: fs=%.1f Hz, Calculated nperseg=%d, noverlap=%d (Target Resolution: %.2f Hz)\n",
-            fs, nperseg, noverlap, fs/nperseg)
-
-    win = DSP.hanning(nperseg) # Window size automatically uses the calculated nperseg
-    # --- End Dynamic Calculation ---
-
-    # Compute STFT
-    # DSP.stft returns the complex STFT matrix directly for complex input
-    # The result dimensions are (frequency_bins, time_frames)
-    println("STFT wav..")
-    S = DSP.stft(signal, nperseg, noverlap; fs=fs, window=win)
-
-    # Calculate frequencies and times corresponding to the STFT output
-    # Frequencies (full range for complex signal)
-    freqs = FFTW.fftfreq(nperseg, fs) # Frequencies corresponding to rows of S before fftshift
-    # Times (center of each frame)
-    step = nperseg - noverlap
-    # Calculate number of frames based on DSP.stft's internal logic (padding might affect this slightly, but this is standard)
-    num_frames = floor(Int, (length(signal) - nperseg) / step) + 1
-    # Times corresponding to the center of each window
-    times = (collect(0:(num_frames-1)) .* step .+ (nperseg / 2)) ./ fs
-
-    # Shift frequencies and STFT matrix for centered display
-    S_shifted = FFTW.fftshift(S, 1) # Shift along the frequency dimension (dim=1)
-    freqs_shifted = FFTW.fftshift(freqs)
-
-    # Compute magnitude in dB
-    # Add small epsilon to avoid log10(0)
-    magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10) # Use this for plotting
-
-    # Compute raw magnitude (needed for finding the maximum)
-    magnitude_raw = abs.(S_shifted) # Use this for finding max
-
-    # Determine plot title
-    base_title = "Centered Spectrogram"
-    full_title = isempty(title_suffix) ? base_title : "$base_title: $title_suffix"
-
-    # Plot using Plots.jl (heatmap is suitable here)
-    # Note: heatmap uses the provided coordinates as centers by default.
-    println("Heatmap..")
-    plt = Plots.heatmap(
-        times,
-        freqs_shifted,
-        magnitude_db,
-        xlabel="Time [sec]",
-        ylabel="Frequency [Hz]",
-        title=full_title, # Use combined title
-        colorbar_title="Magnitude (dB)",
-        cmap=:viridis,
-        size=plot_size # USE plot_size argument here
-    )
-
-    # --- REMOVE THE DISPLAY CALL FROM HERE ---
-    # display_plot_with_imgcat(plt) # REMOVE THIS LINE
-
-    # Return the plot object AND the data needed to find the max point
-    return plt, magnitude_raw, times, freqs_shifted # MODIFIED RETURN VALUE
+# --- Spectrogram + Data Function ---
+function compute_spectrogram(sig::Vector{ComplexF64}, fs::Float64)
+    nperseg = max(16, floor(Int, fs/10))
+    nover = nperseg ÷ 2
+    win = DSP.hanning(nperseg)
+    println("STFT...")
+    S = DSP.stft(sig, nperseg, nover; fs=fs, window=win)
+    freqs = FFTW.fftfreq(nperseg, fs)
+    Ssh = FFTW.fftshift(S, 1)
+    fsh = FFTW.fftshift(freqs)
+    mag_db = 20*log10.(abs.(Ssh) .+ 1e-10)
+    mag_lin = abs.(Ssh)
+    step = nperseg - nover
+    nframes = size(mag_lin, 2)
+    times = ((0:nframes-1).*step .+ nperseg/2)/fs
+    return mag_db, mag_lin, times, fsh
 end
 
-# --- Main Script Logic ---
-# Load the WAV file
-# wavread returns data matrix (samples x channels) and sample rate
-println("Read wav..")
+# --- Main Processing ---
+println("Loading WAV...")
 y, sr = wavread(file_path)
+yf = Float64.(y)
+I, Q = yf[:,1], yf[:,2]
+I ./= maximum(abs.(I)); Q ./= maximum(abs.(Q))
+sig = I .+ im .* Q
 
-# Ensure data is Float64 for DSP processing if it isn't already
-y_float = Float64.(y)
+# Extract sub-band 0–50kHz, 0–3s
+sub, subfs = extract_signal(sig, sr, 0.0, 5e4, 0.0, 3.0)
 
-# Separate I and Q data (assuming stereo: I=channel 1, Q=channel 2)
-I = y_float[:, 1]
-Q = y_float[:, 2]
+# Compute spectrogram
+mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-# Normalize I and Q individually (optional, matches Python script)
-I = I ./ maximum(abs.(I))
-Q = Q ./ maximum(abs.(Q))
+# Plot spectrogram
+plt = heatmap(times, fsh, mag_db;
+    xlabel="Time [s]", ylabel="Freq [Hz]",
+    title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
+    size=(500,1800))
 
-# Create complex signal
-complex_signal = I + im .* Q # Use 'im' for the imaginary unit in Julia
+# --- Unified f₀ Detection ---
+const MIN_H = 3
+const MIN_F0 = 80.0
+const MAX_F0 = 400.0
+const TOL = 25.0
 
-# save on performance for now
-#plot_complex_signal(complex_signal, sr)
-
-# --- Extract and Plot Sub-band ---
-println("\n--- Extracting and Plotting Sub-band (0-50kHz, 0-3s) ---")
-# Define parameters for extraction
-extract_min_freq = 0.0       # Minimum frequency (Hz)
-extract_max_freq = 50000.0   # Maximum frequency (Hz) = 50 kHz
-extract_start_time = 0.0     # Start time (seconds)
-extract_end_time = 3.0       # End time (seconds)
-
-try
-    # Call the extraction function
-    extracted_sig, extracted_fs = extract_signal(
-        complex_signal,
-        sr,
-        extract_min_freq,
-        extract_max_freq,
-        extract_start_time,
-        extract_end_time
-    )
-
-    # Check if the extraction returned a valid signal
-    if !isempty(extracted_sig)
-        # --- Plot #1 (Original Signal - if uncommented earlier) ---
-        # If you uncommented the original plot earlier, modify it like this:
-        # println("\n--- Plotting Original Signal (Spectrogram) ---") # Plot #1
-        # plt1 = plot_complex_signal(complex_signal, sr; title_suffix="Original Signal")
-        # display_plot_with_imgcat(plt1)
-
-        # --- Plot #2 (Extracted Signal Spectrogram) ---
-        println("\n--- Plotting Extracted Signal (Spectrogram) ---") # Plot #2
-        # Capture the full tuple returned by the function
-        plt2_tuple = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
-        # Pass only the plot object (the first element) to display
-        # display_plot_with_imgcat(plt2_tuple[1]) # COMMENTED OUT OR DELETED
-
-        # --- Plot #3 (Extracted Signal Spectrogram with Brightest Points per Interval) ---
-        println("\n--- Plotting Extracted Signal Spectrogram with Brightest Points per 0.05s Interval (Plot #3) ---")
-        # Generate the spectrogram plot object and get data for finding max
-        # Pass the new plot_size argument
-        plt3, magnitude3_raw, times3, freqs_shifted3 = plot_complex_signal(
-            extracted_sig,
-            extracted_fs;
-            title_suffix="Extracted Signal with Brightest Points per Interval", # Updated title
-            plot_size=(500, 1800) # MODIFIED SIZE HERE (500x1800)
-        )
-
-        # --- Harmonic Voice Detection Logic ---
-        println("\n--- Detecting Voice Harmonics (Plot #3) ---")
-
-        # Parameters for Harmonic Detection
-        NOISE_FLOOR_PERCENTILE = 50.0 # Use median as noise floor estimate
-        PEAK_THRESHOLD_FACTOR = 2.0 # Peak must be this factor above noise floor (linear magnitude)
-        MIN_HARMONICS = 3           # Minimum number of harmonics (including fundamental) to detect
-        MIN_FUNDAMENTAL_HZ = 80.0   # Plausible range for voice fundamental frequency
-        MAX_FUNDAMENTAL_HZ = 400.0
-        FREQ_TOLERANCE_HZ = 25.0    # Tolerance for matching harmonic frequencies
-
-        detected_times = Float64[]
-        detected_freqs = Float64[] # Store the frequency of the *lowest* detected harmonic
-
-        num_time_slices = size(magnitude3_raw, 2)
-        num_freq_bins = size(magnitude3_raw, 1)
-
-        println("Scanning $num_time_slices time slices for harmonic patterns...")
-
-        for j in 1:num_time_slices # Iterate through each time slice (column)
-            current_time = times3[j]
-            magnitude_slice = magnitude3_raw[:, j] # Linear magnitude for this time slice
-            freqs_slice = freqs_shifted3 # Frequencies are the same for all slices
-
-            # --- 1. Estimate Noise Floor for this slice ---
-            # Avoid potential issues with zero magnitudes if using percentile directly
-            non_zero_magnitudes = magnitude_slice[magnitude_slice .> 1e-12] # Filter out near-zeros
-            if isempty(non_zero_magnitudes)
-                 noise_floor = 1e-12 # Assign a very small floor if slice is essentially silent
-            else
-                 # Calculate median (equivalent to 50th percentile) on the non-zero magnitudes
-                 noise_floor = Statistics.median(non_zero_magnitudes)
+nfreq, ntime = size(mag_lin)
+# First, collect all fundamental estimates per time slice
+f0_cands = Vector{Vector{Float64}}(undef, ntime)
+for j in 1:ntime
+    slice = mag_lin[:, j]
+    # noise floor & threshold
+    nz = slice[slice .> 1e-12]
+    nf = isempty(nz) ? 1e-12 : median(nz)
+    thr = nf * 2.0
+    # find peak indices
+    peaks = [k for k in 2:nfreq-1 if slice[k]>thr && slice[k]>slice[k-1] && slice[k]>slice[k+1]]
+    cands = Float64[]
+    # check harmonic sets
+    for p1 in 1:length(peaks)
+        k1 = peaks[p1]; f1 = fsh[k1]
+        for p2 in p1+1:length(peaks)
+            k2 = peaks[p2]; f2 = fsh[k2]
+            est = f2 - f1
+            if est<MIN_F0 || est>MAX_F0
+                continue
             end
-            threshold = noise_floor * PEAK_THRESHOLD_FACTOR
-
-            # --- 2. Find Peaks above Threshold ---
-            peak_indices = Int[]
-            # Iterate from 2nd to second-to-last bin to check neighbors
-            for k in 2:(num_freq_bins - 1)
-                mag = magnitude_slice[k]
-                # Check if it's a local maximum and above threshold
-                if mag > threshold && mag > magnitude_slice[k-1] && mag > magnitude_slice[k+1]
-                    push!(peak_indices, k)
-                end
+            # count supporting harmonics
+            cnt = 2
+            for n in 2:10
+                tgt = f1 + n*est
+                # find any peak near tgt
+                found = any(abs.(fsh[peaks] .- tgt) .<= TOL)
+                if found; cnt += 1 else break end
             end
-
-            if isempty(peak_indices) || length(peak_indices) < MIN_HARMONICS
-                continue # Not enough peaks in this slice to form harmonics
+            if cnt >= MIN_H
+                push!(cands, est)
             end
-
-            # --- 3. Search for Harmonic Patterns ---
-            # Keep track of fundamental peaks already used in a detected set within this slice
-            # to avoid redundant detections of the same signal based on higher harmonics.
-            used_fundamental_indices = Set{Int}()
-
-            # Iterate through peaks as potential fundamentals (lowest harmonic)
-            for p1_idx in 1:length(peak_indices)
-                k1 = peak_indices[p1_idx]
-                # Skip if this peak was already part of a detected harmonic set in this slice
-                if k1 in used_fundamental_indices
-                    continue
-                end
-                freq1 = freqs_slice[k1]
-
-                # Iterate through subsequent peaks as potential second harmonics
-                for p2_idx in (p1_idx + 1):length(peak_indices)
-                    k2 = peak_indices[p2_idx]
-                    freq2 = freqs_slice[k2]
-
-                    # Estimate fundamental frequency from the first two peaks
-                    fundamental_est = freq2 - freq1
-                    if !(MIN_FUNDAMENTAL_HZ <= fundamental_est <= MAX_FUNDAMENTAL_HZ)
-                        continue # Estimated fundamental is outside plausible voice range
-                    end
-
-                    # Now, look for higher harmonics based on this fundamental estimate
-                    harmonics_found = [k1, k2] # Start with the first two peaks
-                    current_fundamental = fundamental_est # Use the estimate from the first pair
-
-                    # Search for the 3rd, 4th, ... harmonics
-                    for n in 2:10 # Look for up to 10 harmonics (arbitrary limit)
-                        target_freq = freq1 + n * current_fundamental
-                        found_higher = false
-                        # Check peaks *after* k2 for a match within tolerance
-                        for pk_idx in (p2_idx + 1):length(peak_indices)
-                             k_higher = peak_indices[pk_idx]
-                             freq_higher = freqs_slice[k_higher]
-                             if abs(freq_higher - target_freq) <= FREQ_TOLERANCE_HZ
-                                 push!(harmonics_found, k_higher)
-                                 # Optional: Refine fundamental estimate based on this new point? (Could add complexity)
-                                 found_higher = true
-                                 break # Found the nth harmonic, move to n+1
-                             elseif freq_higher > target_freq + FREQ_TOLERANCE_HZ
-                                 # Optimization: Since peaks are sorted by freq, if we overshoot, stop searching for this 'n'
-                                 break
-                             end
-                        end
-                        # If we didn't find the nth harmonic, we can't expect n+1, n+2 etc.
-                        # based on *this* fundamental estimate starting from freq1.
-                        # However, a different fundamental might exist, so we only break the inner 'n' loop.
-                        if !found_higher && n >= MIN_HARMONICS -1 # Check if we should stop searching for higher harmonics for *this* fundamental
-                             # If we haven't even found the minimum required number yet (e.g., looking for n=2 for MIN_HARMONICS=3)
-                             # and didn't find it, this fundamental candidate (freq1, freq2 pair) is invalid.
-                             break # Stop searching for higher harmonics (n loop) for this (k1, k2) pair
-                        end
-
-                    end # End loop searching for n=2, 3,... harmonics
-
-                    # Check if we found enough harmonics for this candidate fundamental
-                    if length(harmonics_found) >= MIN_HARMONICS
-                        # Success! Detected a voice signal based on this harmonic set.
-                        # Store the time and the frequency of the *lowest* harmonic (freq1)
-                        push!(detected_times, current_time)
-                        push!(detected_freqs, freq1)
-
-                        # Mark all peaks in this found set as 'used' for this time slice
-                        # to prevent them from starting *another* detection in the same slice.
-                        for k_used in harmonics_found
-                            push!(used_fundamental_indices, k_used)
-                        end
-
-                        # Since we found a set starting with k1, we can break from the p2_idx loop
-                        # and move to the next potential fundamental (next p1_idx).
-                        # This assumes one voice signal won't perfectly overlap another
-                        # starting at the *exact* same lowest harmonic frequency bin.
-                        break # Go to next p1_idx
-
-                    end # End if enough harmonics found
-
-                end # End loop p2_idx (potential second harmonic)
-            end # End loop p1_idx (potential fundamental)
-        end # End loop j (time slices)
-
-        @printf("Found %d potential voice harmonic starting points.\n", length(detected_times))
-
-        # Add the detected points to the plot
-        if !isempty(detected_times)
-            Plots.scatter!(
-                plt3, # Add to the existing plot object
-                detected_times,
-                detected_freqs,
-                markersize=4, # Smaller marker size
-                markercolor=:red,
-                markerstrokecolor=:white,
-                markerstrokewidth=0.5,
-                label="Detected Voice Harmonic Start" # Updated label
-            )
         end
-        # --- End Harmonic Voice Detection Logic ---
-
-        # Display the combined plot
-        display_plot_with_imgcat(plt3)
-        # --- End Third Plot ---
-
-    else # This 'else' corresponds to 'if !isempty(extracted_sig)'
-        println("Skipping plots of extracted signal as it was empty.")
     end
-
-catch e
-    println("\n--- Error during signal extraction or plotting ---")
-    showerror(stdout, e)
-    println() # Newline after error
+    f0_cands[j] = cands
 end
 
-# Final message will now appear after the extraction attempt
-println("Script finished.")
+# Sliding-window median smoothing
+# Stage 1: window=5
+w1, hw1 = 5, 2
+f0_stage1 = fill(NaN, ntime)
+for j in hw1+1:ntime-hw1
+    pool = vcat(f0_cands[j-hw1:j+hw1]...)
+    f0_stage1[j] = isempty(pool) ? NaN : median(pool)
+end
+# Stage 2: window=20
+w2, hw2 = 20, 10
+f0_final = fill(NaN, ntime)
+for j in hw2+1:ntime-hw2
+    seg = f0_stage1[j-hw2:j+hw2]
+    seg = seg[.!isnan.(seg)]
+    f0_final[j] = isempty(seg) ? NaN : median(seg)
+end
+
+# Plot detected fundamentals (red) and f₀ estimates (blue)
+# (Optional: show red peaks from first harmonic)
+# scatter!(plt, times, [first(c)!=nothing ? fsh[first([peaks for peaks in 1])] for ???])
+# Instead, plot f₀:
+x_f0 = times
+y_f0 = f0_final
+scatter!(plt, x_f0, y_f0; markersize=4, markercolor=:blue,
+         markerstrokecolor=:white, markerstrokewidth=0.5,
+         label="Estimated f₀")
+
+# Display
+display_plot_with_imgcat(plt)
+println("Done.")
