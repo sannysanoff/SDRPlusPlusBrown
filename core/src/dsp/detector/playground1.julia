@@ -121,11 +121,12 @@ const MIN_H = 2 # Require fewer harmonics
 const MIN_F0 = 80.0
 const MAX_F0 = 400.0
 const TOL = 25.0
+const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
-f0_cands = Vector{Vector{Tuple{Float64, Float64}}}(undef, ntime) # Store (est, f1) pairs
+f0_cands = Vector{Vector{Tuple{Float64, Float64, Int}}}(undef, ntime) # Store (est, f1, cnt) pairs
 for j in 1:ntime
     # --- DEBUG: Print info for first 5 time slices ---
     debug_print = j <= 5
@@ -141,8 +142,8 @@ for j in 1:ntime
         peak_freqs = fsh[peaks]
         println("Found $(length(peaks)) peaks above threshold $(@sprintf("%.2e", thr)). Frequencies (Hz):")
         println(join([@sprintf("%.1f", f) for f in peak_freqs], ", "))
-    end # Removed redundant cands = Float64[] initialization here
-    cands = Tuple{Float64, Float64}[] # Initialize for tuples
+    end
+    cands = Tuple{Float64, Float64, Int}[] # Initialize for tuples (est, f1, cnt)
     # check harmonic sets
     for p1 in 1:length(peaks)
         k1 = peaks[p1]; f1 = fsh[k1]
