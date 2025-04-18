@@ -338,7 +338,7 @@ try
 
         # Parameters for Harmonic Detection
         NOISE_FLOOR_PERCENTILE = 50.0 # Use median as noise floor estimate
-        PEAK_THRESHOLD_FACTOR = 5.0 # Peak must be this factor above noise floor (linear magnitude)
+        PEAK_THRESHOLD_FACTOR = 2.0 # Peak must be this factor above noise floor (linear magnitude)
         MIN_HARMONICS = 3           # Minimum number of harmonics (including fundamental) to detect
         MIN_FUNDAMENTAL_HZ = 80.0   # Plausible range for voice fundamental frequency
         MAX_FUNDAMENTAL_HZ = 400.0
