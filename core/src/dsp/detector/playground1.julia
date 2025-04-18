@@ -11,7 +11,8 @@ computes its spectrogram, and attempts to display it using the 'imgcat' command.
 using WAV
 using DSP
 using FFTW
-using PyPlot
+using Plots
+gr() # Set the GR backend for Plots.jl
 using Printf
 using Base.Filesystem # For rm, ispath
 
@@ -32,8 +33,8 @@ file_path = joinpath(sdrpproot, "tests", "test_files", "baseband_14174296Hz_11-0
 @printf("Does file exist? %s\n", isfile(file_path))
 
 # --- Imgcat Display Function ---
-function display_plot_with_imgcat(plt_module)
-    """Saves the current PyPlot plot to a temporary file and displays it using imgcat."""
+function display_plot_with_imgcat(plot_obj) # Accept a plot object
+    """Saves the current Plots.jl plot to a temporary file and displays it using imgcat."""
     tmpfile_path = "" # Initialize path variable
     io = nothing      # Initialize IO stream variable
     try
@@ -42,7 +43,7 @@ function display_plot_with_imgcat(plt_module)
         close(io) # Close the stream immediately, we just need the path
 
         # Save plot to the temporary file path
-        plt_module.savefig(tmpfile_path, format="png", bbox_inches="tight")
+        Plots.savefig(plot_obj, tmpfile_path) # Use Plots.savefig with the plot object
 
         # Display using imgcat
         # Construct the command correctly
@@ -110,22 +111,22 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
     # Add small epsilon to avoid log10(0)
     magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10)
 
-    # Plot using PyPlot
-    fig = PyPlot.figure(figsize=(12, 8))
-    # Note: pcolormesh expects times and freqs defining the *edges* of the bins.
-    # For simplicity matching the python output visually, we'll use the centers
-    # with shading='gouraud' which interpolates.
-    # Alternatively, calculate bin edges or use `imshow` with extent.
-    PyPlot.pcolormesh(times, freqs_shifted, magnitude_db, shading="gouraud", cmap="viridis")
-
-    PyPlot.colorbar(label="Magnitude (dB)")
-    PyPlot.title("Centered Spectrogram of Complex Signal (Julia)")
-    PyPlot.ylabel("Frequency [Hz]")
-    PyPlot.xlabel("Time [sec]")
-    PyPlot.tight_layout()
+    # Plot using Plots.jl (heatmap is suitable here)
+    # Note: heatmap uses the provided coordinates as centers by default.
+    plt = Plots.heatmap(
+        times,
+        freqs_shifted,
+        magnitude_db,
+        xlabel="Time [sec]",
+        ylabel="Frequency [Hz]",
+        title="Centered Spectrogram of Complex Signal (Julia/Plots.jl)",
+        colorbar_title="Magnitude (dB)",
+        cmap=:viridis, # Use a symbol for the colormap
+        size=(1000, 600) # Adjust size as needed (pixels)
+    )
 
     # Display using imgcat function
-    display_plot_with_imgcat(PyPlot)
+    display_plot_with_imgcat(plt) # Pass the plot object 'plt'
 end
 
 # --- Main Script Logic ---
