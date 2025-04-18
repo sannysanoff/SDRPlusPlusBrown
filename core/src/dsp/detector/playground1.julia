@@ -171,7 +171,7 @@ for j in 1:ntime
                  println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
             end
             if cnt >= MIN_H
-                push!(cands, (est, f1)) # Store the pair
+                push!(cands, (est, f1, cnt)) # Store the triple
             end
         end
     end
