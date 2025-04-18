@@ -201,7 +201,7 @@ using StatsBase # Add this if not already implicitly available via Plots/Statist
 f_bases_all = [d.f_base for d in all_detections]
 
 # Flag to track if any series has been plotted yet (for legend purposes)
-first_track_plotted = false
+global first_track_plotted = false
 
 if isempty(f_bases_all)
     println("No base frequency candidates found.")
