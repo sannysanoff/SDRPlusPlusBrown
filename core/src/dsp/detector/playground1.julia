@@ -189,7 +189,7 @@ function extract_signal(signal::Vector{Complex{Float64}}, fs::Real, min_freq::Re
 end
 
 # --- Spectrogram Plotting Function ---
-function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_suffix::String="")
+function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_suffix::String="", plot_size=(1000, 600)) # ADD plot_size argument
     """Plots the spectrogram of a complex signal and returns the plot object."""
 
     # --- Dynamically Calculate STFT Parameters ---
@@ -319,15 +319,17 @@ try
         # Capture the full tuple returned by the function
         plt2_tuple = plot_complex_signal(extracted_sig, extracted_fs; title_suffix="Extracted Signal")
         # Pass only the plot object (the first element) to display
-        display_plot_with_imgcat(plt2_tuple[1])
+        # display_plot_with_imgcat(plt2_tuple[1]) # COMMENTED OUT OR DELETED
 
         # --- Plot #3 (Extracted Signal Spectrogram with Brightest Points per Interval) ---
         println("\n--- Plotting Extracted Signal Spectrogram with Brightest Points per 0.05s Interval (Plot #3) ---")
         # Generate the spectrogram plot object and get data for finding max
+        # Pass the new plot_size argument
         plt3, magnitude3_raw, times3, freqs_shifted3 = plot_complex_signal(
             extracted_sig,
             extracted_fs;
-            title_suffix="Extracted Signal with Brightest Points per Interval" # Updated title
+            title_suffix="Extracted Signal with Brightest Points per Interval", # Updated title
+            plot_size=(1000, 1800) # SET NEW SIZE HERE (1000x1800)
         )
 
         # Find the brightest point within each time interval
