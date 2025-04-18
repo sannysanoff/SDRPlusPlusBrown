@@ -307,43 +307,83 @@ try
         # Pass only the plot object (the first element) to display
         display_plot_with_imgcat(plt2_tuple[1])
 
-        # --- Plot #3 (Extracted Signal Spectrogram with Brightest Point) ---
-        println("\n--- Plotting Extracted Signal Spectrogram with Brightest Point (Plot #3) ---")
+        # --- Plot #3 (Extracted Signal Spectrogram with Brightest Points per Interval) ---
+        println("\n--- Plotting Extracted Signal Spectrogram with Brightest Points per 0.05s Interval (Plot #3) ---")
         # Generate the spectrogram plot object and get data for finding max
         plt3, magnitude3_raw, times3, freqs_shifted3 = plot_complex_signal(
             extracted_sig,
             extracted_fs;
-            title_suffix="Extracted Signal with Brightest Point"
+            title_suffix="Extracted Signal with Brightest Points per Interval" # Updated title
         )
 
-        # Find the index of the maximum value in the raw magnitude data
-        # argmax returns a CartesianIndex (freq_idx, time_idx)
-        if !isempty(magnitude3_raw)
-            max_idx = argmax(magnitude3_raw)
-            freq_idx = max_idx[1] # Index along the frequency dimension
-            time_idx = max_idx[2] # Index along the time dimension
+        # Find the brightest point within each time interval
+        if !isempty(magnitude3_raw) && !isempty(times3)
+            time_step = 0.05 # Interval duration in seconds
+            max_time = times3[end]
+            num_intervals = ceil(Int, max_time / time_step)
 
-            # Get the corresponding time and frequency values
-            brightest_time = times3[time_idx]
-            brightest_freq = freqs_shifted3[freq_idx]
-            brightest_magnitude_db = 20 * log10(magnitude3_raw[max_idx] + 1e-10) # Calculate dB value for printing
+            brightest_times_in_intervals = Float64[]
+            brightest_freqs_in_intervals = Float64[]
 
-            @printf("Brightest point found at: Time=%.3f s, Freq=%.1f Hz (Magnitude=%.2f dB)\n",
-                    brightest_time, brightest_freq, brightest_magnitude_db)
+            println("Finding brightest points in $num_intervals intervals (step: $(time_step)s)...")
 
-            # Add the brightest point to the plot using scatter!
-            Plots.scatter!(
-                plt3, # Add to the existing plot object
-                [brightest_time], # Needs to be a vector/iterable
-                [brightest_freq], # Needs to be a vector/iterable
-                markersize=8,
-                markercolor=:red,
-                markerstrokecolor=:white,
-                markerstrokewidth=1,
-                label="Brightest Point" # Add label for legend
-            )
+            for i = 0:(num_intervals-1)
+                t_start = i * time_step
+                t_end = (i + 1) * time_step
+
+                # Find time indices within the current interval [t_start, t_end)
+                time_indices_in_interval = findall(t -> t_start <= t < t_end, times3)
+
+                # Skip if no time frames fall into this interval
+                if isempty(time_indices_in_interval)
+                    continue
+                end
+
+                # Extract the magnitude data for this time interval
+                magnitude_interval = magnitude3_raw[:, time_indices_in_interval]
+
+                # Find the index of the maximum value within this interval's sub-matrix
+                # max_idx_interval is CartesianIndex(freq_idx, sub_time_idx) relative to magnitude_interval
+                max_idx_interval = argmax(magnitude_interval)
+
+                # Get the frequency index (relative to the full frequency axis)
+                freq_idx_global = max_idx_interval[1]
+
+                # Get the time index within the *original* times3 vector
+                # max_idx_interval[2] is the index within time_indices_in_interval
+                time_idx_global = time_indices_in_interval[max_idx_interval[2]]
+
+                # Get the corresponding time and frequency values
+                brightest_time = times3[time_idx_global]
+                brightest_freq = freqs_shifted3[freq_idx_global]
+
+                # Store the found point
+                push!(brightest_times_in_intervals, brightest_time)
+                push!(brightest_freqs_in_intervals, brightest_freq)
+
+                # Optional: Print info for each interval found
+                # brightest_magnitude_db = 20 * log10(magnitude_interval[max_idx_interval] + 1e-10)
+                # @printf("  Interval [%.3f, %.3f): Brightest at Time=%.3f s, Freq=%.1f Hz (Mag=%.2f dB)\n",
+                #         t_start, t_end, brightest_time, brightest_freq, brightest_magnitude_db)
+            end
+
+            @printf("Found %d brightest points across intervals.\n", length(brightest_times_in_intervals))
+
+            # Add all found brightest points to the plot using scatter!
+            if !isempty(brightest_times_in_intervals)
+                Plots.scatter!(
+                    plt3, # Add to the existing plot object
+                    brightest_times_in_intervals,
+                    brightest_freqs_in_intervals,
+                    markersize=5, # Slightly smaller marker for potentially many points
+                    markercolor=:red,
+                    markerstrokecolor=:white,
+                    markerstrokewidth=0.5,
+                    label="Brightest Point per Interval" # Updated label
+                )
+            end
         else
-            @warn "Magnitude data for plot 3 is empty, cannot find brightest point."
+            @warn "Magnitude data or time data for plot 3 is empty, cannot find brightest points."
         end
 
         # Display the combined plot
