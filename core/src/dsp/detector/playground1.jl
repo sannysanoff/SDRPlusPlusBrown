@@ -367,8 +367,9 @@ function try2()
 
     #── store original axes limits AND ticks so the scatter won’t drop them
     orig_xlim, orig_ylim = xlims(plt), ylims(plt)
-    orig_xticks, orig_xtick_labels = xticks(plt)
-    orig_yticks, orig_ytick_labels = yticks(plt)
+    # xticks(plt) returns a 1‑element Vector{Tuple{…}}, so grab [1]
+    (orig_xticks, orig_xtick_labels) = xticks(plt)[1]
+    (orig_yticks, orig_ytick_labels) = yticks(plt)[1]
 
     track_times = Float64[]
     track_f_bases = Float64[]
