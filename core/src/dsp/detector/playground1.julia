@@ -254,7 +254,7 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real; title_s
         title=full_title, # Use combined title
         colorbar_title="Magnitude (dB)",
         cmap=:viridis,
-        size=(1000, 600)
+        size=plot_size # USE plot_size argument here
     )
 
     # --- REMOVE THE DISPLAY CALL FROM HERE ---
