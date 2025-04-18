@@ -260,8 +260,8 @@ Q = Q ./ maximum(abs.(Q))
 # Create complex signal
 complex_signal = I + im .* Q # Use 'im' for the imaginary unit in Julia
 
-# Plot the spectrogram
-plot_complex_signal(complex_signal, sr)
+# save on performance for now
+#plot_complex_signal(complex_signal, sr)
 
 # --- Extract and Plot Sub-band ---
 println("\n--- Extracting and Plotting Sub-band (0-50kHz, 0-3s) ---")
