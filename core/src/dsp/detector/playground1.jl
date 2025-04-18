@@ -382,7 +382,7 @@ function try2()
     # Restore the heatmap's freq–time limits and ticks AFTER scatter!
     xlims!(plt, orig_xlim)
     ylims!(plt, orig_ylim)
-    xticks!(plt, orig_xticks, orig_xtick_labels)
+    xticks!(plt, orig_xticks) # <-- Use only tick positions
     yticks!(plt, orig_yticks, orig_ytick_labels)
 
     # Display
