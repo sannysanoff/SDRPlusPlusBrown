@@ -15,6 +15,7 @@ using Plots
 gr() # Set the GR backend for Plots.jl
 using Printf
 using Base.Filesystem # For rm, ispath
+using Images
 
 # --- Path Setup ---
 # Get the directory containing the current script (playground1.julia)
@@ -48,10 +49,21 @@ function display_plot_with_imgcat(plot_obj) # Accept a plot object
         # savefig will create the file if it doesn't exist
         Plots.savefig(plot_obj, tmpfile_path)
 
-        # Display using imgcat
-        # Construct the command correctly
-        cmd = `imgcat $tmpfile_path`
-        run(cmd) # Throws ProcessFailedException on error
+            # Get and print image dimensions
+            try
+                img = Images.load(tmpfile_path)
+                # size(img) typically returns (height, width) for Images.jl
+                height, width = size(img)
+                println("Imgcat: Displaying image $tmpfile_path ($(width)x$(height))")
+                # No explicit close needed for the loaded image object
+            catch e_img
+                @warn "Warning: Could not get image dimensions: $e_img"
+            end
+
+            # Display using imgcat
+            # Construct the command correctly
+            cmd = `imgcat $tmpfile_path`
+            run(cmd) # Throws ProcessFailedException on error
 
     catch e
         if e isa ProcessFailedException || occursin("executable file not found", lowercase(sprint(showerror, e)))

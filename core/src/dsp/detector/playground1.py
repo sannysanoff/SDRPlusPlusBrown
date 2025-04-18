@@ -7,6 +7,7 @@ import io
 import subprocess
 import tempfile
 import os # Add os import for cleanup
+from PIL import Image
 
 # Get the directory containing the current script (playground1.py)
 # Assumes this script is located at core/src/dsp/detector/playground1.py
@@ -35,8 +36,17 @@ def display_plot_with_imgcat(plt_obj):
             plt_obj.savefig(tmpfile.name, format='png', bbox_inches='tight')
             tmpfile_path = tmpfile.name
 
-        # Display using imgcat
-        subprocess.run(['imgcat', tmpfile_path], check=True)
+            # Get and print image dimensions
+            try:
+                img = Image.open(tmpfile_path)
+                width, height = img.size
+                print(f"Imgcat: Displaying image {tmpfile_path} ({width}x{height})")
+                img.close() # Close the image file handle
+            except Exception as e_img:
+                print(f"Warning: Could not get image dimensions: {e_img}")
+
+            # Display using imgcat
+            subprocess.run(['imgcat', tmpfile_path], check=True)
 
     except FileNotFoundError:
         print("Error: 'imgcat' command not found. Please install imgcat (e.g., via iTerm2 shell integration).")
