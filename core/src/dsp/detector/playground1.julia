@@ -1,0 +1,153 @@
+#=
+To run this script, you need to install the required Julia packages.
+Open a Julia REPL and run:
+import Pkg
+Pkg.add(["WAV", "DSP", "FFTW", "PyPlot", "Printf"])
+
+This script reads a complex baseband signal from a WAV file,
+computes its spectrogram, and attempts to display it using the 'imgcat' command.
+=#
+
+using WAV
+using DSP
+using FFTW
+using PyPlot
+using Printf
+using Base.Filesystem # For rm, ispath
+
+# --- Path Setup ---
+# Get the directory containing the current script (playground1.julia)
+current_script_dir = @__DIR__
+
+# Calculate the project root directory by going up 4 levels
+# core/src/dsp/detector -> core/src/dsp -> core/src -> core -> project_root
+sdrpproot = dirname(dirname(dirname(dirname(current_script_dir))))
+
+# Construct the full path to the test file relative to the project root
+file_path = joinpath(sdrpproot, "tests", "test_files", "baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav")
+
+# Print paths for verification
+@printf("Project Root: %s\n", abspath(sdrpproot))
+@printf("Test File Path: %s\n", abspath(file_path))
+@printf("Does file exist? %s\n", isfile(file_path))
+
+# --- Imgcat Display Function ---
+function display_plot_with_imgcat(plt_module)
+    """Saves the current PyPlot plot to a temporary file and displays it using imgcat."""
+    tmpfile_path = "" # Initialize path variable
+    io = nothing      # Initialize IO stream variable
+    try
+        # Create a temporary file
+        (tmpfile_path, io) = mktemp(; cleanup=false, suffix=".png") # Keep file after closing io
+        close(io) # Close the stream immediately, we just need the path
+
+        # Save plot to the temporary file path
+        plt_module.savefig(tmpfile_path, format="png", bbox_inches="tight")
+
+        # Display using imgcat
+        # Construct the command correctly
+        cmd = `imgcat $tmpfile_path`
+        run(cmd) # Throws ProcessFailedException on error
+
+    catch e
+        if e isa ProcessFailedException || occursin("executable file not found", lowercase(sprint(showerror, e)))
+             println("Error: 'imgcat' command not found or failed. Please install imgcat (e.g., via iTerm2 shell integration) or check its path.")
+             # Fallback or alternative display method could be added here if needed
+             # For now, just print the error. If you want the old behavior as fallback:
+             # plt_module.show()
+        else
+            println("An error occurred during plot display:")
+            showerror(stdout, e)
+            println() # Newline after error
+        end
+    finally
+        # Clean up the temporary file
+        if !isempty(tmpfile_path) && ispath(tmpfile_path)
+            try
+                rm(tmpfile_path)
+            catch err
+                @warn "Error removing temporary file $tmpfile_path: $err"
+            end
+        end
+        # Close the plot figure to free memory, regardless of display success
+        try
+            plt_module.close()
+        catch err
+             # Ignore errors if plot is already closed or doesn't exist
+        end
+    end
+end
+
+# --- Spectrogram Plotting Function ---
+function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
+    """Plots the spectrogram of a complex signal."""
+
+    # STFT parameters (matching Python script)
+    nperseg = 1000
+    noverlap = 512 # This is the number of samples to overlap
+    win = DSP.hanning(nperseg)
+
+    # Compute STFT
+    # DSP.stft returns the complex STFT matrix directly for complex input
+    # The result dimensions are (frequency_bins, time_frames)
+    S = DSP.stft(signal, nperseg, noverlap; fs=fs, window=win)
+
+    # Calculate frequencies and times corresponding to the STFT output
+    # Frequencies (full range for complex signal)
+    freqs = FFTW.fftfreq(nperseg, fs) # Frequencies corresponding to rows of S before fftshift
+    # Times (center of each frame)
+    step = nperseg - noverlap
+    # Calculate number of frames based on DSP.stft's internal logic (padding might affect this slightly, but this is standard)
+    num_frames = floor(Int, (length(signal) - nperseg) / step) + 1
+    # Times corresponding to the center of each window
+    times = (collect(0:(num_frames-1)) .* step .+ (nperseg / 2)) ./ fs
+
+    # Shift frequencies and STFT matrix for centered display
+    S_shifted = FFTW.fftshift(S, 1) # Shift along the frequency dimension (dim=1)
+    freqs_shifted = FFTW.fftshift(freqs)
+
+    # Compute magnitude in dB
+    # Add small epsilon to avoid log10(0)
+    magnitude_db = 20 .* log10.(abs.(S_shifted) .+ 1e-10)
+
+    # Plot using PyPlot
+    fig = PyPlot.figure(figsize=(12, 8))
+    # Note: pcolormesh expects times and freqs defining the *edges* of the bins.
+    # For simplicity matching the python output visually, we'll use the centers
+    # with shading='gouraud' which interpolates.
+    # Alternatively, calculate bin edges or use `imshow` with extent.
+    PyPlot.pcolormesh(times, freqs_shifted, magnitude_db, shading="gouraud", cmap="viridis")
+
+    PyPlot.colorbar(label="Magnitude (dB)")
+    PyPlot.title("Centered Spectrogram of Complex Signal (Julia)")
+    PyPlot.ylabel("Frequency [Hz]")
+    PyPlot.xlabel("Time [sec]")
+    PyPlot.tight_layout()
+
+    # Display using imgcat function
+    display_plot_with_imgcat(PyPlot)
+end
+
+# --- Main Script Logic ---
+# Load the WAV file
+# wavread returns data matrix (samples x channels) and sample rate
+y, sr = wavread(file_path)
+
+# Ensure data is Float64 for DSP processing if it isn't already
+y_float = Float64.(y)
+
+# Separate I and Q data (assuming stereo: I=channel 1, Q=channel 2)
+I = y_float[:, 1]
+Q = y_float[:, 2]
+
+# Normalize I and Q individually (optional, matches Python script)
+I = I ./ maximum(abs.(I))
+Q = Q ./ maximum(abs.(Q))
+
+# Create complex signal
+complex_signal = I + im .* Q # Use 'im' for the imaginary unit in Julia
+
+# Plot the spectrogram
+plot_complex_signal(complex_signal, sr)
+
+println("Script finished.")
