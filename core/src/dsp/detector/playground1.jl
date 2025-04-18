@@ -124,6 +124,9 @@ const MAX_F0 = 400.0
 const TOL = 25.0
 # const MIN_STRONG_H = 3 # Minimum harmonics for a "strong" candidate - REMOVED
 const MAX_HARMONIC_SPREAD = 5000.0 # Max Hz difference between f1 and subsequent harmonics
+const THR_MULT       = 3.0    # was hard‑coded 5.0
+const F0_MAX_MULT    = 2.0    # max allowed energy (relative to noise floor) at the hypothesized f₀
+const MIN_BIN_COUNT  = 5      # was hard‑coded 7
 
 nfreq, ntime = size(mag_lin)
 # First, collect all fundamental estimates per time slice
@@ -136,7 +139,7 @@ for j in 1:ntime
     # noise floor & threshold
     nz = slice[slice .> 1e-12]
     nf = isempty(nz) ? 1e-12 : median(nz)
-    thr = nf * 5.0 # Keep increased threshold multiplier from previous step
+    thr = nf * THR_MULT
     # find peak indices
     peaks = [k for k in 2:nfreq-1 if slice[k]>thr && slice[k]>slice[k-1] && slice[k]>slice[k+1]]
     if debug_print
@@ -172,7 +175,16 @@ for j in 1:ntime
                  println("  Harmonic set found: f1=$(@sprintf("%.1f", f1)), f2=$(@sprintf("%.1f", f2)) => est=$(@sprintf("%.1f", est)), num_harmonics=$cnt")
             end
             if cnt >= MIN_H
-                push!(cands, (est, f1, cnt)) # Store the triple
+                # reject any f₀ that sits in a high‑energy region
+                f0 = f1 - est
+                _, idx0 = findmin(abs.(fsh .- f0))
+                if slice[idx0] > nf * F0_MAX_MULT
+                    if debug_print
+                        println("    skip f0=$(round(f0, digits=1))Hz: energy=$(round(slice[idx0], sigdigits=3))")
+                    end
+                else
+                    push!(cands, (est, f1, cnt))
+                end
             end
         end
     end
@@ -214,7 +226,7 @@ else
     hist = StatsBase.fit(Histogram, f_bases_all, bins)
 
     # 3. Identify Peaks (simple approach: bins with counts above a threshold)
-    min_bin_count = 7 # increase sensitivity: accept carriers down to 7 hits
+    min_bin_count = MIN_BIN_COUNT
     peak_bin_indices = findall(hist.weights .>= min_bin_count)
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
