@@ -214,9 +214,11 @@ else
     stable_f_base_candidates = [(bins[i] + bins[i+1]) / 2 for i in peak_bin_indices] # Use bin centers
     println("Stable f_base candidates (Hz): ", join([@sprintf("%.1f", f) for f in stable_f_base_candidates], ", "))
 
+    # Flag to track if any series has been plotted yet (for legend purposes)
+    first_track_plotted = false
+
     # 4. Track and Plot Closest Candidates
     const TOL_FB = 250.0 # Hz tolerance for matching time-slice candidates to stable freqs
-    first_track_plotted = false # Flag to handle label for the combined series
 
     for (track_idx, f_base_stable) in enumerate(stable_f_base_candidates)
         track_times = Float64[]
