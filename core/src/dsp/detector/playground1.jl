@@ -133,13 +133,18 @@ function try2()
 
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
+    PEAK_WINDOW_HALF_WIDTH = 2 # Samples on each side to check for max
     nfreq = length(first_slice_db)
     # Estimate noise floor using median
     thr = median(first_slice_db)
     # Find peak indices based on local maxima and threshold
-    peak_indices = [ k for k in 2:nfreq-1
+    potential_peak_indices = [ k for k in 2:nfreq-1
                      if first_slice_db[k] > thr + 20*log10(MIN_PEAK_RATIO) && # Compare in dB domain
                         first_slice_db[k] > first_slice_db[k-1] && first_slice_db[k] > first_slice_db[k+1] ]
+
+    # Filter peaks: keep only those that are the maximum in their local window
+    peak_indices = [ k for k in potential_peak_indices
+                     if first_slice_db[k] == maximum(first_slice_db[max(1, k-PEAK_WINDOW_HALF_WIDTH):min(nfreq, k+PEAK_WINDOW_HALF_WIDTH)]) ]
     peak_vals = first_slice_db[peak_indices]
     peak_freqs = fsh[peak_indices]
     # Add peaks to the plot
