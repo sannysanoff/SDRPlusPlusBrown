@@ -152,6 +152,7 @@ function try2()
 
     display_plot_with_imgcat(plt_slice)
 
+    # don't include legend at all. AI!
     plt = heatmap(fsh, times, mag_db';
         xlabel="Freq [Hz]", ylabel="Time [s]",
         # title="Extracted Spectrogram", # Title removed from top
