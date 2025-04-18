@@ -337,12 +337,12 @@ try
         println("\n--- Detecting Voice Harmonics (Plot #3) ---")
 
         # Parameters for Harmonic Detection
-        const NOISE_FLOOR_PERCENTILE = 50.0 # Use median as noise floor estimate
-        const PEAK_THRESHOLD_FACTOR = 5.0 # Peak must be this factor above noise floor (linear magnitude)
-        const MIN_HARMONICS = 3           # Minimum number of harmonics (including fundamental) to detect
-        const MIN_FUNDAMENTAL_HZ = 80.0   # Plausible range for voice fundamental frequency
-        const MAX_FUNDAMENTAL_HZ = 400.0
-        const FREQ_TOLERANCE_HZ = 25.0    # Tolerance for matching harmonic frequencies
+        NOISE_FLOOR_PERCENTILE = 50.0 # Use median as noise floor estimate
+        PEAK_THRESHOLD_FACTOR = 5.0 # Peak must be this factor above noise floor (linear magnitude)
+        MIN_HARMONICS = 3           # Minimum number of harmonics (including fundamental) to detect
+        MIN_FUNDAMENTAL_HZ = 80.0   # Plausible range for voice fundamental frequency
+        MAX_FUNDAMENTAL_HZ = 400.0
+        FREQ_TOLERANCE_HZ = 25.0    # Tolerance for matching harmonic frequencies
 
         detected_times = Float64[]
         detected_freqs = Float64[] # Store the frequency of the *lowest* detected harmonic
