@@ -3,6 +3,10 @@ import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import stft
+import io
+import subprocess
+import tempfile
+import os # Add os import for cleanup
 
 # Get the directory containing the current script (playground1.py)
 # Assumes this script is located at core/src/dsp/detector/playground1.py
@@ -54,7 +58,23 @@ def plot_complex_signal(signal, sr):
     plt.ylabel('Frequency [Hz]')
     plt.xlabel('Time [sec]')
     plt.tight_layout()
-    plt.show()
+    # Save plot to a temporary file
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+        plt.savefig(tmpfile.name, format='png', bbox_inches='tight')
+        tmpfile_path = tmpfile.name
+
+    # Display using imgcat
+    try:
+        subprocess.run(['imgcat', tmpfile_path], check=True)
+    except FileNotFoundError:
+        print("Error: 'imgcat' command not found. Please install imgcat (e.g., via iTerm2 shell integration).")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running imgcat: {e}")
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(tmpfile_path):
+            os.remove(tmpfile_path)
+        plt.close() # Close the plot figure to free memory
 
 y, sr = librosa.load(file_path, sr=None, mono=False)
 
