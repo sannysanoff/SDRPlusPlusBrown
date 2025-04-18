@@ -34,6 +34,7 @@ file_path = joinpath(sdrpproot, "tests", "test_files", "baseband_14174296Hz_11-0
 
 # --- Imgcat Display Function ---
 function display_plot_with_imgcat(plot_obj) # Accept a plot object
+    println("Imgcat..")
     """Saves the current Plots.jl plot to a temporary file and displays it using imgcat."""
     tmpfile_path = "" # Initialize path variable
     try
@@ -88,6 +89,7 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
     # Compute STFT
     # DSP.stft returns the complex STFT matrix directly for complex input
     # The result dimensions are (frequency_bins, time_frames)
+    println("STFT wav..")
     S = DSP.stft(signal, nperseg, noverlap; fs=fs, window=win)
 
     # Calculate frequencies and times corresponding to the STFT output
@@ -110,6 +112,7 @@ function plot_complex_signal(signal::Vector{Complex{Float64}}, fs::Real)
 
     # Plot using Plots.jl (heatmap is suitable here)
     # Note: heatmap uses the provided coordinates as centers by default.
+    println("Heatmap..")
     plt = Plots.heatmap(
         times,
         freqs_shifted,
@@ -129,6 +132,7 @@ end
 # --- Main Script Logic ---
 # Load the WAV file
 # wavread returns data matrix (samples x channels) and sample rate
+println("Read wav..")
 y, sr = wavread(file_path)
 
 # Ensure data is Float64 for DSP processing if it isn't already
