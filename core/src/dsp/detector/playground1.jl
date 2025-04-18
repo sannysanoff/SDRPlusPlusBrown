@@ -117,11 +117,11 @@ end
 
 
 function try2()
-    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
 
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 
-    first_slice_db = mag_db[:, 20]
+    first_slice_db = mag_db[:, 10]
     plt_slice = plot(fsh, first_slice_db;
                      xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
                      xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
@@ -132,7 +132,7 @@ function try2()
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     # Detect peaks in the slice using custom logic
-    MIN_PEAK_RATIO = 1.2 # Threshold factor relative to noise floor
+    MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
     nfreq = length(first_slice_db)
     # Estimate noise floor using median
     thr = median(first_slice_db)
