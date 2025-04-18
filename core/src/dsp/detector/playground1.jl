@@ -116,7 +116,7 @@ mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
 plt = heatmap(fsh, times, mag_db';
     xlabel="Freq [Hz]", ylabel="Time [s]",
     title="Extracted Spectrogram", colorbar_title="dB", cmap=:viridis,
-    size=(500,3600))
+    size=(3600, 500))
 
 # --- Unified f₀ Detection ---
 const MIN_H = 2 # Require fewer harmonics
