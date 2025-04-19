@@ -637,11 +637,24 @@ function try2()
     peak_freqs = fsh[peak_indices]
     # Print all peak frequencies
     println("Detected peak frequencies:")
+    prev_index = nothing
     for (i, freq) in enumerate(peak_freqs)
         # Find the index in the original frequency array (fsh)
         original_index = findfirst(x -> x ≈ freq, fsh)
-        println(@sprintf("  Peak %d: %.2f Hz (index %d), Magnitude: %.2f dB", 
-                         i, freq, original_index, peak_vals[i]))
+        
+        # Calculate delta from previous peak
+        delta_str = if i > 1 && !isnothing(prev_index)
+            delta = original_index - prev_index
+            @sprintf(", Delta: %+d", delta)
+        else
+            ""
+        end
+        
+        println(@sprintf("  Peak %d: %.2f Hz (index %d), Magnitude: %.2f dB%s", 
+                         i, freq, original_index, peak_vals[i], delta_str))
+        
+        # Save current index as previous for next iteration
+        prev_index = original_index
     end
     
     # Add peaks to the plot
