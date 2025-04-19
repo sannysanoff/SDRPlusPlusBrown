@@ -201,9 +201,6 @@ function score_line_at_offset(first_slice_db, fsh, offs)
         imgcat(plot(arr1))
     end
 
-    if offs == 400
-        println(Int64.(round.(arr1)))
-    end
 
     # Compute the Real FFT of the extracted frequency slice
     rfft_result = FFTW.rfft(arr1)
@@ -213,12 +210,12 @@ function score_line_at_offset(first_slice_db, fsh, offs)
     N = length(arr1)
     rfft_freqs = (0:(N ÷ 2)) ./ N # Frequencies from 0 to 0.5 cycles/index
 
-    # Plot the magnitude of the RFFT
-    plt_rfft = plot(rfft_freqs, rfft_mag;
-                    xlabel="Frequency (cycles/index)", ylabel="Magnitude",
-                    title="RFFT of Slice [-8000 Hz, -4000 Hz]",
-                    label="", size=(800, 300))
     if false
+        # Plot the magnitude of the RFFT
+        plt_rfft = plot(rfft_freqs, rfft_mag;
+                        xlabel="Frequency (cycles/index)", ylabel="Magnitude",
+                        title="RFFT of Slice [-8000 Hz, -4000 Hz]",
+                        label="", size=(800, 300))
         imgcat(plt_rfft)
     end
 
@@ -289,7 +286,8 @@ function try3(offs = -8100)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     first_slice_db = mag_db[:, 10]
     println("Running...", size(first_slice_db)[1])
-    for z in 1:10
+    local valz
+    for z in 1:3
         timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
         println("[$timestamp_str] Iteration $z/10..")
         valz = Float64[]
