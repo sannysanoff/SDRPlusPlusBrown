@@ -210,9 +210,44 @@ function try3()
                     title="RFFT of Slice [-8000 Hz, -4000 Hz]",
                     label="", size=(800, 300))
     imgcat(plt_rfft)
-    # find maximum peak within frequences above 0.03 (i.e. exclude frequencies/bins below), convert found frequency to period inside arr1
-    # find also phase, convert into start offset inside arr1
-    # print both. AI!
+
+    # Find peak frequency > 0.03 cycles/index, calculate period and phase offset
+    freq_threshold = 0.03
+    min_idx = findfirst(f -> f >= freq_threshold, rfft_freqs)
+
+    if isnothing(min_idx) || min_idx > length(rfft_mag)
+        println("No frequencies found above the threshold.")
+    else
+        # Find the peak magnitude and its index in the relevant frequency range
+        # Use view for efficiency, handle empty range if min_idx is the last index
+        view_range = min_idx:length(rfft_mag)
+        if !isempty(view_range)
+            peak_val, rel_idx = findmax(view(rfft_mag, view_range))
+            peak_idx = min_idx + rel_idx - 1 # Adjust index back to the full rfft array
+
+            peak_freq = rfft_freqs[peak_idx]
+            peak_phase = angle(rfft_result[peak_idx]) # Phase in radians [-pi, pi]
+
+            # Calculate period (in number of samples/indices in arr1)
+            # Avoid division by zero if peak_freq is somehow zero (though unlikely for peak > 0.03)
+            period = peak_freq ≈ 0.0 ? Inf : 1.0 / peak_freq
+
+            # Calculate phase offset (in number of samples/indices in arr1)
+            # Offset represents the index shift for the first peak relative to index 0
+            # We use mod(..., period) to get the offset within the first cycle [0, period)
+            offset_indices = mod((-peak_phase / (2 * pi)) * period, period)
+
+            @printf("Peak found:\n")
+            @printf("  Frequency: %.4f cycles/index\n", peak_freq)
+            @printf("  Magnitude: %.2f\n", peak_val)
+            @printf("  Phase:     %.3f radians\n", peak_phase)
+            @printf("Calculated properties in arr1:\n")
+            @printf("  Period:    %.2f indices\n", period)
+            @printf("  Offset:    %.2f indices\n", offset_indices)
+        else
+             println("Could not find a peak above the frequency threshold (search range empty).")
+        end
+    end
 end
 
 function try2()
