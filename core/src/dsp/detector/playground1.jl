@@ -638,7 +638,10 @@ function try2()
     # Print all peak frequencies
     println("Detected peak frequencies:")
     for (i, freq) in enumerate(peak_freqs)
-        println(@sprintf("  Peak %d: %.2f Hz, Magnitude: %.2f dB", i, freq, peak_vals[i]))
+        # Find the index in the original frequency array (fsh)
+        original_index = findfirst(x -> x ≈ freq, fsh)
+        println(@sprintf("  Peak %d: %.2f Hz (index %d), Magnitude: %.2f dB", 
+                         i, freq, original_index, peak_vals[i]))
     end
     
     # Add peaks to the plot
