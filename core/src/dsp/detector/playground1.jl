@@ -344,8 +344,11 @@ function find_dominant_harmonic_intervals(
     # KernelFactors.Null() означает отсутствие фильтрации по 1-й размерности (интервалы).
     # "reflect" - стандартный способ обработки границ
 
-    # Apply filter across rows (dimension 2) using gauss_kernel, no filtering across columns (dimension 1) using NoPad()
-    smoothed_responses = imfilter(raw_responses, (ImageFiltering.NoPad(), gauss_kernel), "reflect") # Use NoPad() for the first dimension
+    # Define the identity kernel for the first dimension (intervals)
+    identity_kernel_1d = ImageFiltering.centered(fill(1.0, 1)) # OffsetArray([1.0], 0:0)
+
+    # Apply filter: identity along dim 1, gauss_kernel along dim 2
+    smoothed_responses = imfilter(raw_responses, (identity_kernel_1d, gauss_kernel), "reflect")
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
