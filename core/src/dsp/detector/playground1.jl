@@ -115,6 +115,46 @@ function rev1()
 end
 
 
+# annotate with types AI!
+function sliding_window_analysis(signal, window_size, step_size, fs)
+    n_windows = length(signal) - window_size + 1
+    
+    # Initialize arrays to store results
+    frequencies = zeros(n_windows)
+    energies = zeros(n_windows)
+    phases = zeros(n_windows)
+    
+    # Create frequency array for a window of size window_size
+    freq = FFTW.fftfreq(window_size, 1.0/fs)
+    # Only consider positive frequencies (up to Nyquist frequency)
+    pos_freq_idx = 2:div(window_size, 2)+1  # Skip DC component at index 1
+    
+    # Loop through each window
+    for i in 1:n_windows
+        # Extract current window
+        window = signal[i:i+window_size-1]
+        
+        # Apply Hann window to reduce spectral leakage
+        windowed_signal = window .* hanning(window_size)
+        
+        # Compute FFT
+        fft_result = fft(windowed_signal)
+        
+        # Calculate power at each frequency
+        power = abs2.(fft_result[pos_freq_idx])
+        
+        # Find index of maximum power
+        max_power_idx = argmax(power)
+        
+        # Calculate actual frequency, energy and phase
+        frequencies[i] = freq[max_power_idx + 1]  # +1 because we skipped DC
+        energies[i] = power[max_power_idx]
+        phases[i] = angle(fft_result[max_power_idx + 1])
+    end
+    
+    return frequencies, energies, phases
+end
+
 
 function try2()
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
@@ -135,6 +175,8 @@ function try2()
                      xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
+
+
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
     PEAK_WINDOW_HALF_WIDTH = 2 # Samples on each side to check for max
@@ -154,6 +196,8 @@ function try2()
     # Add peaks to the plot
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
 
+
+
     display_plot_with_imgcat(plt_slice)
 
     plt = heatmap(fsh, times, mag_db';
@@ -163,7 +207,7 @@ function try2()
         xticks = 50, # Suggest more ticks on the x-axis
         legend = false, # Disable the legend
         bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
-        size=(3600, 700),
+        size=(3430, 700),
         xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt, [(0.5, -0.1, Plots.text("Extracted Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
