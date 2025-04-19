@@ -185,7 +185,7 @@ function try2()
                      xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
-    periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1; min_prominence_db=6.0, local_half_width=3)
+    periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1)
     @printf("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]): of array shape=%s\n", size(first_slice_db))
     # Iterate and print each result pair
     for i in 1:length(periods)
