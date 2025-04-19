@@ -649,10 +649,10 @@ function try3(offs = -8100)
     freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 8, 35)
 
     cutoff = percentile_fast(copy(score), 0.3) * 2;
-    println("Cutoff = ", )
+    println("Cutoff = ", cutoff)
 
-    # convert to julia below map AI!
-    score_cot = map(\x -> x > cutoff ? -1 : -2, score)
+    # Convert scores to visualization values based on cutoff
+    score_cot = map(x -> x > cutoff ? -1 : -2, score)
 
 
     plt_combined = plot(freq, size=(2000, 1200));
