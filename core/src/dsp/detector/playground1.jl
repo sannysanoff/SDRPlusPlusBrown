@@ -644,8 +644,9 @@ function try2()
         
         # Calculate delta from previous peak
         delta_str = if i > 1 && !isnothing(prev_index)
-            delta = original_index - prev_index
-            @sprintf(", Delta: %+d", delta)
+            index_delta = original_index - prev_index
+            freq_delta = freq - peak_freqs[i-1]
+            @sprintf(", Delta: %+d idx (%+.2f Hz)", index_delta, freq_delta)
         else
             ""
         end
