@@ -221,13 +221,13 @@ function try2()
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
     periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1; min_prominence_db=10.0, local_half_width=3)
-    println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
+    @printf("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]): of array shape=%s\n", size(first_slice_db))
     # Iterate and print each result pair
     for i in 1:length(periods)
         # Calculate the starting frequency of the window
         # step_size is 1, so window i starts at index i in first_slice_db
         start_freq = fsh[i] # Get frequency corresponding to the start index of the window
-        @printf("  Freq Start %.1f Hz: Period = %.2f indices, Phase = %.3f rad\n", start_freq, periods[i], phases[i])
+        @printf("  Freq[%d] Start %.1f Hz: Period = %.2f indices, Phase = %.3f rad\n", i, start_freq, periods[i], phases[i])
     end
 
     # Detect peaks in the slice using custom logic
