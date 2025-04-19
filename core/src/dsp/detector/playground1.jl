@@ -224,8 +224,10 @@ function try2()
     println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
     # Iterate and print each result pair
     for i in 1:length(periods)
-        # instead of window, pring matching frequency AI!
-        @printf("  Window %d: Period = %.2f, Phase = %.3f\n", i, periods[i], phases[i])
+        # Calculate the starting frequency of the window
+        # step_size is 1, so window i starts at index i in first_slice_db
+        start_freq = fsh[i] # Get frequency corresponding to the start index of the window
+        @printf("  Freq Start %.1f Hz: Period = %.2f indices, Phase = %.3f rad\n", start_freq, periods[i], phases[i])
     end
 
     # Detect peaks in the slice using custom logic
