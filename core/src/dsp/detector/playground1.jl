@@ -635,6 +635,12 @@ function try2()
                      if first_slice_db[k] == maximum(first_slice_db[max(1, k-PEAK_WINDOW_HALF_WIDTH):min(nfreq, k+PEAK_WINDOW_HALF_WIDTH)]) ]
     peak_vals = first_slice_db[peak_indices]
     peak_freqs = fsh[peak_indices]
+    # Print all peak frequencies
+    println("Detected peak frequencies:")
+    for (i, freq) in enumerate(peak_freqs)
+        println(@sprintf("  Peak %d: %.2f Hz, Magnitude: %.2f dB", i, freq, peak_vals[i]))
+    end
+    
     # Add peaks to the plot
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
 
