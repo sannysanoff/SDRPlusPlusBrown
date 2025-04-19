@@ -148,7 +148,7 @@ end
 function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int;
                                       min_prominence_db::Real=6.0, # Min height above median in dB for a peak
                                       local_half_width::Int=2,     # Half-width for local max check
-                                      max_period_std_ratio::Real=0.2) # Max allowed std_dev/mean_period for regularity
+                                      max_period_std_ratio::Real=0.4) # Max allowed std_dev/mean_period for regularity
     n_signal = length(signal)
     # Calculate the number of full windows that fit
     n_windows = (n_signal >= window_size) ? floor(Int, (n_signal - window_size) / step_size) + 1 : 0
