@@ -195,7 +195,21 @@ function try3()
     first_slice_db = mag_db[:, 10]
     arr1 = extract_frequencies(first_slice_db, fsh,-8000, -4000)
     imgcat(plot(arr1))
-    # compute real FFT over arr1 (using bins size = arr.len/2), plot it. AI!
+
+    # Compute the Real FFT of the extracted frequency slice
+    rfft_result = FFTW.rfft(arr1)
+    rfft_mag = abs.(rfft_result)
+
+    # Create a frequency axis for the RFFT plot (cycles per original index)
+    N = length(arr1)
+    rfft_freqs = (0:(N ÷ 2)) ./ N # Frequencies from 0 to 0.5 cycles/index
+
+    # Plot the magnitude of the RFFT
+    plt_rfft = plot(rfft_freqs, rfft_mag;
+                    xlabel="Frequency (cycles/index)", ylabel="Magnitude",
+                    title="RFFT of Slice [-8000 Hz, -4000 Hz]",
+                    label="", size=(800, 300))
+    imgcat(plt_rfft)
 end
 
 function try2()
