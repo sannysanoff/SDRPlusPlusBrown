@@ -7,6 +7,7 @@ gr()  # Use GR backend
 using Printf
 using Base.Filesystem  # for rm, ispath
 using Images
+using ImageFiltering # Add this line
 using Statistics  # for median
 using StatsBase   # for histogram
 using Dates       # for timestamp
