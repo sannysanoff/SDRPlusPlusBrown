@@ -640,7 +640,7 @@ end
 function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    timeindex = 55;
+    timeindex = 57;
     first_slice_db = mag_db[:, timeindex]
     println("Running...", size(first_slice_db)[1])
 
@@ -652,12 +652,14 @@ function try3(offs = -8100)
     println("Cutoff = ", cutoff)
 
     # Convert scores to visualization values based on cutoff
-    score_cot = map(x -> x > cutoff ? -1 : -2, score)
+    score_cot = map(x -> x > cutoff ? -10 : -30, score)
 
 
     plt_combined = plot(freq, size=(2000, 1200));
-    plot!(score);
-    plot!(first_slice_db);
+    view_lims=(800, 1200)
+    plot!(score, xlims=view_lims);
+    plot!(score_cot, xlims=view_lims);
+    plot!(first_slice_db, xlims=view_lims);
 
     imgcat(plt_combined)
 
@@ -665,10 +667,21 @@ function try3(offs = -8100)
         size=(2200, 800), 
         xlabel="Array indices",                         
         xticks = 50, # Suggest more ticks
+        xlims=view_lims,
     )
     hline!(hm, [timeindex], linestyle=:dash, color=:blue, linewidth=2);
     imgcat(hm)
 
+
+    sampl1 = view(freq, view_lims[1]:view_lims[2])
+    domfreq = median(sampl1)
+    println(domfreq)
+
+    offset_score = zeros(domfreq); # how to create zero=init arry? AI!
+    for x in 1:length(sampl1)
+        offset_score[1 + (x -1)  % domfreq] += sampl1[x]
+    end
+    println(offset_score)
 
     return;
 
