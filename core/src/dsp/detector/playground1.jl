@@ -677,9 +677,10 @@ function try3(offs = -8100)
     domfreq = median(sampl1)
     println(domfreq)
 
-    offset_score = zeros(domfreq); # how to create zero=init arry? AI!
+    # Initialize array with zeros based on the dominant frequency
+    offset_score = zeros(Int(round(domfreq)))
     for x in 1:length(sampl1)
-        offset_score[1 + (x -1)  % domfreq] += sampl1[x]
+        offset_score[1 + (x - 1) % Int(round(domfreq))] += sampl1[x]
     end
     println(offset_score)
 
