@@ -165,6 +165,11 @@ function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int
     return periods, phases
 end
 
+# implement this function AI!
+# slicedb is 1d float array
+function extract_frequencies(slice_db, fsh, min_freq, max_freq)
+    # returns view of slice_db
+end
 
 function try2()
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
