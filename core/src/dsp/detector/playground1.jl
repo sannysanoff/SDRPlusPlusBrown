@@ -253,11 +253,30 @@ function score_line_at_offset(first_slice_db, fsh, offs)
             # Compute the average value at the estimated peak locations (harmonics)
             if isfinite(period) && isfinite(offset_indices) && period > 0
 
+                # Calculate average of the first part of the slice, up to period/2
+                avg_end_idx = round(Int, period / 2)
+                # Ensure the index is within bounds [1, length(arr1)]
+                avg_end_idx = clamp(avg_end_idx, 1, length(arr1))
+
+                local_avg_initial_part = NaN # Default to NaN
+                if avg_end_idx >= 1 # Check if the range is valid
+                    initial_part_view = view(arr1, 1:avg_end_idx)
+                    if !isempty(initial_part_view)
+                        local_avg_initial_part = mean(initial_part_view)
+                    end
+                end
+                push!(harmonic_values, local_avg_initial_part)
+
+                # The purpose of modifying arr1[1] here is still unclear,
+                # but preserving the existing logic around the loop.
                 saved = arr1[1]
-                # push here average of [1..period/2]] values of arr1 AI!
-                push!(harmonic_values, -saved);
                 arr1[1] = maxval
-            
+
+                # This loop calculates values at indices 0, period, 2*period, etc.
+                # relative to the start of arr1, NOT relative to offset_indices.
+                # This seems inconsistent with finding harmonics based on the detected peak.
+                # Consider revising this loop's logic if it's intended to capture
+                # harmonics relative to the detected offset_indices.
                 for k in 0:(N_HARMONICS - 1)
                     # Calculate the theoretical index for the k-th harmonic peak
                     idx_float = 0 + k * period
