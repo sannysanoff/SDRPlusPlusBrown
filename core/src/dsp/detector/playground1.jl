@@ -165,10 +165,28 @@ function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int
     return periods, phases
 end
 
-# implement this function AI!
-# slicedb is 1d float array
-function extract_frequencies(slice_db, fsh, min_freq, max_freq)
-    # returns view of slice_db
+# Returns a view of slice_db corresponding to the frequency range [min_freq, max_freq]
+function extract_frequencies(slice_db::AbstractVector{<:Real}, fsh::AbstractVector{<:Real}, min_freq::Real, max_freq::Real)
+    # Ensure frequencies are sorted (common for fftshift output)
+    if !issorted(fsh)
+        error("Frequency vector fsh must be sorted.")
+    end
+    if min_freq > max_freq
+        error("min_freq cannot be greater than max_freq.")
+    end
+
+    # Find the start and end indices corresponding to the frequency range
+    start_idx = findfirst(f -> f >= min_freq, fsh)
+    end_idx = findlast(f -> f <= max_freq, fsh)
+
+    # Handle cases where the range is outside the available frequencies
+    if isnothing(start_idx) || isnothing(end_idx) || start_idx > end_idx
+        # Return an empty view of the correct type
+        return view(slice_db, 1:0)
+    end
+
+    # Return a view of the slice within the found indices
+    return view(slice_db, start_idx:end_idx)
 end
 
 function try2()
