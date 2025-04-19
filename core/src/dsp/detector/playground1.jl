@@ -106,49 +106,8 @@ function compute_spectrogram(sig::Vector{ComplexF64}, fs::Float64)
     return mag_db, mag_lin, times, fsh
 end
 
-
-# Helper function for finding peaks (used by sliding_window_peak_analysis)
-# Finds peaks in data based on prominence above median and local maximum condition.
-function find_peaks_in_window(window_data::AbstractVector{<:Real}, min_prominence_db::Real, local_half_width::Int)
-    n = length(window_data)
-    if n < 3
-        return Int[] # Cannot find local maxima in very short vectors
-    end
-    # Estimate noise floor using median
-    noise_floor = median(window_data)
-    # Threshold requires the signal to be significantly above the median
-    threshold = noise_floor + min_prominence_db
-
-    # Find potential peaks (local maxima above threshold)
-    potential_indices = Int[]
-    for k in 2:n-1
-        # Check if it's a local maximum and above the threshold
-        if window_data[k] > threshold && window_data[k] > window_data[k-1] && window_data[k] > window_data[k+1]
-            push!(potential_indices, k)
-        end
-    end
-
-    # Filter based on being the maximum in a wider local window
-    peak_indices = Int[]
-    for k in potential_indices
-        start_idx = max(1, k - local_half_width)
-        end_idx = min(n, k + local_half_width)
-        # Check if the potential peak is the true maximum in its neighborhood
-        if window_data[k] == maximum(view(window_data, start_idx:end_idx))
-            push!(peak_indices, k)
-        end
-    end
-    # Sort peaks by index, just in case
-    sort!(peak_indices)
-    return peak_indices # Indices are 1-based relative to window start
-end
-
-# try to use FFT in 1:n_windows loop and convert results to the proper return values AI!
-# Returns the period (in number of samples/indices) and phase of the peaks for each window.
-function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int;
-                                      min_prominence_db::Real=6.0, # Min height above median in dB for a peak
-                                      local_half_width::Int=2,     # Half-width for local max check
-                                      max_period_std_ratio::Real=0.4) # Max allowed std_dev/mean_period for regularity
+# Returns the period (in number of samples/indices) and phase of the dominant frequency component for each window using FFT.
+function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int)
     n_signal = length(signal)
     # Calculate the number of full windows that fit
     n_windows = (n_signal >= window_size) ? floor(Int, (n_signal - window_size) / step_size) + 1 : 0
@@ -159,6 +118,8 @@ function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int
 
     periods = fill(NaN, n_windows)
     phases = fill(NaN, n_windows)
+    fft_plan = plan_fft(zeros(ComplexF64, window_size)) # Plan FFT for efficiency
+    win = DSP.hanning(window_size) # Hanning window
 
     for i in 1:n_windows
         # Calculate start and end indices for the current window
@@ -167,34 +128,38 @@ function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int
 
         window_data = view(signal, start_idx:end_idx) # Use view for efficiency
 
-        # Find peaks within the current window
-        peak_indices_in_window = find_peaks_in_window(window_data, min_prominence_db, local_half_width)
+        # Apply window function and compute FFT
+        windowed_data = window_data .* win
+        fft_result = fft_plan * windowed_data # Use planned FFT
 
-        if length(peak_indices_in_window) >= 2
-            diffs = diff(peak_indices_in_window)
-            if !isempty(diffs)
-                mean_diff = mean(diffs)
-                # Check regularity: either only one diff (2 peaks) or std dev is small relative to mean
-                is_regular = length(diffs) == 1 || (mean_diff > 0 && std(diffs) / mean_diff < max_period_std_ratio)
-
-                if is_regular
-                    period = mean_diff
-                    periods[i] = period
-
-                    # Calculate phase based on the first peak's position (1-based index in window)
-                    first_peak_idx = peak_indices_in_window[1]
-                    # Offset relative to the start of the window (0-based index)
-                    offset = first_peak_idx - 1
-                    # Phase: (offset % period) / period * 2pi
-                    # Ensure period is positive to avoid NaN from modulo with non-positive
-                    if period > 0
-                        phase = (offset % period) / period * 2 * pi
-                        phases[i] = phase
-                    end
-                end
-            end
+        # Find the peak magnitude in the positive frequency spectrum (excluding DC)
+        # We only look up to N/2 (Nyquist)
+        max_mag = -Inf
+        peak_idx = -1
+        # FFT indices are 1-based. Index 1 is DC. Indices 2 to floor(N/2)+1 are positive frequencies.
+        for k in 2:floor(Int, window_size / 2) + 1
+             mag = abs(fft_result[k])
+             if mag > max_mag
+                 max_mag = mag
+                 peak_idx = k
+             end
         end
-        # If < 2 peaks or irregular spacing, periods[i] and phases[i] remain NaN
+
+        # Check if a peak was found (peak_idx will be > 1)
+        if peak_idx > 1
+            # Calculate frequency index (0-based for formula)
+            freq_index = peak_idx - 1
+            # Calculate period (samples per cycle)
+            # Period = N / freq_index
+            period = window_size / freq_index
+            periods[i] = period
+
+            # Calculate phase at the peak frequency
+            # angle() returns phase in [-pi, pi], adjust to [0, 2pi) if desired
+            phase = angle(fft_result[peak_idx])
+            phases[i] = phase < 0 ? phase + 2*pi : phase # Adjust phase to [0, 2pi)
+        end
+        # If no peak found or only DC, periods[i] and phases[i] remain NaN
     end
 
     return periods, phases
