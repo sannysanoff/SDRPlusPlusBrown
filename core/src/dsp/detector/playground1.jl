@@ -210,6 +210,9 @@ function try3()
                     title="RFFT of Slice [-8000 Hz, -4000 Hz]",
                     label="", size=(800, 300))
     imgcat(plt_rfft)
+    # find maximum peak above 0.03, convert found frequency to period inside arr1
+    # find also phase, convert into start offset inside arr1
+    # print both. AI!
 end
 
 function try2()
