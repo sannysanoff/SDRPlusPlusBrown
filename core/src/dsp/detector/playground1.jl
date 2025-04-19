@@ -429,14 +429,18 @@ function find_dominant_harmonic_intervals(
 
     # Извлекаем индексы k (1-based)
     # getindex.(Tuple.(...)[1]) - способ извлечь первый элемент (k) из CartesianIndex
-    dominant_k_indices = getindex.(Tuple.(max_vals_and_indices[2]), 1)
+    dominant_k_indices = [getindex(Tuple(idx), 1) for idx in max_vals_and_indices[2]]
 
     # Преобразуем индексы k (1..num_intervals) обратно в реальные интервалы d
-    dominant_intervals .= intervals[dominant_k_indices]
+    for i in 1:N
+        dominant_intervals[i] = intervals[dominant_k_indices[i]]
+    end
 
     # Извлекаем максимальные значения как коэффициент уверенности/энергии
-    # Используем dropdims для явного удаления размерности 1 перед присваиванием
-    confidence_scores .= dropdims(max_vals_and_indices[1], dims=1)
+    values = dropdims(max_vals_and_indices[1], dims=1)
+    for i in 1:N
+        confidence_scores[i] = values[i]
+    end
 
     return dominant_intervals, confidence_scores
 end
