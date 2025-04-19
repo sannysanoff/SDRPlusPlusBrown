@@ -224,6 +224,7 @@ function try2()
     println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
     # Iterate and print each result pair
     for i in 1:length(periods)
+        # instead of window, pring matching frequency AI!
         @printf("  Window %d: Period = %.2f, Phase = %.3f\n", i, periods[i], phases[i])
     end
 
