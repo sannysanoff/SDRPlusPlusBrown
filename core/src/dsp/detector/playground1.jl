@@ -451,11 +451,72 @@ function try4(offs = -8100)
     first_slice_db = mag_db[:, 10]
     println("Running...", size(first_slice_db)[1])
 
-    # like find_dominant_harmonic_intervals,
-    # i want you to plot 3d chart (axonometric projection)
-    # in range 5..100, shift and multiply first_slice_db by this numbers
-    # and plot all results. AI!
-
+    # Create a 3D axonometric projection
+    interval_range = 5:100  # Range of intervals to try
+    n_intervals = length(interval_range)
+    
+    # Create a matrix to store results
+    results = zeros(Float64, length(first_slice_db), n_intervals)
+    
+    # Fill the matrix with shifted and multiplied data
+    for (i, interval) in enumerate(interval_range)
+        shifted_slice = similar(first_slice_db)
+        shifted_slice .= 0.0
+        
+        # Shift and multiply the slice by the interval
+        valid_indices = 1:(length(first_slice_db) - interval)
+        for j in valid_indices
+            shifted_slice[j] = max(0.0, first_slice_db[j]) * max(0.0, first_slice_db[j + interval])
+        end
+        
+        # Store in the results matrix
+        results[:, i] = shifted_slice
+    end
+    
+    # Create x and y coordinates for the plot
+    x = fsh
+    y = collect(interval_range)
+    
+    # Create a 3D surface plot
+    plt_3d = surface(
+        x, y, results', 
+        xlabel="Frequency [Hz]",
+        ylabel="Interval",
+        zlabel="Correlation",
+        title="Harmonic Interval Analysis",
+        camera=(30, 30),  # Axonometric view angles
+        colorbar=true,
+        size=(1200, 800)
+    )
+    
+    imgcat(plt_3d)
+    
+    # Also create a 2D heatmap view of the same data
+    plt_2d = heatmap(
+        x, y, results',
+        xlabel="Frequency [Hz]",
+        ylabel="Interval",
+        title="Harmonic Interval Analysis (2D View)",
+        colorbar=true,
+        size=(1200, 800)
+    )
+    
+    imgcat(plt_2d)
+    
+    # Find and display the maximum correlation for each interval
+    max_corr_by_interval = [maximum(results[:, i]) for i in 1:n_intervals]
+    plt_max = plot(
+        interval_range, max_corr_by_interval,
+        xlabel="Interval",
+        ylabel="Maximum Correlation",
+        title="Maximum Correlation by Interval",
+        marker=:circle,
+        size=(1200, 600)
+    )
+    
+    imgcat(plt_max)
+    
+    return results
 end
 
 
