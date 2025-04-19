@@ -281,11 +281,111 @@ function score_line_at_offset(first_slice_db, fsh, offs)
     end
 end
 
+
+function find_dominant_harmonic_intervals(
+    spectrum::Vector{Float64},
+    epsilon::Int,
+    min_interval::Int,
+    max_interval::Int
+)
+    N = length(spectrum)
+    if N == 0
+        return Int[], Float64[]
+    end
+    if min_interval <= 0 || max_interval < min_interval || max_interval >= N
+         error("Недопустимый диапазон интервалов: min=$min_interval, max=$max_interval, N=$N")
+    end
+     if epsilon <= 0
+         error("Epsilon должен быть положительным: epsilon=$epsilon")
+     end
+
+    intervals = min_interval:max_interval
+    num_intervals = length(intervals)
+
+    # Массив для хранения "сырых" откликов для каждого интервала d
+    # Размер: количество_интервалов x длина_спектра
+    # raw_responses[k, i] будет хранить отклик для d = intervals[k] в точке i
+    raw_responses = zeros(Float64, num_intervals, N)
+
+    # 1. Вычисление Лаговых Произведений (Несглаженных Откликов)
+    for (k, d) in enumerate(intervals) # k - индекс (1..num_intervals), d - значение интервала
+        valid_len = N - d
+        if valid_len > 0
+            # Вычисляем S[i] * S[i+d] для i от 1 до N-d
+            # Используем views для эффективности (избегаем копирования)
+            # Используем max.(0.0, ...) на случай, если во входных данных могут быть отр. числа
+            term1 = view(spectrum, 1:valid_len)
+            term2 = view(spectrum, (d+1):N)
+            response_slice = view(raw_responses, k, 1:valid_len)
+
+            # Поэлементное умножение и запись в соответствующий срез
+            response_slice .= max.(0.0, term1) .* max.(0.0, term2)
+            # Оставшаяся часть raw_responses[k, (valid_len+1):N] уже заполнена нулями
+        end
+    end
+
+    # 2. Сглаживание Откликов (Внесение Локальности)
+    # Используем Гауссово сглаживание вдоль оси N (вторая ось)
+    # Ширина окна W связана с epsilon, W = 2*epsilon + 1
+    # Стандартное отклонение sigma для Гауссова фильтра можно взять пропорциональным W или epsilon
+    # Например, sigma = W / 5.0 или sigma = epsilon
+    sigma_smooth = max(1.0, (2.0 * epsilon + 1.0) / 5.0) # Эмпирическая формула, >= 1.0
+
+    # Создаем 1D Гауссово ядро
+    # Радиус ядра должен быть достаточным (например, 3*sigma)
+    kernel_radius = ceil(Int, 3 * sigma_smooth)
+    # KernelFactors.gaussian(sigma, [длина_окна])
+    gauss_kernel = KernelFactors.gaussian(sigma_smooth, 2 * kernel_radius + 1)
+
+    # Применяем фильтр ко всем строкам (каждому интервалу d) независимо
+    # Используем imfilter из ImageFiltering. Фильтруем вдоль 2-й размерности.
+    # KernelFactors.Null() означает отсутствие фильтрации по 1-й размерности (интервалы).
+    # "reflect" - стандартный способ обработки границ
+
+    smoothed_responses = imfilter(raw_responses, (KernelFactors.Null(), gauss_kernel), "reflect")
+
+    # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
+    dominant_intervals = zeros(Int, N)
+    confidence_scores = zeros(Float64, N)
+
+    # Для каждой колонки i (позиции в спектре) находим строку k с максимальным значением
+    # findmax возвращает кортеж: (максимальные_значения, индексы_максимумов)
+    # Применяем вдоль 1-й размерности (интервалы)
+    max_vals_and_indices = findmax(smoothed_responses, dims=1)
+
+    # max_vals_and_indices[1] - матрица 1xN с максимальными значениями (confidence)
+    # max_vals_and_indices[2] - матрица 1xN с CartesianIndex(k, i) максимальных элементов
+
+    # Извлекаем индексы k (1-based)
+    # getindex.(Tuple.(...)[1]) - способ извлечь первый элемент (k) из CartesianIndex
+    dominant_k_indices = getindex.(Tuple.(max_vals_and_indices[2]), 1)
+
+    # Преобразуем индексы k (1..num_intervals) обратно в реальные интервалы d
+    dominant_intervals .= intervals[dominant_k_indices]
+
+    # Извлекаем максимальные значения как коэффициент уверенности/энергии
+    # dropdims убирает лишнюю размерность 1, превращая матрицу 1xN в вектор N
+    confidence_scores .= vec(max_vals_and_indices[1]) # Используем vec() для преобразования
+
+    return dominant_intervals, confidence_scores
+end
+
 function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     first_slice_db = mag_db[:, 10]
     println("Running...", size(first_slice_db)[1])
+
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 5, 70)
+
+    plt_combined = plot(freq);
+    plot!(score);
+
+    imgcat(plt_combined)
+
+
+    return;
+
     local valz
     for z in 1:3
         timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
