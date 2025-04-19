@@ -520,75 +520,6 @@ function try4(offs = -8100)
 end
 
 
-function try3(offs = -8100)
-    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
-    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    first_slice_db = mag_db[:, 10]
-    println("Running...", size(first_slice_db)[1])
-
-    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
-    println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
-    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
-    println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
-    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
-    println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
-
-    plt_combined = plot(freq, size=(2000, 1200));
-    plot!(score);
-    plot!(first_slice_db);
-
-    imgcat(plt_combined)
-
-
-    return;
-
-    local valz
-    for z in 1:3
-        timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
-        println("[$timestamp_str] Iteration $z/10..")
-        valz = Float64[]
-        for i in fsh
-            val = score_line_at_offset(first_slice_db, fsh, i)
-            push!(valz, val)
-        end
-    end
-    println("Done.")
-
-    # Determine the full frequency range for consistent x-axes (needed if not already global)
-    # Assuming fmin_global and fmax_global are accessible here or recalculate if needed
-    fmin_global, fmax_global = minimum(fsh), maximum(fsh)
-
-    # Create the base plot with the first series (Magnitude vs Frequency)
-    plt_combined = plot(fsh, first_slice_db;
-                        xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
-                        xformatter = x -> @sprintf("%.0f", x), # Format x-ticks
-                        xticks = 50, # Suggest more ticks
-                        label="Magnitude", # Label for the first series
-                        size=(3600, 600)) # Set x-axis limits
-
-    # Add the second series (Score vs Frequency) using the right y-axis
-    plot!(twinx(), fsh, valz;
-          ylabel="Score",
-          label="Score", # Label for the second series
-          color=:red, # Choose a different color
-          size=(3600, 600)
-          ) # Position second legend entry if needed
-
-    # Add a title below the plot
-    plot!(plt_combined, bottom_margin=15Plots.Plots.mm) # Ensure bottom margin for title
-    annotate!(plt_combined, [(0.5, -0.1, Plots.text("Time Slice Magnitude and Calculated Score vs. Frequency", :center, 10))]; annotation_clip=false)
-    println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]): of array shape=%", size(first_slice_db))
-    println("valz length=", length(valz))
-    println(valz[1:10])
-
-    # Display the combined plot
-    imgcat(plt_combined)
-
-    # return score_line_at_offset(first_slice_db, fsh, offs) # Keep this commented out or decide if needed
-end
 
 function try2()
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
@@ -698,4 +629,90 @@ function try2()
     # Display
     imgcat(plt)
     println("Done2.")
+end
+
+function percentile_fast(arr, p)
+    n = length(arr)
+    k = ceil(Int, n * p)
+    return partialsort(arr, k)
+end
+
+function try3(offs = -8100)
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
+    timeindex = 55;
+    first_slice_db = mag_db[:, timeindex]
+    println("Running...", size(first_slice_db)[1])
+
+    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+    println("[$timestamp_str] Iteration ..")
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 8, 35)
+
+    cutoff = percentile_fast(copy(score), 0.3) * 2;
+    println("Cutoff = ", )
+
+    # convert to julia below map AI!
+    score_cot = map(\x -> x > cutoff ? -1 : -2, score)
+
+
+    plt_combined = plot(freq, size=(2000, 1200));
+    plot!(score);
+    plot!(first_slice_db);
+
+    imgcat(plt_combined)
+
+    hm = heatmap(mag_db', 
+        size=(2200, 800), 
+        xlabel="Array indices",                         
+        xticks = 50, # Suggest more ticks
+    )
+    hline!(hm, [timeindex], linestyle=:dash, color=:blue, linewidth=2);
+    imgcat(hm)
+
+
+    return;
+
+    local valz
+    for z in 1:3
+        timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+        println("[$timestamp_str] Iteration $z/10..")
+        valz = Float64[]
+        for i in fsh
+            val = score_line_at_offset(first_slice_db, fsh, i)
+            push!(valz, val)
+        end
+    end
+    println("Done.")
+
+    # Determine the full frequency range for consistent x-axes (needed if not already global)
+    # Assuming fmin_global and fmax_global are accessible here or recalculate if needed
+    fmin_global, fmax_global = minimum(fsh), maximum(fsh)
+
+    # Create the base plot with the first series (Magnitude vs Frequency)
+    plt_combined = plot(fsh, first_slice_db;
+                        xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
+                        xformatter = x -> @sprintf("%.0f", x), # Format x-ticks
+                        xticks = 50, # Suggest more ticks
+                        label="Magnitude", # Label for the first series
+                        size=(3600, 600)) # Set x-axis limits
+
+    # Add the second series (Score vs Frequency) using the right y-axis
+    plot!(twinx(), fsh, valz;
+          ylabel="Score",
+          label="Score", # Label for the second series
+          color=:red, # Choose a different color
+          size=(3600, 600)
+          ) # Position second legend entry if needed
+
+    # Add a title below the plot
+    plot!(plt_combined, bottom_margin=15Plots.Plots.mm) # Ensure bottom margin for title
+    annotate!(plt_combined, [(0.5, -0.1, Plots.text("Time Slice Magnitude and Calculated Score vs. Frequency", :center, 10))]; annotation_clip=false)
+    println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]): of array shape=%", size(first_slice_db))
+    println("valz length=", length(valz))
+    println(valz[1:10])
+
+    # Display the combined plot
+    imgcat(plt_combined)
+
+    # return score_line_at_offset(first_slice_db, fsh, offs) # Keep this commented out or decide if needed
 end
