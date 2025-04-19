@@ -222,8 +222,10 @@ function try2()
 
     periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1; min_prominence_db=10.0, local_half_width=3)
     println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
-    # replace with for loop AI!
-    display(collect(zip(periods, phases))[1:length(periods)]) # Display first 10 pairs or fewer if less results
+    # Iterate and print each result pair
+    for i in 1:length(periods)
+        @printf("  Window %d: Period = %.2f, Phase = %.3f\n", i, periods[i], phases[i])
+    end
 
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
