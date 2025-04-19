@@ -107,53 +107,97 @@ function compute_spectrogram(sig::Vector{ComplexF64}, fs::Float64)
 end
 
 
+# Helper function for finding peaks (used by sliding_window_peak_analysis)
+# Finds peaks in data based on prominence above median and local maximum condition.
+function find_peaks_in_window(window_data::AbstractVector{<:Real}, min_prominence_db::Real, local_half_width::Int)
+    n = length(window_data)
+    if n < 3
+        return Int[] # Cannot find local maxima in very short vectors
+    end
+    # Estimate noise floor using median
+    noise_floor = median(window_data)
+    # Threshold requires the signal to be significantly above the median
+    threshold = noise_floor + min_prominence_db
 
+    # Find potential peaks (local maxima above threshold)
+    potential_indices = Int[]
+    for k in 2:n-1
+        # Check if it's a local maximum and above the threshold
+        if window_data[k] > threshold && window_data[k] > window_data[k-1] && window_data[k] > window_data[k+1]
+            push!(potential_indices, k)
+        end
+    end
 
-
-function rev1()
-    println("Rev1234")
+    # Filter based on being the maximum in a wider local window
+    peak_indices = Int[]
+    for k in potential_indices
+        start_idx = max(1, k - local_half_width)
+        end_idx = min(n, k + local_half_width)
+        # Check if the potential peak is the true maximum in its neighborhood
+        if window_data[k] == maximum(view(window_data, start_idx:end_idx))
+            push!(peak_indices, k)
+        end
+    end
+    # Sort peaks by index, just in case
+    sort!(peak_indices)
+    return peak_indices # Indices are 1-based relative to window start
 end
 
+# Analyzes a 1D signal with a sliding window to find periodic peaks.
+# Returns the period (in number of samples/indices) and phase of the peaks for each window.
+function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int;
+                                      min_prominence_db::Real=6.0, # Min height above median in dB for a peak
+                                      local_half_width::Int=2,     # Half-width for local max check
+                                      max_period_std_ratio::Real=0.2) # Max allowed std_dev/mean_period for regularity
+    n_signal = length(signal)
+    # Calculate the number of full windows that fit
+    n_windows = (n_signal >= window_size) ? floor(Int, (n_signal - window_size) / step_size) + 1 : 0
 
-# can you return period instead of frequency, in term of distance between elements inside window? 
-# if peaks in window 1000..1250 are at 1035, 1045, 1055, then period must be 10, and phase is pi (because it starts at 5, not 0) AI!
-function sliding_window_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int, fs::Float64)
-    n_windows = length(signal) - window_size + 1
-    
-    # Initialize arrays to store results
-    frequencies = zeros(n_windows)
-    energies = zeros(n_windows)
-    phases = zeros(n_windows)
-    
-    # Create frequency array for a window of size window_size
-    freq = FFTW.fftfreq(window_size, 1.0/fs)
-    # Only consider positive frequencies (up to Nyquist frequency)
-    pos_freq_idx = 2:div(window_size, 2)+1  # Skip DC component at index 1
-    
-    # Loop through each window
-    for i in 1:n_windows
-        # Extract current window
-        window = signal[i:i+window_size-1]
-        
-        # Apply Hann window to reduce spectral leakage
-        windowed_signal = window .* hanning(window_size)
-        
-        # Compute FFT
-        fft_result = fft(windowed_signal)
-        
-        # Calculate power at each frequency
-        power = abs2.(fft_result[pos_freq_idx])
-        
-        # Find index of maximum power
-        max_power_idx = argmax(power)
-        
-        # Calculate actual frequency, energy and phase
-        frequencies[i] = freq[max_power_idx + 1]  # +1 because we skipped DC
-        energies[i] = power[max_power_idx]
-        phases[i] = angle(fft_result[max_power_idx + 1])
+    if n_windows == 0
+        return Float64[], Float64[] # Return empty arrays if no windows fit
     end
-    
-    return frequencies, energies, phases
+
+    periods = fill(NaN, n_windows)
+    phases = fill(NaN, n_windows)
+
+    for i in 1:n_windows
+        # Calculate start and end indices for the current window
+        start_idx = (i - 1) * step_size + 1
+        end_idx = start_idx + window_size - 1
+
+        window_data = view(signal, start_idx:end_idx) # Use view for efficiency
+
+        # Find peaks within the current window
+        peak_indices_in_window = find_peaks_in_window(window_data, min_prominence_db, local_half_width)
+
+        if length(peak_indices_in_window) >= 2
+            diffs = diff(peak_indices_in_window)
+            if !isempty(diffs)
+                mean_diff = mean(diffs)
+                # Check regularity: either only one diff (2 peaks) or std dev is small relative to mean
+                is_regular = length(diffs) == 1 || (mean_diff > 0 && std(diffs) / mean_diff < max_period_std_ratio)
+
+                if is_regular
+                    period = mean_diff
+                    periods[i] = period
+
+                    # Calculate phase based on the first peak's position (1-based index in window)
+                    first_peak_idx = peak_indices_in_window[1]
+                    # Offset relative to the start of the window (0-based index)
+                    offset = first_peak_idx - 1
+                    # Phase: (offset % period) / period * 2pi
+                    # Ensure period is positive to avoid NaN from modulo with non-positive
+                    if period > 0
+                        phase = (offset % period) / period * 2 * pi
+                        phases[i] = phase
+                    end
+                end
+            end
+        end
+        # If < 2 peaks or irregular spacing, periods[i] and phases[i] remain NaN
+    end
+
+    return periods, phases
 end
 
 
@@ -176,10 +220,11 @@ function try2()
                      xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
-    frequencies, energies, phases = sliding_window_analysis(first_slice_db, 250, 1, subfs);
-    for i in 1:length(frequencies)
-        println("Frequency: $(frequencies[i]), Energy: $(energies[i]), Phase: $(phases[i])")
-    end
+    # Use the new peak analysis function
+    # Note: window_size=250 might be large for finding periods in frequency domain peaks unless they are very far apart. Adjust as needed.
+    periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1; min_prominence_db=10.0, local_half_width=3)
+    println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
+    display(collect(zip(periods, phases))[1:min(10, length(periods))]) # Display first 10 pairs or fewer if less results
 
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
