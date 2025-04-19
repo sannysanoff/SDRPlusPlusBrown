@@ -303,22 +303,36 @@ function try3(offs = -8100)
         end
     end
     println("Done.")
-    # combine two plots, use 2 series AI!
-    plt_slice = plot(fsh, first_slice_db;
-                     xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
-                     xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
-                     # title="First Time Slice of Spectrogram", # Title removed from top
-                     xticks = 50, # Suggest more ticks on the x-axis
-                     bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
-                     label="", size=(3600, 400),
-                     xlims=(fmin_global, fmax_global)) # Set x-axis limits
-    annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
-    imgcat(plt_slice)
 
-    imgcat(plot(fsh, valz, size=(3500, 800), bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
-                     xlabel="Index", ylabel="Score",
-                     title="Score vs. Index", label=""))
-    # return score_line_at_offset(first_slice_db, fsh, offs)
+    # Determine the full frequency range for consistent x-axes (needed if not already global)
+    # Assuming fmin_global and fmax_global are accessible here or recalculate if needed
+    fmin_global, fmax_global = minimum(fsh), maximum(fsh)
+
+    # Create the base plot with the first series (Magnitude vs Frequency)
+    plt_combined = plot(fsh, first_slice_db;
+                        xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
+                        xformatter = x -> @sprintf("%.0f", x), # Format x-ticks
+                        xticks = 50, # Suggest more ticks
+                        label="Magnitude", # Label for the first series
+                        legend=:topleft, # Position legend
+                        size=(3600, 600), # Adjust size if needed
+                        xlims=(fmin_global, fmax_global)) # Set x-axis limits
+
+    # Add the second series (Score vs Frequency) using the right y-axis
+    plot!(twinx(), fsh, valz;
+          ylabel="Score",
+          label="Score", # Label for the second series
+          color=:red, # Choose a different color
+          legend=:topright) # Position second legend entry if needed
+
+    # Add a title below the plot
+    plot!(plt_combined, bottom_margin=15Plots.Plots.mm) # Ensure bottom margin for title
+    annotate!(plt_combined, [(0.5, -0.1, Plots.text("Time Slice Magnitude and Calculated Score vs. Frequency", :center, 10))]; annotation_clip=false)
+
+    # Display the combined plot
+    imgcat(plt_combined)
+
+    # return score_line_at_offset(first_slice_db, fsh, offs) # Keep this commented out or decide if needed
 end
 
 function try2()
