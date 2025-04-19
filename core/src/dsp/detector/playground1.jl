@@ -343,7 +343,9 @@ function find_dominant_harmonic_intervals(
     # KernelFactors.Null() означает отсутствие фильтрации по 1-й размерности (интервалы).
     # "reflect" - стандартный способ обработки границ
 
-    smoothed_responses = imfilter(raw_responses, (KernelFactors.Null(), gauss_kernel), "reflect")
+    smoothed_responses = imfilter(raw_responses, (KernelFactors.reshaped(trivial_kernel, 1), gauss_kernel), "reflect")
+
+
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
