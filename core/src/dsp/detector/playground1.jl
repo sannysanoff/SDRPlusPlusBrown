@@ -346,9 +346,12 @@ function find_dominant_harmonic_intervals(
 
     # Define the identity kernel for the first dimension (intervals)
     identity_kernel_1d = ImageFiltering.centered(fill(1.0, 1)) # OffsetArray([1.0], 0:0)
+    # Wrap kernels for specific dimensions using ReshapedOneD{ElementType, NumDimensions, TargetDimension}(kernel)
+    kern1 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 1}(identity_kernel_1d) # Apply identity_kernel_1d along Dim 1 of 2D array
+    kern2 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 2}(gauss_kernel)      # Apply gauss_kernel along Dim 2 of 2D array
 
-    # Apply filter: identity along dim 1, gauss_kernel along dim 2
-    smoothed_responses = imfilter(raw_responses, (identity_kernel_1d, gauss_kernel), "reflect")
+    # Apply filter using explicitly dimension-wrapped kernels
+    smoothed_responses = imfilter(raw_responses, (kern1, kern2), "reflect")
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
