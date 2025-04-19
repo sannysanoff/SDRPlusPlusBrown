@@ -283,6 +283,31 @@ function score_line_at_offset(first_slice_db, fsh, offs)
     end
 end
 
+"""
+Applies a separable filter to a 2D array. Filters along dimension 2 with `filter_kernel_dim2`
+and applies an identity filter (no change) along dimension 1.
+
+Args:
+    data (Matrix{Float64}): The 2D input data array.
+    filter_kernel_dim2 (AbstractVector{Float64}): The 1D kernel to apply along dimension 2.
+
+Returns:
+    Matrix{Float64}: The filtered 2D array.
+"""
+function apply_separable_filter(data::Matrix{Float64}, filter_kernel_dim2::AbstractVector{Float64})
+    # Define the identity kernel for the first dimension
+    identity_kernel_1d = ImageFiltering.centered(fill(1.0, 1)) # OffsetArray([1.0], 0:0)
+
+    # Wrap kernels for specific dimensions using ReshapedOneD{ElementType, NumDimensions, TargetDimension}(kernel)
+    kern1 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 1}(identity_kernel_1d) # Apply identity_kernel_1d along Dim 1 of 2D array
+    kern2 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 2}(filter_kernel_dim2) # Apply filter_kernel_dim2 along Dim 2 of 2D array
+
+    # Apply filter using explicitly dimension-wrapped kernels
+    smoothed_data = imfilter(data, (kern1, kern2), "reflect")
+
+    return smoothed_data
+end
+
 
 function find_dominant_harmonic_intervals(
     spectrum::Vector{Float64},
@@ -339,19 +364,8 @@ function find_dominant_harmonic_intervals(
     # KernelFactors.gaussian(sigma, [длина_окна])
     gauss_kernel = KernelFactors.gaussian(sigma_smooth, 2 * kernel_radius + 1)
 
-    # Применяем фильтр ко всем строкам (каждому интервалу d) независимо
-    # Используем imfilter из ImageFiltering. Фильтруем вдоль 2-й размерности.
-    # KernelFactors.Null() означает отсутствие фильтрации по 1-й размерности (интервалы).
-    # "reflect" - стандартный способ обработки границ
-
-    # Define the identity kernel for the first dimension (intervals)
-    identity_kernel_1d = ImageFiltering.centered(fill(1.0, 1)) # OffsetArray([1.0], 0:0)
-    # Wrap kernels for specific dimensions using ReshapedOneD{ElementType, NumDimensions, TargetDimension}(kernel)
-    kern1 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 1}(identity_kernel_1d) # Apply identity_kernel_1d along Dim 1 of 2D array
-    kern2 = ImageFiltering.KernelFactors.ReshapedOneD{Float64, 2, 2}(gauss_kernel)      # Apply gauss_kernel along Dim 2 of 2D array
-
-    # Apply filter using explicitly dimension-wrapped kernels
-    smoothed_responses = imfilter(raw_responses, (kern1, kern2), "reflect")
+    # Apply the separable filter (identity along dim 1, gauss_kernel along dim 2)
+    smoothed_responses = apply_separable_filter(raw_responses, gauss_kernel)
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
