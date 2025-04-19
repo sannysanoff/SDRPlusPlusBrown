@@ -186,7 +186,7 @@ function extract_frequencies(slice_db::AbstractVector{<:Real}, fsh::AbstractVect
     end
 
     # Return a view of the slice within the found indices
-    println("extract_frequencies: $min_freq:$max_freq => $start_idx:$end_idx total len: $(size(slice_db))")
+    # println("extract_frequencies: $min_freq:$max_freq => $start_idx:$end_idx total len: $(size(slice_db))")
     return view(slice_db, start_idx:end_idx)
 end
 
@@ -254,8 +254,9 @@ function score_line_at_offset(first_slice_db, fsh, offs)
             if isfinite(period) && isfinite(offset_indices) && period > 0
 
                 saved = arr1[1]
-                arr1[1] = maxval
+                # push here average of +- period/2 values AI!
                 push!(harmonic_values, -saved);
+                arr1[1] = maxval
             
                 for k in 0:(N_HARMONICS - 1)
                     # Calculate the theoretical index for the k-th harmonic peak
@@ -265,17 +266,11 @@ function score_line_at_offset(first_slice_db, fsh, offs)
 
                     # Check if the index is within the bounds of arr1
                     if 1 <= idx_int <= length(arr1)
-                        if (offs < 500)
-                            print("[", idx_int, ",", Int(round(arr1[idx_int])), "]")
-                        end
                         push!(harmonic_values, arr1[idx_int])
                     end
                 end
 
                 arr1[1] = saved
-                if (offs < 500)
-                    println("");
-                end
             end
 
             avg_harmonic_peak_value = if isempty(harmonic_values)
@@ -314,20 +309,22 @@ function try3(offs = -8100)
                         xformatter = x -> @sprintf("%.0f", x), # Format x-ticks
                         xticks = 50, # Suggest more ticks
                         label="Magnitude", # Label for the first series
-                        legend=:topleft, # Position legend
-                        size=(3600, 600), # Adjust size if needed
-                        xlims=(fmin_global, fmax_global)) # Set x-axis limits
+                        size=(3600, 600)) # Set x-axis limits
 
     # Add the second series (Score vs Frequency) using the right y-axis
     plot!(twinx(), fsh, valz;
           ylabel="Score",
           label="Score", # Label for the second series
           color=:red, # Choose a different color
-          legend=:topright) # Position second legend entry if needed
+          size=(3600, 600)
+          ) # Position second legend entry if needed
 
     # Add a title below the plot
     plot!(plt_combined, bottom_margin=15Plots.Plots.mm) # Ensure bottom margin for title
     annotate!(plt_combined, [(0.5, -0.1, Plots.text("Time Slice Magnitude and Calculated Score vs. Frequency", :center, 10))]; annotation_clip=false)
+    println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]): of array shape=%", size(first_slice_db))
+    println("valz length=", length(valz))
+    println(valz[1:10])
 
     # Display the combined plot
     imgcat(plt_combined)
