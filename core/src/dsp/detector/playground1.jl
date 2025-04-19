@@ -115,6 +115,8 @@ function rev1()
 end
 
 
+# can you return period instead of frequency, in term of distance between elements inside window? 
+# if peaks in window 1000..1250 are at 1035, 1045, 1055, then period must be 10, and phase is pi (because it starts at 5, not 0) AI!
 function sliding_window_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int, fs::Float64)
     n_windows = length(signal) - window_size + 1
     
@@ -174,7 +176,10 @@ function try2()
                      xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
-
+    frequencies, energies, phases = sliding_window_analysis(first_slice_db, 250, 1, subfs);
+    for i in 1:length(frequencies)
+        println("Frequency: $(frequencies[i]), Energy: $(energies[i]), Phase: $(phases[i])")
+    end
 
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
