@@ -435,8 +435,8 @@ function find_dominant_harmonic_intervals(
     dominant_intervals .= intervals[dominant_k_indices]
 
     # Извлекаем максимальные значения как коэффициент уверенности/энергии
-    # dropdims убирает лишнюю размерность 1, превращая матрицу 1xN в вектор N
-    confidence_scores .= vec(max_vals_and_indices[1]) # Используем vec() для преобразования
+    # Присваиваем напрямую, полагаясь на broadcasting для обработки размерности (1, N) -> (N,)
+    confidence_scores .= max_vals_and_indices[1]
 
     return dominant_intervals, confidence_scores
 end
