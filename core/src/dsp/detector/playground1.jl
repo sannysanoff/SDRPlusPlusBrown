@@ -143,7 +143,7 @@ function find_peaks_in_window(window_data::AbstractVector{<:Real}, min_prominenc
     return peak_indices # Indices are 1-based relative to window start
 end
 
-# Analyzes a 1D signal with a sliding window to find periodic peaks.
+# try to use FFT in 1:n_windows loop and convert results to the proper return values AI!
 # Returns the period (in number of samples/indices) and phase of the peaks for each window.
 function sliding_window_peak_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int;
                                       min_prominence_db::Real=6.0, # Min height above median in dB for a peak
