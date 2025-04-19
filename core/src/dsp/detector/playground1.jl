@@ -27,7 +27,7 @@ I ./= maximum(abs.(I)); Q ./= maximum(abs.(Q))
 sig = I .+ im .* Q
 
 # --- Imgcat Display Function ---
-function display_plot_with_imgcat(plot_obj)
+function imgcat(plot_obj)
     println("Saving png..")
     tmpfile_path = ""
     try
@@ -189,6 +189,15 @@ function extract_frequencies(slice_db::AbstractVector{<:Real}, fsh::AbstractVect
     return view(slice_db, start_idx:end_idx)
 end
 
+function try3()
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
+    first_slice_db = mag_db[:, 10]
+    arr1 = extract_frequencies(first_slice_db, fsh,-8000, -4000)
+    imgcat(plot(arr1))
+    # compute real FFT over arr1 (using bins size = arr.len/2), plot it. AI!
+end
+
 function try2()
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
 
@@ -238,7 +247,7 @@ function try2()
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
 
 
-    display_plot_with_imgcat(plt_slice)
+    imgcat(plt_slice)
 
     plt = heatmap(fsh, times, mag_db';
         xlabel="Freq [Hz]", ylabel="Time [s]",
@@ -272,6 +281,6 @@ function try2()
     yticks!(plt, orig_yticks, orig_ytick_labels)
 
     # Display
-    display_plot_with_imgcat(plt)
+    imgcat(plt)
     println("Done2.")
 end
