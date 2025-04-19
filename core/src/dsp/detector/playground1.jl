@@ -8,6 +8,7 @@ using Printf
 using Base.Filesystem  # for rm, ispath
 using Images
 using ImageFiltering # Add this line
+using ImageFiltering.KernelFactors # Explicitly import KernelFactors
 using Statistics  # for median
 using StatsBase   # for histogram
 using Dates       # for timestamp
@@ -344,7 +345,7 @@ function find_dominant_harmonic_intervals(
     # "reflect" - стандартный способ обработки границ
 
     # Apply filter across rows (dimension 2) using gauss_kernel, no filtering across columns (dimension 1) using Null()
-    smoothed_responses = imfilter(raw_responses, (ImageFiltering.KernelFactors.Null(), gauss_kernel), "reflect")
+    smoothed_responses = imfilter(raw_responses, (KernelFactors.Null(), gauss_kernel), "reflect") # Use KernelFactors.Null()
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
