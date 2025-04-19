@@ -435,8 +435,8 @@ function find_dominant_harmonic_intervals(
     dominant_intervals .= intervals[dominant_k_indices]
 
     # Извлекаем максимальные значения как коэффициент уверенности/энергии
-    # Присваиваем напрямую, полагаясь на broadcasting для обработки размерности (1, N) -> (N,)
-    confidence_scores .= max_vals_and_indices[1]
+    # Используем dropdims для явного удаления размерности 1 перед присваиванием
+    confidence_scores .= dropdims(max_vals_and_indices[1], dims=1)
 
     return dominant_intervals, confidence_scores
 end
