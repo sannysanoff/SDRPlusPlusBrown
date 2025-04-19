@@ -445,16 +445,39 @@ function find_dominant_harmonic_intervals(
     return dominant_intervals, confidence_scores
 end
 
+function try4(offs = -8100)
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
+    first_slice_db = mag_db[:, 10]
+    println("Running...", size(first_slice_db)[1])
+
+    # like find_dominant_harmonic_intervals,
+    # i want you to plot 3d chart (axonometric projection)
+    # in range 5..100, shift and multiply first_slice_db by this numbers
+    # and plot all results. AI!
+
+end
+
+
 function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 3.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     first_slice_db = mag_db[:, 10]
     println("Running...", size(first_slice_db)[1])
 
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 5, 70)
+    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+    println("[$timestamp_str] Iteration ..")
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
+    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+    println("[$timestamp_str] Iteration ..")
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
+    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+    println("[$timestamp_str] Iteration ..")
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
 
-    plt_combined = plot(freq);
+    plt_combined = plot(freq, size=(2000, 1200));
     plot!(score);
+    plot!(first_slice_db);
 
     imgcat(plt_combined)
 
