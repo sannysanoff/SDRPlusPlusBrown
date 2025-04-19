@@ -9,6 +9,7 @@ using Base.Filesystem  # for rm, ispath
 using Images
 using Statistics  # for median
 using StatsBase   # for histogram
+using Dates       # for timestamp
 
 # --- Path Setup ---
 current_script_dir = @__DIR__
@@ -289,8 +290,8 @@ function try3(offs = -8100)
     first_slice_db = mag_db[:, 10]
     println("Running...", size(first_slice_db)[1])
     for z in 1:10
-        # add current timestamp with msec resolution in that log output AI!
-        println("Iteration..")
+        timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
+        println("[$timestamp_str] Iteration $z/10..")
         valz = Float64[]
         for i in fsh
             val = score_line_at_offset(first_slice_db, fsh, i)
