@@ -243,8 +243,29 @@ function try3()
 
             N_HARMONICS = 6
 
-            # compute average of N_HARMONICS starting with offset 0, with period step.
-            # return this value, else return NaN everywhere in this function. AI!
+            # Compute the average value at the estimated peak locations (harmonics)
+            harmonic_indices = Int[]
+            harmonic_values = Float64[]
+            if isfinite(period) && isfinite(offset_indices) && period > 0
+                for k in 0:(N_HARMONICS - 1)
+                    # Calculate the theoretical index for the k-th harmonic peak
+                    idx_float = offset_indices + k * period
+                    # Round to the nearest integer index (Julia is 1-based)
+                    idx_int = round(Int, idx_float) + 1 # +1 because offset is 0-based relative to start
+
+                    # Check if the index is within the bounds of arr1
+                    if 1 <= idx_int <= length(arr1)
+                        push!(harmonic_indices, idx_int)
+                        push!(harmonic_values, arr1[idx_int])
+                    end
+                end
+            end
+
+            avg_harmonic_peak_value = if isempty(harmonic_values)
+                NaN
+            else
+                mean(harmonic_values)
+            end
 
             @printf("Peak found:\n")
             @printf("  Frequency: %.4f cycles/index\n", peak_freq)
@@ -253,6 +274,10 @@ function try3()
             @printf("Calculated properties in arr1:\n")
             @printf("  Period:    %.2f indices\n", period)
             @printf("  Offset:    %.2f indices\n", offset_indices)
+            @printf("Harmonic Analysis:\n")
+            @printf("  Indices sampled: %s\n", isempty(harmonic_indices) ? "None" : join(harmonic_indices, ", "))
+            @printf("  Values sampled:  %s\n", isempty(harmonic_values) ? "None" : join([@sprintf("%.2f", v) for v in harmonic_values], ", "))
+            @printf("  Avg Peak Value:  %.2f\n", avg_harmonic_peak_value)
         else
             println("Could not find a peak above the frequency threshold (search range empty).")
         end
