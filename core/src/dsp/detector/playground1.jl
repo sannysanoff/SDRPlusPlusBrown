@@ -220,11 +220,10 @@ function try2()
                      xlims=(fmin_global, fmax_global)) # Set x-axis limits
     annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
 
-    # Use the new peak analysis function
-    # Note: window_size=250 might be large for finding periods in frequency domain peaks unless they are very far apart. Adjust as needed.
     periods, phases = sliding_window_peak_analysis(first_slice_db, 250, 1; min_prominence_db=10.0, local_half_width=3)
     println("Sliding Window Peak Analysis Results (Period [indices], Phase [radians]):")
-    display(collect(zip(periods, phases))[1:min(10, length(periods))]) # Display first 10 pairs or fewer if less results
+    # replace with for loop AI!
+    display(collect(zip(periods, phases))[1:length(periods)]) # Display first 10 pairs or fewer if less results
 
     # Detect peaks in the slice using custom logic
     MIN_PEAK_RATIO = 3 # Threshold factor relative to noise floor
@@ -244,7 +243,6 @@ function try2()
     peak_freqs = fsh[peak_indices]
     # Add peaks to the plot
     scatter!(plt_slice, peak_freqs, peak_vals; markercolor=:red, markersize=3, label="Peaks")
-
 
 
     display_plot_with_imgcat(plt_slice)
