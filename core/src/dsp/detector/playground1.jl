@@ -7,8 +7,8 @@ gr()  # Use GR backend
 using Printf
 using Base.Filesystem  # for rm, ispath
 using Images
-using ImageFiltering # Add this line
-using ImageFiltering.KernelFactors # Explicitly import KernelFactors
+# using ImageFiltering # Removed
+# using ImageFiltering.KernelFactors # Removed
 using Statistics  # for median
 using StatsBase   # for histogram
 using Dates       # for timestamp
@@ -305,7 +305,29 @@ function apply_separable_filter(data::Matrix{Float64}, filter_kernel_dim2::Abstr
     # Apply filter using explicitly dimension-wrapped kernels
     smoothed_data = imfilter(data, (kern1, kern2), "reflect")
 
-    return smoothed_data
+end
+
+"""
+Generates a 1D Gaussian kernel.
+
+Args:
+    sigma (Float64): Standard deviation of the Gaussian.
+    len (Int): The desired length of the kernel (should be odd).
+
+Returns:
+    Vector{Float64}: The normalized Gaussian kernel.
+"""
+function gaussian_kernel_1d(sigma::Float64, len::Int)
+    if isodd(len) == false
+        error("Kernel length must be odd.")
+    end
+    if sigma <= 0
+        error("Sigma must be positive.")
+    end
+    radius = (len - 1) ÷ 2
+    x = -radius:radius
+    kernel = exp.(-x.^2 ./ (2 * sigma^2))
+    return kernel ./ sum(kernel) # Normalize the kernel
 end
 
 
@@ -361,11 +383,37 @@ function find_dominant_harmonic_intervals(
     # Создаем 1D Гауссово ядро
     # Радиус ядра должен быть достаточным (например, 3*sigma)
     kernel_radius = ceil(Int, 3 * sigma_smooth)
-    # KernelFactors.gaussian(sigma, [длина_окна])
-    gauss_kernel = KernelFactors.gaussian(sigma_smooth, 2 * kernel_radius + 1)
+    # Create 1D Gaussian kernel manually
+    kernel_len = 2 * kernel_radius + 1
+    gauss_kernel = gaussian_kernel_1d(sigma_smooth, kernel_len)
 
-    # Apply the separable filter (identity along dim 1, gauss_kernel along dim 2)
-    smoothed_responses = apply_separable_filter(raw_responses, gauss_kernel)
+    # Apply 1D convolution row by row
+    smoothed_responses = similar(raw_responses) # Initialize output array
+    M = length(gauss_kernel)
+    pad_len = (M - 1) ÷ 2 # Padding for 'same' convolution
+
+    for k in 1:num_intervals
+        row_signal = view(raw_responses, k, :)
+        conv_result = DSP.conv(row_signal, gauss_kernel)
+        # Extract the 'same' part, handling potential edge cases if N < M
+        start_idx = pad_len + 1
+        end_idx = pad_len + N
+        if end_idx > length(conv_result) # Adjust if signal is shorter than kernel radius
+             end_idx = length(conv_result)
+             start_idx = max(1, end_idx - N + 1)
+        end
+        valid_len_conv = end_idx - start_idx + 1
+        if valid_len_conv == N
+             smoothed_responses[k, :] = view(conv_result, start_idx:end_idx)
+        elseif valid_len_conv > 0 # Handle cases where N is very small
+             # Center the shorter result within the N-length slice
+             offset = (N - valid_len_conv) ÷ 2
+             fill!(view(smoothed_responses, k, :), 0.0) # Zero out the row first
+             smoothed_responses[k, (offset + 1):(offset + valid_len_conv)] = view(conv_result, start_idx:end_idx)
+        else # If convolution result is empty or invalid length
+             fill!(view(smoothed_responses, k, :), 0.0)
+        end
+    end
 
     # 3. Определение Доминирующего Интервала и Коэффициента Уверенности
     dominant_intervals = zeros(Int, N)
