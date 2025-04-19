@@ -528,13 +528,13 @@ function try3(offs = -8100)
 
     timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
     println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
     timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
     println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
     timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
     println("[$timestamp_str] Iteration ..")
-    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 15, 120)
+    freq, score = find_dominant_harmonic_intervals(first_slice_db, 126, 10, 40)
 
     plt_combined = plot(freq, size=(2000, 1200));
     plot!(score);
