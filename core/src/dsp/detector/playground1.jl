@@ -115,8 +115,7 @@ function rev1()
 end
 
 
-# annotate with types AI!
-function sliding_window_analysis(signal, window_size, step_size, fs)
+function sliding_window_analysis(signal::Vector{<:Number}, window_size::Int, step_size::Int, fs::Float64)
     n_windows = length(signal) - window_size + 1
     
     # Initialize arrays to store results
