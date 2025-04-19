@@ -193,7 +193,10 @@ function try3()
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     first_slice_db = mag_db[:, 10]
-    arr1 = extract_frequencies(first_slice_db, fsh,-8000, -4000)
+    arr1 = extract_frequencies(first_slice_db, fsh,-8050, -4000)
+    maxval = maximum(first_slice_db)
+    println("Maximum value: $maxval")
+
     imgcat(plot(arr1))
 
     # Compute the Real FFT of the extracted frequency slice
@@ -210,6 +213,7 @@ function try3()
                     title="RFFT of Slice [-8000 Hz, -4000 Hz]",
                     label="", size=(800, 300))
     imgcat(plt_rfft)
+
 
     # Find peak frequency > 0.03 cycles/index, calculate period and phase offset
     freq_threshold = 0.03
@@ -237,6 +241,11 @@ function try3()
             # We use mod(..., period) to get the offset within the first cycle [0, period)
             offset_indices = mod((-peak_phase / (2 * pi)) * period, period)
 
+            N_HARMONICS = 6
+
+            # compute average of N_HARMONICS starting with offset 0, with period step.
+            # return this value, else return NaN everywhere in this function. AI!
+
             @printf("Peak found:\n")
             @printf("  Frequency: %.4f cycles/index\n", peak_freq)
             @printf("  Magnitude: %.2f\n", peak_val)
@@ -245,7 +254,7 @@ function try3()
             @printf("  Period:    %.2f indices\n", period)
             @printf("  Offset:    %.2f indices\n", offset_indices)
         else
-             println("Could not find a peak above the frequency threshold (search range empty).")
+            println("Could not find a peak above the frequency threshold (search range empty).")
         end
     end
 end
