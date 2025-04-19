@@ -186,18 +186,23 @@ function extract_frequencies(slice_db::AbstractVector{<:Real}, fsh::AbstractVect
     end
 
     # Return a view of the slice within the found indices
+    println("extract_frequencies: $min_freq:$max_freq => $start_idx:$end_idx total len: $(size(slice_db))")
     return view(slice_db, start_idx:end_idx)
 end
 
-function try3()
-    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
-    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    first_slice_db = mag_db[:, 10]
-    arr1 = extract_frequencies(first_slice_db, fsh,-8050, -4000)
-    maxval = maximum(first_slice_db)
-    println("Maximum value: $maxval")
+function score_line_at_offset(first_slice_db, fsh, offs)
+    arr1 = extract_frequencies(first_slice_db, fsh,offs, offs+2500)
+    maxval = maximum(arr1)
+    harmonic_values = Float64[]
+    #println("Maximum value: $maxval")
 
-    imgcat(plot(arr1))
+    if false
+        imgcat(plot(arr1))
+    end
+
+    if offs == 400
+        println(Int64.(round.(arr1)))
+    end
 
     # Compute the Real FFT of the extracted frequency slice
     rfft_result = FFTW.rfft(arr1)
@@ -212,7 +217,9 @@ function try3()
                     xlabel="Frequency (cycles/index)", ylabel="Magnitude",
                     title="RFFT of Slice [-8000 Hz, -4000 Hz]",
                     label="", size=(800, 300))
-    imgcat(plt_rfft)
+    if false
+        imgcat(plt_rfft)
+    end
 
 
     # Find peak frequency > 0.03 cycles/index, calculate period and phase offset
@@ -220,7 +227,7 @@ function try3()
     min_idx = findfirst(f -> f >= freq_threshold, rfft_freqs)
 
     if isnothing(min_idx) || min_idx > length(rfft_mag)
-        println("No frequencies found above the threshold.")
+        return NaN
     else
         # Find the peak magnitude and its index in the relevant frequency range
         # Use view for efficiency, handle empty range if min_idx is the last index
@@ -241,47 +248,77 @@ function try3()
             # We use mod(..., period) to get the offset within the first cycle [0, period)
             offset_indices = mod((-peak_phase / (2 * pi)) * period, period)
 
-            N_HARMONICS = 6
+            N_HARMONICS = 3
 
             # Compute the average value at the estimated peak locations (harmonics)
-            harmonic_indices = Int[]
-            harmonic_values = Float64[]
             if isfinite(period) && isfinite(offset_indices) && period > 0
+
+                saved = arr1[1]
+                arr1[1] = maxval
+                push!(harmonic_values, -saved);
+            
                 for k in 0:(N_HARMONICS - 1)
                     # Calculate the theoretical index for the k-th harmonic peak
-                    idx_float = offset_indices + k * period
+                    idx_float = 0 + k * period
                     # Round to the nearest integer index (Julia is 1-based)
                     idx_int = round(Int, idx_float) + 1 # +1 because offset is 0-based relative to start
 
                     # Check if the index is within the bounds of arr1
                     if 1 <= idx_int <= length(arr1)
-                        push!(harmonic_indices, idx_int)
+                        if (offs < 500)
+                            print("[", idx_int, ",", Int(round(arr1[idx_int])), "]")
+                        end
                         push!(harmonic_values, arr1[idx_int])
                     end
+                end
+
+                arr1[1] = saved
+                if (offs < 500)
+                    println("");
                 end
             end
 
             avg_harmonic_peak_value = if isempty(harmonic_values)
-                NaN
+                return NaN
             else
-                mean(harmonic_values)
+                return mean(harmonic_values)
             end
-
-            @printf("Peak found:\n")
-            @printf("  Frequency: %.4f cycles/index\n", peak_freq)
-            @printf("  Magnitude: %.2f\n", peak_val)
-            @printf("  Phase:     %.3f radians\n", peak_phase)
-            @printf("Calculated properties in arr1:\n")
-            @printf("  Period:    %.2f indices\n", period)
-            @printf("  Offset:    %.2f indices\n", offset_indices)
-            @printf("Harmonic Analysis:\n")
-            @printf("  Indices sampled: %s\n", isempty(harmonic_indices) ? "None" : join(harmonic_indices, ", "))
-            @printf("  Values sampled:  %s\n", isempty(harmonic_values) ? "None" : join([@sprintf("%.2f", v) for v in harmonic_values], ", "))
-            @printf("  Avg Peak Value:  %.2f\n", avg_harmonic_peak_value)
         else
-            println("Could not find a peak above the frequency threshold (search range empty).")
+            return NaN
         end
     end
+end
+
+function try3(offs = -8100)
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 2.5e4, 0.0, 3.0)
+    mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
+    first_slice_db = mag_db[:, 10]
+    println("Running...", size(first_slice_db)[1])
+    valz = Float64[]
+    for i in fsh
+        val = score_line_at_offset(first_slice_db, fsh, i)
+        push!(valz, val)
+        if i < 500 
+            println(i, " ", val)
+        end
+    end
+    println("Done.")
+    # combine two plots, use 2 series AI!
+    plt_slice = plot(fsh, first_slice_db;
+                     xlabel="Frequency [Hz]", ylabel="Magnitude [dB]",
+                     xformatter = x -> @sprintf("%.0f", x), # Format x-ticks as integers/fixed-point
+                     # title="First Time Slice of Spectrogram", # Title removed from top
+                     xticks = 50, # Suggest more ticks on the x-axis
+                     bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
+                     label="", size=(3600, 400),
+                     xlims=(fmin_global, fmax_global)) # Set x-axis limits
+    annotate!(plt_slice, [(0.5, -0.15, Plots.text("Time Slice at index 20 of Spectrogram", :center, 10))]; annotation_clip=false) # Add title annotation below the plot
+    imgcat(plt_slice)
+
+    imgcat(plot(fsh, valz, size=(3500, 800), bottom_margin=15Plots.Plots.mm, # Add margin at the bottom for the title
+                     xlabel="Index", ylabel="Score",
+                     title="Score vs. Index", label=""))
+    # return score_line_at_offset(first_slice_db, fsh, offs)
 end
 
 function try2()
