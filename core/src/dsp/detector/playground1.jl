@@ -768,8 +768,22 @@ function try3()
     end
 
     sigs = mean(all_candidates, dims=2)
-
-    # perform simple moving average(3) on sigs, using centered kernel AI!
+    
+    # Apply simple moving average with centered kernel of size 3
+    sigs_smoothed = similar(sigs)
+    for i in 1:length(sigs)
+        if i == 1
+            # Edge case: first element
+            sigs_smoothed[i] = (sigs[i] + sigs[i+1]) / 2
+        elseif i == length(sigs)
+            # Edge case: last element
+            sigs_smoothed[i] = (sigs[i-1] + sigs[i]) / 2
+        else
+            # Standard case: centered kernel
+            sigs_smoothed[i] = (sigs[i-1] + sigs[i] + sigs[i+1]) / 3
+        end
+    end
+    sigs = sigs_smoothed
 
     # Visualize the results
     view_lims=(1, freq_bins)
