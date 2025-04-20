@@ -665,8 +665,8 @@ function logline(s:: String)
 end
 
 function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=false)
-    logline("begin get_line_candidates")
-    retval = zeros(length(first_slice_db))
+    #logline("begin get_line_candidates")
+    retval = -20 * ones(length(first_slice_db)) 
     first_slice_db = normalize_magnitudes(first_slice_db)
     freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 8, 35)
 
@@ -677,7 +677,7 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
         plot!(first_slice_db, xlims=view_lims);
     end
 
-    logline("begin scan")
+    #logline("begin scan")
     for p = 1:50:length(freq)-100
         vl1, vl2 = p, p+100
 
@@ -706,7 +706,7 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
                     vline!(plt_combined,[inphaseix[x]], linestyle=:dash, color=:blue, linewidth=2, label=nothing);
                 end
                 ix = Int(round(inphaseix[x]))
-                retval[ix] = score[ix];
+                retval[ix] = -first_slice_db[ix]
             end
         end
 
@@ -716,15 +716,15 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
         imgcat(plt_combined)
     end
 
-    logline("end scan")
+    #logline("end scan")
     return retval
 
 end
 
-function try3(offs = -8100)
-    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
+function try3()
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 6.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    timerange = 80:100
+    timerange = 1:100
     
     # Create a 2D array to store all line candidates
     freq_bins = size(mag_db, 1)
@@ -745,16 +745,43 @@ function try3(offs = -8100)
             logline(@sprintf("Processed %d/%d time slices", i, time_bins))
         end
     end
-    
+
+    W = 50
+    chosen_candidates = zeros(Float64, freq_bins, time_bins)
+    for i in 1:time_bins
+        for f in 1:W:freq_bins-W
+            fmin = max(1, f-W)
+            fmax = min(freq_bins, f+W)
+            tmin = max(1, i-10)
+            tmax = min(time_bins, i+10)
+            fscores = zeros(fmax-fmin+1)
+            for fcheck in 1:length(fscores)
+                for tcheck in tmin:tmax
+                    if all_candidates[fcheck-1+fmin, tcheck] > 0
+                        fscores[fcheck] += 1
+                    end
+                end
+            end
+            bestf = argmax(fscores)
+            chosen_candidates[f, i] = fscores[bestf]
+        end
+    end
+
+    sigs = mean(all_candidates, dims=2)
+
+    # perform simple moving average(3) on sigs, using centered kernel AI!
+
     # Visualize the results
-    view_lims=(1, 2000)
+    view_lims=(1, freq_bins)
     
     # Original spectrogram
     hm_original = heatmap(fsh, times[timerange], mag_db[:, timerange]',
         title="Original Spectrogram",
         xlabel="Frequency [Hz]",
-        ylabel="Time [s]",
-        size=(2200, 600),
+        #ylabel="Time [s]",
+        size=(3100, 200),
+        legend = :none,
+        yticks=false,
         xticks=50,
         xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
     )
@@ -764,43 +791,23 @@ function try3(offs = -8100)
     hm_candidates = heatmap(fsh, times[timerange], all_candidates',
         title="Line Candidates",
         xlabel="Frequency [Hz]",
-        ylabel="Time [s]",
-        size=(2200, 600),
+        #ylabel="Time [s]",
+        size=(3100, 200),
         xticks=50,
+        yticks=false,
+        legend = :none,
         xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
         color=:viridis,
     )
     imgcat(hm_candidates)
-    
-    # Combined visualization (original + candidates)
-    # Create a mask of where candidates are significant
-    candidate_mask = all_candidates .> 0
-    
-    # Apply overlay - starting with the original spectrogram
-    combined_data = copy(mag_db[:, timerange])
-    
-    # Highlight the line candidates in a different color
-    highlight_factor = 10  # Make lines stand out more
-    for i in 1:size(all_candidates, 1)
-        for j in 1:size(all_candidates, 2)
-            if candidate_mask[i, j]
-                combined_data[i, j] += highlight_factor
-            end
-        end
-    end
-    
-    hm_combined = heatmap(fsh, times[timerange], combined_data',
-        title="Spectrogram with Line Candidates Highlighted",
-        xlabel="Frequency [Hz]",
-        ylabel="Time [s]",
-        size=(2200, 600),
-        xticks=50,
-        xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
-    )
-    imgcat(hm_combined)
+
+    imgcat(plot(sigs, size=(3100, 300), xlims=view_lims, yticks=false))
+
+
+
     
     # Return the line candidates for further analysis
-    return all_candidates
+    return; #  all_candidates
 
 
     imgcat(hm)
