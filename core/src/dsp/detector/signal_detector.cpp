@@ -198,6 +198,8 @@ namespace dsp::detector {
             ArrayView<float> section(freqSectionFloat.data(), freqSectionFloat.size());
             float domfreq = median(section);
 
+            auto xx = section.dump();
+
             if (domfreq < 1) {
                 abort();
             }
