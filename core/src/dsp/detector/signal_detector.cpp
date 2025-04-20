@@ -21,6 +21,9 @@ namespace dsp::detector {
 
     public:
         ArrayView(const T* p, size_t len) : ptr(p), length(len) {}
+        
+        // Constructor from const vector reference
+        ArrayView(const std::vector<T>& vec) : ptr(vec.data()), length(vec.size()) {}
 
         size_t size() const { return length; }
         const T& operator[](size_t idx) const { return ptr[idx]; }
