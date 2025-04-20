@@ -355,8 +355,8 @@ namespace dsp::detector {
             return -1;
         }
 
-        // If FFT is not initialized, just pass through the data
-        if (fftSize <= 0 || !fftPlan) {
+        // If FFT is not initialized or detector is disabled, just pass through the data
+        if (fftSize <= 0 || !fftPlan || !enabled) {
             memcpy(base_type::out.writeBuf, base_type::_in->readBuf, count * sizeof(complex_t));
             base_type::_in->flush();
             if (!base_type::out.swap(count)) { return -1; }

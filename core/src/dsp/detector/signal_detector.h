@@ -90,6 +90,11 @@ namespace dsp::detector {
 
         int run();
 
+    public:
+        // Enable/disable the detector
+        void setEnabled(bool enabled) { this->enabled = enabled; }
+        bool isEnabled() const { return enabled; }
+
     private:
         static constexpr double TIME_SLICE = 1 / 10.0; // don't change, code currently has magic numbers implicitly depending on it.
 
@@ -97,6 +102,8 @@ namespace dsp::detector {
         static constexpr int MIN_DETECT_FFT_ROWS = (int)(1 / TIME_SLICE * 2); // 2 seconds
         static constexpr int FREQ_WINDOW_SIZE = 50; // Window size for frequency bins in candidate selection
         static constexpr int DETECT_INTERVAL_FRAMES = (int)(1 / TIME_SLICE); // Once per second
+
+        bool enabled = true; // Whether the detector is enabled
 
 
         double sampleRate = 0.0;
