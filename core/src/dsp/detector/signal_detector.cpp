@@ -377,12 +377,12 @@ namespace dsp::detector {
 
     void SignalDetector::addSingleFFTRow(const ArrayView<float> &rowView) {
         auto candidates = getLineCandidates(rowView);
-        suppressedCarrierCandidates.push_back(candidates);
-        while (suppressedCarrierCandidates.size() > N_FFT_ROWS) {
-            suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
-        }
-        if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
-            aggregateAndDetect();
-        }
+        // suppressedCarrierCandidates.push_back(candidates);
+        // while (suppressedCarrierCandidates.size() > N_FFT_ROWS) {
+        //     suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
+        // }
+        // if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
+        //     aggregateAndDetect();
+        // }
     }
 }
