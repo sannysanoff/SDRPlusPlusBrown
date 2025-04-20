@@ -86,6 +86,7 @@ namespace dsp::detector {
         void init(stream<complex_t>* in);
         void setSampleRate(double sampleRate);
         void setCenterFrequency(double centerFrequency);
+        
 
         int run();
 

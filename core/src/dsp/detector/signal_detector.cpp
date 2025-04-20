@@ -6,13 +6,11 @@
 #include <vector>
 #include <ctime>
 #include <chrono>
+#include <ctm.h>
 #include <iomanip>
 #include <sstream>
 
 namespace dsp::detector {
-
-
-
 
     // Normalize magnitudes by subtracting a moving average
     static std::vector<float> normalizeMagnitudes(const ArrayView<float>& magnitudes) {
@@ -259,6 +257,7 @@ namespace dsp::detector {
 
 
     SignalDetector::SignalDetector() {
+        flog::info("Signal detector.");
     }
 
     SignalDetector::~SignalDetector() {
@@ -423,6 +422,7 @@ namespace dsp::detector {
         // Create a 2D array for chosen candidates (in linearized form)
         std::vector<float> chosen_candidates(freq_bins * time_bins, 0.0f);
 
+        std::vector<float> fscores(1 + 2 * FREQ_WINDOW_SIZE, 0.0f);
         // Process frequency windows for candidate selection
         for (size_t i = 0; i < time_bins; i++) {
             for (size_t f = 0; f < freq_bins; f += FREQ_WINDOW_SIZE) {
@@ -432,8 +432,7 @@ namespace dsp::detector {
                 size_t tmin = (i > 10) ? i - 10 : 0;
                 size_t tmax = std::min(time_bins, i + 10);
 
-                // Initialize scores vector for this frequency window
-                std::vector<float> fscores(fmax - fmin, 0.0f);
+                std::fill(fscores.begin(), fscores.end(), 0.0f);
 
                 // Count positive values in each frequency bin across nearby time bins
                 for (size_t fcheck = 0; fcheck < fscores.size(); fcheck++) {
@@ -507,7 +506,10 @@ namespace dsp::detector {
             // Only detect when we have enough data AND detection interval has passed
             if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS && 
                 framesSinceLastDetect >= DETECT_INTERVAL_FRAMES) {
+                long long l1 = currentTimeMillis();
                 aggregateAndDetect();
+                long long l2 = currentTimeMillis();
+                flog::info("aggregateAndDetect, took {}", (int64_t)(l2-l1));
                 framesSinceLastDetect = 0; // Reset counter after detection
             }
         }
