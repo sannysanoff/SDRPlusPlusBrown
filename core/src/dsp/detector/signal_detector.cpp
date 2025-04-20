@@ -13,25 +13,6 @@
 
 namespace dsp::detector {
 
-    template<typename T>
-    class ArrayView {
-    private:
-        const T* ptr;
-        size_t length;
-
-    public:
-        ArrayView(const T* p, size_t len) : ptr(p), length(len) {}
-        
-        // Constructor from const vector reference
-        ArrayView(const std::vector<T>& vec) : ptr(vec.data()), length(vec.size()) {}
-
-        size_t size() const { return length; }
-        const T& operator[](size_t idx) const { return ptr[idx]; }
-        const T* data() const { return ptr; }
-
-        const T* begin() const { return ptr; }
-        const T* end() const { return ptr + length; }
-    };
 
 
     // Helper function for logging with timestamp
@@ -299,7 +280,6 @@ namespace dsp::detector {
 
 
     SignalDetector::SignalDetector() {
-        fftResultBuffer.reserve(N_FFT_ROWS);
         fftResultCount = 0;
     }
 
@@ -377,7 +357,7 @@ namespace dsp::detector {
         fftPlan = dsp::arrays::allocateFFTWPlan(false, fftSize);
 
         // Resize rolling FFT magnitude buffer
-        fftResultBuffer.resize(N_FFT_ROWS * fftSize, 0.0f);
+        fftResultBuffer.resize(fftSize, 0.0f);
         fftResultCount = 0;
 
         // Generate window function
@@ -440,8 +420,10 @@ namespace dsp::detector {
                     (*mag)[j] = 20.0f * log10f((*mag)[j] + 1e-10f);
                 }
 
-                std::copy(mag->begin(), mag->end(), fftResultBuffer.begin() + fftResultCount * fftSize);
-                processSingleRow(fftResultCount);
+                std::copy(mag->begin(), mag->end(), fftResultBuffer.begin());
+                addSingleFFTRow(*mag);
+
+
                 fftResultCount++;
 
                 if (fftResultCount > MIN_DETECT_FFT_ROWS) {
@@ -469,11 +451,10 @@ namespace dsp::detector {
     }
 
     void SignalDetector::aggregateAndDetect() {
+
     }
 
-    void SignalDetector::processSingleRow(int rowCount) {
-        float *start = &fftResultBuffer.at(rowCount * fftSize);
-        ArrayView<float> rowView(start, fftSize);
-        getLineCandidates(rowView);
+    void SignalDetector::addSingleFFTRow(const ArrayView<float> &rowView) {
+        auto candidates = getLineCandidates(rowView);
     }
 }
