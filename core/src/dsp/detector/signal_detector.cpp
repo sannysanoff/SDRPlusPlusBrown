@@ -33,6 +33,7 @@ namespace dsp::detector {
 
         this->sampleRate = sampleRate;
         updateFFTSize();
+        clear();
     }
 
     void SignalDetector::setCenterFrequency(double centerFrequency) {
@@ -44,6 +45,10 @@ namespace dsp::detector {
         flog::info("Signal detector center frequency set to {0} Hz", centerFrequency);
 
         // Reset buffer position to start fresh with new frequency
+        clear();
+    }
+
+    void SignalDetector::clear() {
         bufferPos = 0;
     }
 
@@ -55,19 +60,6 @@ namespace dsp::detector {
         // Calculate FFT size as samplerate/10
         int newFFTSize = sampleRate / 10.0;
 
-        /*
-        // Round to nearest power of 2 for efficiency
-        int powerOf2 = 1;
-        while (powerOf2 < newFFTSize) {
-            powerOf2 *= 2;
-        }
-        newFFTSize = powerOf2;
-
-        if (newFFTSize == fftSize) {
-            return;
-        }
-
-        */
         fftSize = newFFTSize;
         flog::info("Signal detector FFT size set to {0}", fftSize);
 
@@ -144,6 +136,8 @@ namespace dsp::detector {
 
                 // Compute magnitude spectrum
                 auto mag = dsp::arrays::npabsolute(fftPlan->getOutput());
+
+                // convert mag to logarithm, like in julia code AI!
 
                 // Store magnitude row in flat buffer
                 if (fftResultCount < N_FFT_ROWS) {
