@@ -69,6 +69,17 @@ namespace dsp::detector {
         return arr[k - 1];
     }
 
+    // Find median of a vector - float version (using ArrayView)
+    static float median(const ArrayView<float>& data) {
+        if (data.size() == 0) {
+            return 0.0f;
+        }
+    
+        // Need to copy for nth_element
+        std::vector<float> temp(data.begin(), data.end());
+        return median_destructive(temp);
+    }
+
     // Find median of a vector - int version (using ArrayView)
     static int median(const ArrayView<int>& data) {
         if (data.size() == 0) {
