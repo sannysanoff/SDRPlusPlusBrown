@@ -244,7 +244,10 @@ namespace dsp::detector {
             std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2 + 1);
             
             // Find dominant frequency (median)
-            float domfreq = median(std::vector<float>(freqSection.begin(), freqSection.end()));
+            ArrayView<int> freqSectionView(freqSection.data(), freqSection.size());
+            float domfreq = median(ArrayView<float>(
+                reinterpret_cast<const float*>(freqSectionView.data()),
+                freqSectionView.size()));
             
             // Initialize offset score
             std::vector<float> offset_score(static_cast<int>(std::round(domfreq)), 0.0f);
