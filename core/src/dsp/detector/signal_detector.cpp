@@ -187,9 +187,15 @@ namespace dsp::detector {
             // Extract view of frequency for this section
             std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2 + 1);
             
+            // Convert int vector to float vector for proper typing
+            std::vector<float> freqSectionFloat;
+            freqSectionFloat.reserve(freqSection.size());
+            for (const auto& val : freqSection) {
+                freqSectionFloat.push_back(static_cast<float>(val));
+            }
+            
             // Find dominant frequency (median)
-            ArrayView<int> freqSectionView(freqSection.data(), freqSection.size());
-            ArrayView<float> section(reinterpret_cast<const float*>(freqSectionView.data()),freqSectionView.size());
+            ArrayView<float> section(freqSectionFloat.data(), freqSectionFloat.size());
             float domfreq = median(section);
 
             if (domfreq < 1) {
