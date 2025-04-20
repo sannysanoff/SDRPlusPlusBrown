@@ -2,6 +2,8 @@
 #include "../processor.h"
 #include <vector>
 #include <utils/arrays.h>
+#include <sstream>
+#include <type_traits>
 
 namespace dsp::detector {
 
@@ -23,6 +25,27 @@ namespace dsp::detector {
 
         const T* begin() const { return ptr; }
         const T* end() const { return ptr + length; }
+        
+        // Dump the content as a C++ initializer string (only for float type)
+        std::string dump() const {
+            // Return empty string for non-float types
+            if constexpr (!std::is_same_v<T, float>) {
+                return "";
+            } else {
+                std::stringstream ss;
+                ss << "{";
+                for (size_t i = 0; i < length; ++i) {
+                    ss << ptr[i];
+                    if (i < length - 1) {
+                        ss << "f, ";
+                    } else {
+                        ss << "f";
+                    }
+                }
+                ss << "}";
+                return ss.str();
+            }
+        }
     };
 
 
