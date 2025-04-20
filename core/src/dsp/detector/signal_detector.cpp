@@ -4,6 +4,8 @@
 #include <volk/volk.h>
 
 namespace dsp::detector {
+
+
     SignalDetector::SignalDetector() {
         fftResultBuffer.reserve(N_FFT_ROWS);
         fftResultCount = 0;
@@ -58,7 +60,7 @@ namespace dsp::detector {
         }
 
         // Calculate FFT size as samplerate/10
-        int newFFTSize = sampleRate / 10.0;
+        int newFFTSize = sampleRate * TIME_SLICE;
 
         fftSize = newFFTSize;
         flog::info("Signal detector FFT size set to {0}", fftSize);
@@ -143,36 +145,25 @@ namespace dsp::detector {
                     (*mag)[j] = 20.0f * log10f((*mag)[j] + 1e-10f);
                 }
 
-                // Store magnitude row in flat buffer
-                if (fftResultCount < N_FFT_ROWS) {
-                    // Append new row
-                    std::copy(mag->begin(), mag->end(), fftResultBuffer.begin() + fftResultCount * fftSize);
-                    fftResultCount++;
-                } else {
-                    // Buffer full: call detection before halving
-                    perform_detection();
+                std::copy(mag->begin(), mag->end(), fftResultBuffer.begin() + fftResultCount * fftSize);
+                processSingleRow(fftResultCount);
+                fftResultCount++;
 
+                if (fftResultCount > MIN_DETECT_FFT_ROWS) {
+                    // Buffer full enough: call detection before halving
+                    aggregateAndDetect();
+                }
+                if (fftResultCount  == N_FFT_ROWS) {
                     // Shift second half to front
-                    int half = N_FFT_ROWS / 2;
+                    int deleteSize = (int)(1 / TIME_SLICE);
                     std::memmove(
                         fftResultBuffer.data(),
-                        fftResultBuffer.data() + half * fftSize,
-                        (N_FFT_ROWS - half) * fftSize * sizeof(float)
+                        fftResultBuffer.data() + deleteSize * fftSize,
+                        (N_FFT_ROWS - deleteSize) * fftSize * sizeof(float)
                     );
-                    fftResultCount = N_FFT_ROWS - half;
-
-                    // Append new row at the end
-                    std::copy(
-                        mag->begin(), mag->end(),
-                        fftResultBuffer.begin() + fftResultCount * fftSize
-                    );
-                    fftResultCount++;
+                    fftResultCount = N_FFT_ROWS - deleteSize;
                 }
-
-                // Reset buffer position
-                bufferPos = 0;
             }
-
             // Pass through the original data unchanged
             base_type::out.writeBuf[i] = base_type::_in->readBuf[i];
         }
@@ -182,20 +173,12 @@ namespace dsp::detector {
         return count;
     }
 
-    void SignalDetector::perform_detection() {
-        // Write dimensions
-        FILE* fdim = fopen("/tmp/array.dim", "wb");
-        if (fdim) {
-            fprintf(fdim, "%d %d\n", fftSize, N_FFT_ROWS);
-            fclose(fdim);
-        }
+    void SignalDetector::aggregateAndDetect() {
+        float *start = &fftResultBuffer.at(fftResultCount * fftSize);
+        float *end = start + fftSize;
+    }
 
-        // Write buffer as float32 binary
-        FILE* fbin = fopen("/tmp/array.bin", "wb");
-        if (fbin) {
-            size_t total = N_FFT_ROWS * fftSize;
-            fwrite(fftResultBuffer.data(), sizeof(float), total, fbin);
-            fclose(fbin);
-        }
+    void SignalDetector::processSingleRow(int rowCount) {
+
     }
 }
