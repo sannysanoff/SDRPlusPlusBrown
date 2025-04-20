@@ -637,31 +637,53 @@ function percentile_fast(arr, p)
     return partialsort(arr, k)
 end
 
+function normalize_magnitudes(magnitudes: Vector{Float64})
+    WINDOW=300
+    # compute moving average around center, and subtract from magnitudes AI!
+end
+
 function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    timeindex = 57;
+    timeindex = 100;
     first_slice_db = mag_db[:, timeindex]
-    println("Running...", size(first_slice_db)[1])
-
-    timestamp_str = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.s")
-    println("[$timestamp_str] Iteration ..")
+    first_slice_db = normalize_magnitudes(first_slice_db)
     freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 8, 35)
-
-    cutoff = percentile_fast(copy(score), 0.3) * 2;
-    println("Cutoff = ", cutoff)
-
-    # Convert scores to visualization values based on cutoff
+    cutoff = percentile_fast(copy(score), 0.3) * 5;
+    print("Cutoff=", cutoff)
     score_cot = map(x -> x > cutoff ? -10 : -30, score)
 
 
     plt_combined = plot(freq, size=(2000, 1200));
-    view_lims=(800, 1200)
+    view_lims=(1, 5000)
     plot!(score, xlims=view_lims);
     plot!(score_cot, xlims=view_lims);
     plot!(first_slice_db, xlims=view_lims);
+    hline!(plt_combined, [cutoff], linestyle=:dash, color=:blue, linewidth=2);
+
+
+    domfreq = median(view(freq, view_lims[1]:view_lims[2]))
+    println(domfreq)
+    subdata = view(first_slice_db, view_lims[1]:view_lims[2])
+
+    # Initialize array with zeros based on the dominant frequency
+    offset_score = zeros(Int(round(domfreq)))
+    for x in 1:length(subdata)
+        offset_score[1 + (x - 1) % Int(round(domfreq))] += subdata[x]
+    end
+    println(offset_score)
+    phase = argmax(offset_score)-1
+    println("Phase=$phase")
+    inphase = Float64[]
+    for x in phase:domfreq:length(subdata)
+        # vline!(plt_combined,[view_lims[1]+x], linestyle=:dash, color=:blue, linewidth=2);
+        push!(inphase, subdata[Int(round(x))]);
+    end
 
     imgcat(plt_combined)
+
+    inplot = plot(inphase);
+    imgcat(inplot);
 
     hm = heatmap(mag_db', 
         size=(2200, 800), 
@@ -670,19 +692,12 @@ function try3(offs = -8100)
         xlims=view_lims,
     )
     hline!(hm, [timeindex], linestyle=:dash, color=:blue, linewidth=2);
+
+
     imgcat(hm)
 
 
-    sampl1 = view(freq, view_lims[1]:view_lims[2])
-    domfreq = median(sampl1)
-    println(domfreq)
 
-    # Initialize array with zeros based on the dominant frequency
-    offset_score = zeros(Int(round(domfreq)))
-    for x in 1:length(sampl1)
-        offset_score[1 + (x - 1) % Int(round(domfreq))] += sampl1[x]
-    end
-    println(offset_score)
 
     return;
 
