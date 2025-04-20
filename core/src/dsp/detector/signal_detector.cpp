@@ -46,16 +46,16 @@ namespace dsp::detector {
             // Define window boundaries, ensuring they stay within array bounds
             int start_idx = std::max(0, i - WINDOW/2);
             int end_idx = std::min(n-1, i + WINDOW/2);
-            
+                
             // Compute the mean of the window
             float window_sum = 0.0f;
             for (int j = start_idx; j <= end_idx; j++) {
-                window_sum += magnitudes[j];
+                window_sum += magnitudes.at(j);
             }
             float window_mean = window_sum / (end_idx - start_idx + 1);
-            
+                
             // Subtract the local mean from the current value
-            normalized[i] = magnitudes[i] - window_mean;
+            normalized.at(i) = magnitudes.at(i) - window_mean;
         }
         
         return normalized;
@@ -66,7 +66,7 @@ namespace dsp::detector {
         size_t n = arr.size();
         size_t k = std::ceil(n * p);
         std::nth_element(arr.begin(), arr.begin() + k - 1, arr.end());
-        return arr[k - 1];
+        return arr.at(k - 1);
     }
 
 
@@ -80,7 +80,7 @@ namespace dsp::detector {
         size_t n = data.size();
     
         std::nth_element(data.begin(), data.begin() + n/2, data.end());
-        return data[n/2];
+        return data.at(n/2);
     }
 
     // Find the dominant harmonic intervals in a spectrum
@@ -123,7 +123,7 @@ namespace dsp::detector {
             
             if (valid_len > 0) {
                 for (int i = 0; i < valid_len; i++) {
-                    raw_responses[k][i] = std::max(0.0f, spectrum[i]) * std::max(0.0f, spectrum[i + d]);
+                    raw_responses.at(k).at(i) = std::max(0.0f, spectrum.at(i)) * std::max(0.0f, spectrum.at(i + d));
                 }
             }
         }
@@ -140,14 +140,14 @@ namespace dsp::detector {
             int max_k = 0;
             
             for (int k = 0; k < num_intervals; k++) {
-                if (smoothed_responses[k][i] > max_val) {
-                    max_val = smoothed_responses[k][i];
+                if (smoothed_responses.at(k).at(i) > max_val) {
+                    max_val = smoothed_responses.at(k).at(i);
                     max_k = k;
                 }
             }
             
-            dominant_intervals[i] = intervals[max_k];
-            confidence_scores[i] = max_val;
+            dominant_intervals.at(i) = intervals.at(max_k);
+            confidence_scores.at(i) = max_val;
         }
         
         return std::make_pair(dominant_intervals, confidence_scores);
@@ -185,7 +185,7 @@ namespace dsp::detector {
             // Accumulate signals at each phase offset
             for (size_t x = 0; x < subdata.size(); x++) {
                 int idx = 1 + (x - 1 + offset_score.size()) % offset_score.size(); // ensure positive modulo
-                offset_score[idx] += subdata[x];
+                offset_score.at(idx) += subdata.at(x);
             }
             
             // Find phase with maximum score
@@ -198,7 +198,7 @@ namespace dsp::detector {
             
             for (int ix = phase; ix < subdata.size(); ix += domfreq_int) {
                 if (ix <= subdata.size()) {
-                    inphase.push_back(subdata[ix]); // -1 for 0-based indexing
+                    inphase.push_back(subdata.at(ix)); // -1 for 0-based indexing
                     inphaseix.push_back(vl1 + ix);
                 }
             }
@@ -211,9 +211,9 @@ namespace dsp::detector {
                 // Mark peaks before maximum
                 for (int x = maxi - 4; x < maxi; x++) {
                     if (x >= 0 && x < static_cast<int>(inphase.size())) {
-                        int ix = std::round(inphaseix[x]);
+                        int ix = std::round(inphaseix.at(x));
                         if (ix >= 0 && ix < static_cast<int>(first_slice_db.size())) {
-                            (*retval)[ix] = -normalized_slice[ix];
+                            retval->at(ix) = -normalized_slice.at(ix);
                         }
                     }
                 }
@@ -341,8 +341,8 @@ namespace dsp::detector {
                 // Apply window function
                 auto &inVec = *fftInArray;
                 for (int j = 0; j < fftSize; j++) {
-                    inVec[j].re = buffer[j].re * fftWindowBuf[j];
-                    inVec[j].im = buffer[j].im * fftWindowBuf[j];
+                    inVec.at(j).re = buffer.at(j).re * fftWindowBuf[j];
+                    inVec.at(j).im = buffer.at(j).im * fftWindowBuf[j];
                 }
 
                 // Execute FFT
@@ -357,7 +357,7 @@ namespace dsp::detector {
                 // Convert magnitude to logarithmic scale (dB)
                 for (int j = 0; j < fftSize; j++) {
                     // Add small value (1e-10) to avoid log of zero, multiply by 20 to convert to dB
-                    (*mag)[j] = 20.0f * log10f((*mag)[j] + 1e-10f);
+                    mag->at(j) = 20.0f * log10f(mag->at(j) + 1e-10f);
                 }
 
                 addSingleFFTRow(*mag);

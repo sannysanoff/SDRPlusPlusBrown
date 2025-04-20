@@ -4,6 +4,7 @@
 #include <utils/arrays.h>
 #include <sstream>
 #include <type_traits>
+#include <stdexcept>
 
 namespace dsp::detector {
 
@@ -20,7 +21,21 @@ namespace dsp::detector {
         ArrayView(const std::vector<T>& vec) : ptr(vec.data()), length(vec.size()) {}
 
         size_t size() const { return length; }
-        const T& operator[](size_t idx) const { return ptr[idx]; }
+        const T& operator[](size_t idx) const { 
+            #ifndef NDEBUG
+            if (idx >= length) {
+                throw std::out_of_range("ArrayView index out of range");
+            }
+            #endif
+            return ptr[idx]; 
+        }
+        
+        const T& at(size_t idx) const {
+            if (idx >= length) {
+                throw std::out_of_range("ArrayView index out of range");
+            }
+            return ptr[idx];
+        }
         const T* data() const { return ptr; }
 
         const T* begin() const { return ptr; }
