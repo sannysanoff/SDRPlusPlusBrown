@@ -659,7 +659,9 @@ function normalize_magnitudes(magnitudes::Vector{Float64})
 end
 
 function logline(s:: String)
-    # log line it wit millisecond timestamp AI!
+    # Log with millisecond precision timestamp
+    timestamp = Dates.format(now(), "yyyy-mm-dd HH:MM:SS.sss")
+    println("[$timestamp] $s")
 end
 
 function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=false)
