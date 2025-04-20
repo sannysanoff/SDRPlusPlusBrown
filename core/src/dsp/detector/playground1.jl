@@ -725,21 +725,82 @@ function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     timerange = 80:100
-    # organize 2d array and add line_candidates to it. AI!
-    for timeindex in 80:100
+    
+    # Create a 2D array to store all line candidates
+    freq_bins = size(mag_db, 1)
+    time_bins = length(timerange)
+    all_candidates = zeros(Float64, freq_bins, time_bins)
+    
+    # Process each time slice and add line candidates to the 2D array
+    logline("Processing time slices for line candidates...")
+    for (i, timeindex) in enumerate(timerange)
         first_slice_db = mag_db[:, timeindex]
         line_candidates = get_line_candidates(first_slice_db)
+        
+        # Store in our 2D array at the appropriate column
+        all_candidates[:, i] = line_candidates
+        
+        # Log progress
+        if i % 5 == 0 || i == time_bins
+            logline(@sprintf("Processed %d/%d time slices", i, time_bins))
+        end
     end
-    #println(line_candidates)
+    
+    # Visualize the results
     view_lims=(1, 2000)
-
-    hm = heatmap(mag_db', 
-        size=(2200, 800), 
-        xlabel="Array indices",                         
-        xticks = 50, # Suggest more ticks
-        xlims=view_lims,
+    
+    # Original spectrogram
+    hm_original = heatmap(fsh, times[timerange], mag_db[:, timerange]',
+        title="Original Spectrogram",
+        xlabel="Frequency [Hz]",
+        ylabel="Time [s]",
+        size=(2200, 600),
+        xticks=50,
+        xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
     )
-    hline!(hm, [timeindex], linestyle=:dash, color=:blue, linewidth=2);
+    imgcat(hm_original)
+    
+    # Line candidates visualization
+    hm_candidates = heatmap(fsh, times[timerange], all_candidates',
+        title="Line Candidates",
+        xlabel="Frequency [Hz]",
+        ylabel="Time [s]",
+        size=(2200, 600),
+        xticks=50,
+        xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
+        color=:viridis,
+    )
+    imgcat(hm_candidates)
+    
+    # Combined visualization (original + candidates)
+    # Create a mask of where candidates are significant
+    candidate_mask = all_candidates .> 0
+    
+    # Apply overlay - starting with the original spectrogram
+    combined_data = copy(mag_db[:, timerange])
+    
+    # Highlight the line candidates in a different color
+    highlight_factor = 10  # Make lines stand out more
+    for i in 1:size(all_candidates, 1)
+        for j in 1:size(all_candidates, 2)
+            if candidate_mask[i, j]
+                combined_data[i, j] += highlight_factor
+            end
+        end
+    end
+    
+    hm_combined = heatmap(fsh, times[timerange], combined_data',
+        title="Spectrogram with Line Candidates Highlighted",
+        xlabel="Frequency [Hz]",
+        ylabel="Time [s]",
+        size=(2200, 600),
+        xticks=50,
+        xlims=(fsh[view_lims[1]], fsh[view_lims[2]]),
+    )
+    imgcat(hm_combined)
+    
+    # Return the line candidates for further analysis
+    return all_candidates
 
 
     imgcat(hm)
