@@ -135,6 +135,9 @@ namespace dsp::detector {
 
                 // Execute FFT
                 dsp::arrays::npfftfft(fftInArray, fftPlan);
+                
+                // Swap FFT output so that 0 frequency is at the center
+                dsp::arrays::swapfft(fftPlan->getOutput());
 
                 // Compute magnitude spectrum
                 auto mag = dsp::arrays::npabsolute(fftPlan->getOutput());
