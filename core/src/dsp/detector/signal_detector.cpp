@@ -137,7 +137,11 @@ namespace dsp::detector {
                 // Compute magnitude spectrum
                 auto mag = dsp::arrays::npabsolute(fftPlan->getOutput());
 
-                // convert mag to logarithm, like in julia code AI!
+                // Convert magnitude to logarithmic scale (dB)
+                for (int j = 0; j < fftSize; j++) {
+                    // Add small value (1e-10) to avoid log of zero, multiply by 20 to convert to dB
+                    (*mag)[j] = 20.0f * log10f((*mag)[j] + 1e-10f);
+                }
 
                 // Store magnitude row in flat buffer
                 if (fftResultCount < N_FFT_ROWS) {
