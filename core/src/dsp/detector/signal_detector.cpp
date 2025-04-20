@@ -69,30 +69,6 @@ namespace dsp::detector {
         return arr[k - 1];
     }
 
-    // Find median of a vector - float version
-    static float median(const ArrayView<float>& data) {
-        if (data.size() == 0) {
-            return 0.0f;
-        }
-    
-        // Need to copy for nth_element
-        std::vector<float> temp(data.begin(), data.end());
-        size_t n = temp.size();
-    
-        if (n % 2 == 0) {
-            // Even size: median is average of two middle elements
-            std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
-            float val1 = temp[n/2];
-            std::nth_element(temp.begin(), temp.begin() + (n/2 - 1), temp.end());
-            float val2 = temp[n/2 - 1];
-            return (val1 + val2) / 2.0f;
-        } else {
-            // Odd size: median is the middle element
-            std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
-            return temp[n/2];
-        }
-    }
-
     // Find median of a vector - int version
     static int median(const ArrayView<int>& data) {
         if (data.size() == 0) {
@@ -206,24 +182,17 @@ namespace dsp::detector {
             size_t vl2 = p + 100;
             
             // Extract view of data for this section using ArrayView
-            ArrayView<float> subdata(&normalized_slice[vl1], vl2 - vl1 + 1);
+            ArrayView<float> subdata(&normalized_slice[vl1], vl2 - vl1);
             
             // Extract view of frequency for this section
-            std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2 + 1);
+            std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2);
             
             // Find dominant frequency (median) directly using int ArrayView
             ArrayView<int> freqSectionView(freqSection.data(), freqSection.size());
             int domfreq_int = median(freqSectionView);
-            float domfreq = static_cast<float>(domfreq_int);
-
-            auto xx = section.dump();
-
-            if (domfreq < 1) {
-                abort();
-            }
 
             // Initialize offset score
-            std::vector<float> offset_score(static_cast<int>(std::round(domfreq)), 0.0f);
+            std::vector<float> offset_score(domfreq_int, 0.0f);
             
             // Accumulate signals at each phase offset
             for (size_t x = 0; x < subdata.size(); x++) {
@@ -234,16 +203,15 @@ namespace dsp::detector {
             // Find phase with maximum score
             auto max_it = std::max_element(offset_score.begin(), offset_score.end());
             int phase = std::distance(offset_score.begin(), max_it);
-            
+
             // Collect in-phase samples
             std::vector<float> inphase;
             std::vector<float> inphaseix;
             
-            for (float x = phase; x < subdata.size(); x += domfreq) {
-                int ix = std::round(1 + x);
-                if (ix <= static_cast<int>(subdata.size())) {
-                    inphase.push_back(subdata[ix - 1]); // -1 for 0-based indexing
-                    inphaseix.push_back(vl1 + x);
+            for (int ix = phase; ix < subdata.size(); ix += domfreq_int) {
+                if (ix <= subdata.size()) {
+                    inphase.push_back(subdata[ix]); // -1 for 0-based indexing
+                    inphaseix.push_back(vl1 + ix);
                 }
             }
             
