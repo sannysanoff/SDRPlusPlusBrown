@@ -204,12 +204,12 @@ namespace dsp::detector {
     }
 
     // Get line candidates from a frequency slice
-    static std::vector<float> getLineCandidates(const ArrayView<float>& first_slice_db) {
+    static std::shared_ptr<std::vector<float>> getLineCandidates(const ArrayView<float>& first_slice_db) {
         // Initialize return value with -20 for all elements
-        std::vector<float> retval(first_slice_db.size(), -20.0f);
+        auto retval = std::make_shared<std::vector<float>>(first_slice_db.size(), -20.0f);
         
         // Normalize the magnitudes
-        std::vector<float> normalized_slice = normalizeMagnitudes(first_slice_db);
+        auto normalized_slice = normalizeMagnitudes(first_slice_db);
         
         // Find dominant harmonic intervals
         auto result = findDominantHarmonicIntervals(normalized_slice, 250, 8, 35);
@@ -268,7 +268,7 @@ namespace dsp::detector {
                     if (x >= 0 && x < static_cast<int>(inphase.size())) {
                         int ix = std::round(inphaseix[x]);
                         if (ix >= 0 && ix < static_cast<int>(first_slice_db.size())) {
-                            retval[ix] = -normalized_slice[ix];
+                            (*retval)[ix] = -normalized_slice[ix];
                         }
                     }
                 }
@@ -456,5 +456,6 @@ namespace dsp::detector {
 
     void SignalDetector::addSingleFFTRow(const ArrayView<float> &rowView) {
         auto candidates = getLineCandidates(rowView);
+        suppressedCarrierCandidates.push_back(candidates);
     }
 }
