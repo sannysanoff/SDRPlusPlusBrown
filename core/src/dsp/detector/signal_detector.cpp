@@ -39,23 +39,34 @@ namespace dsp::detector {
     static std::vector<float> normalizeMagnitudes(const ArrayView<float>& magnitudes) {
         const int WINDOW = 300;
         const int n = magnitudes.size();
-        std::vector<float> normalized(n);
+        std::vector<float> normalized(n, 0.0f);
+        
+        if (n == 0) {
+            return normalized;
+        }
         
         // Compute moving average for each point
         for (int i = 0; i < n; i++) {
             // Define window boundaries, ensuring they stay within array bounds
             int start_idx = std::max(0, i - WINDOW/2);
             int end_idx = std::min(n-1, i + WINDOW/2);
+            
+            if (start_idx > end_idx) {
+                continue;  // Skip if window is invalid
+            }
                 
             // Compute the mean of the window
             float window_sum = 0.0f;
+            int count = 0;
             for (int j = start_idx; j <= end_idx; j++) {
-                window_sum += magnitudes.at(j);
+                window_sum += magnitudes[j];
+                count++;
             }
-            float window_mean = window_sum / (end_idx - start_idx + 1);
+            
+            float window_mean = (count > 0) ? window_sum / count : 0.0f;
                 
             // Subtract the local mean from the current value
-            normalized.at(i) = magnitudes.at(i) - window_mean;
+            normalized[i] = magnitudes[i] - window_mean;
         }
         
         return normalized;
@@ -90,134 +101,189 @@ namespace dsp::detector {
         int min_interval,
         int max_interval
     ) {
-        int N = spectrum.size();
-        if (N == 0) {
-            return std::make_pair(std::vector<int>(), std::vector<float>());
-        }
-        
-        if (min_interval <= 0 || max_interval < min_interval || max_interval >= N) {
-            flog::error("Invalid interval range: min={}, max={}, N={}", min_interval, max_interval, N);
-            return std::make_pair(std::vector<int>(), std::vector<float>());
-        }
-        
-        if (epsilon <= 0) {
-            flog::error("Epsilon must be positive: epsilon={}", epsilon);
-            return std::make_pair(std::vector<int>(), std::vector<float>());
-        }
-        
-        // Create range of intervals
-        std::vector<int> intervals;
-        for (int d = min_interval; d <= max_interval; d++) {
-            intervals.push_back(d);
-        }
-        
-        int num_intervals = intervals.size();
-        
-        // Raw responses matrix: intervals x spectrum
-        std::vector<std::vector<float>> raw_responses(num_intervals, std::vector<float>(N, 0.0f));
-        
-        // 1. Compute lag products
-        for (int k = 0; k < num_intervals; k++) {
-            int d = intervals[k];
-            int valid_len = N - d;
-            
-            if (valid_len > 0) {
-                for (int i = 0; i < valid_len; i++) {
-                    raw_responses.at(k).at(i) = std::max(0.0f, spectrum.at(i)) * std::max(0.0f, spectrum.at(i + d));
-                }
+        try {
+            int N = spectrum.size();
+            if (N == 0) {
+                return std::make_pair(std::vector<int>(), std::vector<float>());
             }
-        }
-        
-        // 2. Use raw responses directly for further processing without smoothing
-        std::vector<std::vector<float>>& smoothed_responses = raw_responses;
-        
-        // 3. Find dominant interval and confidence for each position
-        std::vector<int> dominant_intervals(N, 0);
-        std::vector<float> confidence_scores(N, 0.0f);
-        
-        for (int i = 0; i < N; i++) {
-            float max_val = -std::numeric_limits<float>::infinity();
-            int max_k = 0;
             
+            // Validate input parameters
+            if (min_interval <= 0 || max_interval < min_interval || max_interval >= N) {
+                flog::error("Invalid interval range: min={}, max={}, N={}", min_interval, max_interval, N);
+                return std::make_pair(std::vector<int>(), std::vector<float>());
+            }
+            
+            if (epsilon <= 0) {
+                flog::error("Epsilon must be positive: epsilon={}", epsilon);
+                return std::make_pair(std::vector<int>(), std::vector<float>());
+            }
+            
+            // Create range of intervals
+            std::vector<int> intervals;
+            intervals.reserve(max_interval - min_interval + 1);
+            for (int d = min_interval; d <= max_interval; d++) {
+                intervals.push_back(d);
+            }
+            
+            int num_intervals = intervals.size();
+            if (num_intervals == 0) {
+                return std::make_pair(std::vector<int>(), std::vector<float>());
+            }
+            
+            // Raw responses matrix: intervals x spectrum
+            std::vector<std::vector<float>> raw_responses(num_intervals, std::vector<float>(N, 0.0f));
+            
+            // 1. Compute lag products
             for (int k = 0; k < num_intervals; k++) {
-                if (smoothed_responses.at(k).at(i) > max_val) {
-                    max_val = smoothed_responses.at(k).at(i);
-                    max_k = k;
+                int d = intervals[k];
+                int valid_len = N - d;
+                
+                if (valid_len > 0) {
+                    for (int i = 0; i < valid_len; i++) {
+                        raw_responses[k][i] = std::max(0.0f, spectrum[i]) * std::max(0.0f, spectrum[i + d]);
+                    }
                 }
             }
             
-            dominant_intervals.at(i) = intervals.at(max_k);
-            confidence_scores.at(i) = max_val;
+            // 2. Use raw responses directly for further processing without smoothing
+            const std::vector<std::vector<float>>& smoothed_responses = raw_responses;
+            
+            // 3. Find dominant interval and confidence for each position
+            std::vector<int> dominant_intervals(N, 0);
+            std::vector<float> confidence_scores(N, 0.0f);
+            
+            for (int i = 0; i < N; i++) {
+                float max_val = -std::numeric_limits<float>::infinity();
+                int max_k = 0;
+                
+                for (int k = 0; k < num_intervals; k++) {
+                    if (smoothed_responses[k][i] > max_val) {
+                        max_val = smoothed_responses[k][i];
+                        max_k = k;
+                    }
+                }
+                
+                if (max_k < static_cast<int>(intervals.size())) {
+                    dominant_intervals[i] = intervals[max_k];
+                    confidence_scores[i] = max_val;
+                }
+            }
+            
+            return std::make_pair(dominant_intervals, confidence_scores);
         }
-        
-        return std::make_pair(dominant_intervals, confidence_scores);
+        catch (const std::exception& e) {
+            flog::error("Exception in findDominantHarmonicIntervals: {}", e.what());
+            return std::make_pair(std::vector<int>(), std::vector<float>());
+        }
     }
 
     // Get line candidates from a frequency slice
     static std::shared_ptr<std::vector<float>> getLineCandidates(const ArrayView<float>& first_slice_db) {
+        // Guard against empty input
+        if (first_slice_db.size() == 0) {
+            return std::make_shared<std::vector<float>>();
+        }
+        
         // Initialize return value with -20 for all elements
         auto retval = std::make_shared<std::vector<float>>(first_slice_db.size(), -20.0f);
         
-        // Normalize the magnitudes
-        auto normalized_slice = normalizeMagnitudes(first_slice_db);
-        
-        // Find dominant harmonic intervals
-        auto result = findDominantHarmonicIntervals(normalized_slice, 250, 8, 35);
-        std::vector<int>& freq = result.first;
-        std::vector<float>& score = result.second;
-        
-        // Scan through the data in sections
-        for (size_t p = 0; p < freq.size() - 100; p += 50) {
-            size_t vl1 = p;
-            size_t vl2 = p + 100;
+        try {
+            // Normalize the magnitudes
+            std::vector<float> normalized_slice = normalizeMagnitudes(first_slice_db);
             
-            // Extract view of data for this section using ArrayView
-            ArrayView<float> subdata(&normalized_slice[vl1], vl2 - vl1);
+            // Find dominant harmonic intervals
+            auto result = findDominantHarmonicIntervals(
+                ArrayView<float>(normalized_slice), 250, 8, 35);
             
-            // Extract view of frequency for this section
-            std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2);
+            const std::vector<int>& freq = result.first;
+            const std::vector<float>& score = result.second;
             
-            int domfreq_int = median_destructive(freqSection);
-
-            // Initialize offset score
-            std::vector<float> offset_score(domfreq_int, 0.0f);
-            
-            // Accumulate signals at each phase offset
-            for (size_t x = 0; x < subdata.size(); x++) {
-                int idx = 1 + (x - 1 + offset_score.size()) % offset_score.size(); // ensure positive modulo
-                offset_score.at(idx) += subdata.at(x);
+            // Early return if frequencies couldn't be determined
+            if (freq.empty() || freq.size() < 100) {
+                flog::info("Not enough frequency data for line candidate detection");
+                return retval;
             }
             
-            // Find phase with maximum score
-            auto max_it = std::max_element(offset_score.begin(), offset_score.end());
-            int phase = std::distance(offset_score.begin(), max_it);
-
-            // Collect in-phase samples
-            std::vector<float> inphase;
-            std::vector<float> inphaseix;
-            
-            for (int ix = phase; ix < subdata.size(); ix += domfreq_int) {
-                if (ix <= subdata.size()) {
-                    inphase.push_back(subdata.at(ix)); // -1 for 0-based indexing
-                    inphaseix.push_back(vl1 + ix);
-                }
-            }
-            
-            // Find maximum in-phase value
-            if (!inphase.empty()) {
-                auto max_inphase_it = std::max_element(inphase.begin(), inphase.end());
-                int maxi = std::distance(inphase.begin(), max_inphase_it);
+            // Scan through the data in sections
+            for (size_t p = 0; p + 100 <= freq.size(); p += 50) {
+                size_t vl1 = p;
+                size_t vl2 = p + 100;
                 
-                // Mark peaks before maximum
-                for (int x = maxi - 4; x < maxi; x++) {
-                    if (x >= 0 && x < static_cast<int>(inphase.size())) {
-                        int ix = std::round(inphaseix.at(x));
-                        if (ix >= 0 && ix < static_cast<int>(first_slice_db.size())) {
-                            retval->at(ix) = -normalized_slice.at(ix);
+                if (vl2 > normalized_slice.size()) {
+                    vl2 = normalized_slice.size();
+                }
+                
+                if (vl2 <= vl1) {
+                    continue;
+                }
+                
+                // Extract view of data for this section
+                ArrayView<float> subdata(&normalized_slice[vl1], vl2 - vl1);
+                
+                // Extract frequency for this section
+                std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2);
+                
+                if (freqSection.empty()) {
+                    continue;
+                }
+                
+                int domfreq_int = median_destructive(freqSection);
+                
+                // Guard against invalid dominant frequency
+                if (domfreq_int <= 0) {
+                    continue;
+                }
+                
+                // Initialize offset score
+                std::vector<float> offset_score(domfreq_int, 0.0f);
+                
+                // Accumulate signals at each phase offset
+                for (size_t x = 0; x < subdata.size(); x++) {
+                    // Ensure modulo calculation is correct and in bounds
+                    int offset = static_cast<int>((x + offset_score.size() - 1) % offset_score.size());
+                    if (offset >= 0 && offset < static_cast<int>(offset_score.size())) {
+                        offset_score[offset] += subdata[x];
+                    }
+                }
+                
+                // Find phase with maximum score
+                auto max_it = std::max_element(offset_score.begin(), offset_score.end());
+                if (max_it == offset_score.end()) {
+                    continue;
+                }
+                
+                int phase = std::distance(offset_score.begin(), max_it);
+                
+                // Collect in-phase samples
+                std::vector<float> inphase;
+                std::vector<size_t> inphaseix;
+                
+                for (int ix = phase; ix < static_cast<int>(subdata.size()); ix += domfreq_int) {
+                    if (ix >= 0 && ix < static_cast<int>(subdata.size())) {
+                        inphase.push_back(subdata[ix]);
+                        inphaseix.push_back(vl1 + ix);
+                    }
+                }
+                
+                // Find maximum in-phase value
+                if (!inphase.empty()) {
+                    auto max_inphase_it = std::max_element(inphase.begin(), inphase.end());
+                    int maxi = std::distance(inphase.begin(), max_inphase_it);
+                    
+                    // Mark peaks before maximum
+                    for (int x = maxi - 4; x < maxi; x++) {
+                        if (x >= 0 && x < static_cast<int>(inphase.size())) {
+                            size_t ix = inphaseix[x];
+                            if (ix < normalized_slice.size() && ix < retval->size()) {
+                                (*retval)[ix] = -normalized_slice[ix];
+                            }
                         }
                     }
                 }
             }
+        }
+        catch (const std::exception& e) {
+            flog::error("Exception in getLineCandidates: {}", e.what());
         }
         
         return retval;
@@ -376,13 +442,25 @@ namespace dsp::detector {
     }
 
     void SignalDetector::addSingleFFTRow(const ArrayView<float> &rowView) {
-        auto candidates = getLineCandidates(rowView);
-        // suppressedCarrierCandidates.push_back(candidates);
-        // while (suppressedCarrierCandidates.size() > N_FFT_ROWS) {
-        //     suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
-        // }
-        // if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
-        //     aggregateAndDetect();
-        // }
+        try {
+            auto candidates = getLineCandidates(rowView);
+            
+            if (candidates && candidates->size() == rowView.size()) {
+                suppressedCarrierCandidates.push_back(candidates);
+                
+                // Keep a fixed history length
+                while (suppressedCarrierCandidates.size() > N_FFT_ROWS) {
+                    suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
+                }
+                
+                // Only detect when we have enough data
+                if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
+                    aggregateAndDetect();
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            flog::error("Exception in addSingleFFTRow: {}", e.what());
+        }
     }
 }
