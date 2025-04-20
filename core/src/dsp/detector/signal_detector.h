@@ -94,6 +94,7 @@ namespace dsp::detector {
 
         static constexpr int N_FFT_ROWS = (int)(1 / TIME_SLICE * 10); // 10 seconds
         static constexpr int MIN_DETECT_FFT_ROWS = (int)(1 / TIME_SLICE * 2); // 2 seconds
+        static constexpr int FREQ_WINDOW_SIZE = 50; // Window size for frequency bins in candidate selection
 
 
         double sampleRate = 0.0;
@@ -107,6 +108,7 @@ namespace dsp::detector {
         dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
         std::vector<std::shared_ptr<std::vector<float>>> suppressedCarrierCandidates;
+        std::vector<float> sigs_smoothed; // Smoothed signal vector for detection
 
         void updateFFTSize();
         void generateWindow();
