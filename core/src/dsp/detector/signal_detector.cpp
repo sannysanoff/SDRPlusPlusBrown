@@ -1,9 +1,7 @@
 #include "signal_detector.h"
 #include "../window/blackman.h"
 #include <utils/flog.h>
-#include <volk/volk.h>
 #include <algorithm>
-#include <numeric>
 #include <cmath>
 #include <vector>
 #include <ctime>
@@ -280,7 +278,6 @@ namespace dsp::detector {
 
 
     SignalDetector::SignalDetector() {
-        fftResultCount = 0;
     }
 
     SignalDetector::~SignalDetector() {
@@ -356,10 +353,6 @@ namespace dsp::detector {
         // Create FFT plan (forward transform)
         fftPlan = dsp::arrays::allocateFFTWPlan(false, fftSize);
 
-        // Resize rolling FFT magnitude buffer
-        fftResultBuffer.resize(fftSize, 0.0f);
-        fftResultCount = 0;
-
         // Generate window function
         generateWindow();
     }
@@ -420,26 +413,7 @@ namespace dsp::detector {
                     (*mag)[j] = 20.0f * log10f((*mag)[j] + 1e-10f);
                 }
 
-                std::copy(mag->begin(), mag->end(), fftResultBuffer.begin());
                 addSingleFFTRow(*mag);
-
-
-                fftResultCount++;
-
-                if (fftResultCount > MIN_DETECT_FFT_ROWS) {
-                    // Buffer full enough: call detection before halving
-                    aggregateAndDetect();
-                }
-                if (fftResultCount  == N_FFT_ROWS) {
-                    // Shift second half to front
-                    int deleteSize = (int)(1 / TIME_SLICE);
-                    std::memmove(
-                        fftResultBuffer.data(),
-                        fftResultBuffer.data() + deleteSize * fftSize,
-                        (N_FFT_ROWS - deleteSize) * fftSize * sizeof(float)
-                    );
-                    fftResultCount = N_FFT_ROWS - deleteSize;
-                }
             }
             // Pass through the original data unchanged
             base_type::out.writeBuf[i] = base_type::_in->readBuf[i];
@@ -457,5 +431,11 @@ namespace dsp::detector {
     void SignalDetector::addSingleFFTRow(const ArrayView<float> &rowView) {
         auto candidates = getLineCandidates(rowView);
         suppressedCarrierCandidates.push_back(candidates);
+        while (suppressedCarrierCandidates.size() > N_FFT_ROWS) {
+            suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
+        }
+        if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
+            aggregateAndDetect();
+        }
     }
 }
