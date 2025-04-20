@@ -69,16 +69,16 @@ namespace dsp::detector {
         return arr[k - 1];
     }
 
-    // Find median of a vector
+    // Find median of a vector - float version
     static float median(const ArrayView<float>& data) {
         if (data.size() == 0) {
             return 0.0f;
         }
-        
+    
         // Need to copy for nth_element
         std::vector<float> temp(data.begin(), data.end());
         size_t n = temp.size();
-        
+    
         if (n % 2 == 0) {
             // Even size: median is average of two middle elements
             std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
@@ -86,6 +86,30 @@ namespace dsp::detector {
             std::nth_element(temp.begin(), temp.begin() + (n/2 - 1), temp.end());
             float val2 = temp[n/2 - 1];
             return (val1 + val2) / 2.0f;
+        } else {
+            // Odd size: median is the middle element
+            std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
+            return temp[n/2];
+        }
+    }
+
+    // Find median of a vector - int version
+    static int median(const ArrayView<int>& data) {
+        if (data.size() == 0) {
+            return 0;
+        }
+    
+        // Need to copy for nth_element
+        std::vector<int> temp(data.begin(), data.end());
+        size_t n = temp.size();
+    
+        if (n % 2 == 0) {
+            // Even size: median is average of two middle elements
+            std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
+            int val1 = temp[n/2];
+            std::nth_element(temp.begin(), temp.begin() + (n/2 - 1), temp.end());
+            int val2 = temp[n/2 - 1];
+            return (val1 + val2) / 2;
         } else {
             // Odd size: median is the middle element
             std::nth_element(temp.begin(), temp.begin() + n/2, temp.end());
@@ -187,16 +211,10 @@ namespace dsp::detector {
             // Extract view of frequency for this section
             std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2 + 1);
             
-            // Convert int vector to float vector for proper typing
-            std::vector<float> freqSectionFloat;
-            freqSectionFloat.reserve(freqSection.size());
-            for (const auto& val : freqSection) {
-                freqSectionFloat.push_back(static_cast<float>(val));
-            }
-            
-            // Find dominant frequency (median)
-            ArrayView<float> section(freqSectionFloat.data(), freqSectionFloat.size());
-            float domfreq = median(section);
+            // Find dominant frequency (median) directly using int ArrayView
+            ArrayView<int> freqSectionView(freqSection.data(), freqSection.size());
+            int domfreq_int = median(freqSectionView);
+            float domfreq = static_cast<float>(domfreq_int);
 
             auto xx = section.dump();
 
