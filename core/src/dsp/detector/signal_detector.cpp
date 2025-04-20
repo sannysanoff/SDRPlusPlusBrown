@@ -13,6 +13,24 @@
 
 namespace dsp::detector {
 
+    template<typename T>
+    class ArrayView {
+    private:
+        const T* ptr;
+        size_t length;
+
+    public:
+        ArrayView(const T* p, size_t len) : ptr(p), length(len) {}
+
+        size_t size() const { return length; }
+        const T& operator[](size_t idx) const { return ptr[idx]; }
+        const T* data() const { return ptr; }
+
+        const T* begin() const { return ptr; }
+        const T* end() const { return ptr + length; }
+    };
+
+
     // Helper function for logging with timestamp
     static std::string getTimestampStr() {
         auto now = std::chrono::system_clock::now();
@@ -444,11 +462,11 @@ namespace dsp::detector {
     }
 
     void SignalDetector::aggregateAndDetect() {
-        float *start = &fftResultBuffer.at(fftResultCount * fftSize);
-        float *end = start + fftSize;
     }
 
     void SignalDetector::processSingleRow(int rowCount) {
-
+        float *start = &fftResultBuffer.at(rowCount * fftSize);
+        float *end = start + fftSize;
+        getLineCandidates(ArrayView<float>(start, end-start));
     }
 }
