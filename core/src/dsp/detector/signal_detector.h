@@ -1,10 +1,31 @@
 #pragma once
 #include "../processor.h"
-#include <fftw3.h>
 #include <vector>
 #include <utils/arrays.h>
 
 namespace dsp::detector {
+
+    template<typename T>
+    class ArrayView {
+    private:
+        const T* ptr;
+        size_t length;
+
+    public:
+        ArrayView(const T* p, size_t len) : ptr(p), length(len) {}
+
+        // Constructor from const vector reference
+        ArrayView(const std::vector<T>& vec) : ptr(vec.data()), length(vec.size()) {}
+
+        size_t size() const { return length; }
+        const T& operator[](size_t idx) const { return ptr[idx]; }
+        const T* data() const { return ptr; }
+
+        const T* begin() const { return ptr; }
+        const T* end() const { return ptr + length; }
+    };
+
+
     class SignalDetector : public Processor<complex_t, complex_t> {
         using base_type = Processor<complex_t, complex_t>;
     public:
@@ -18,7 +39,11 @@ namespace dsp::detector {
         int run();
 
     private:
-        static constexpr int N_FFT_ROWS = 20;
+        static constexpr double TIME_SLICE = 1 / 10.0; // don't change, code currently has magic numbers implicitly depending on it.
+
+        static constexpr int N_FFT_ROWS = (int)(1 / TIME_SLICE * 10); // 10 seconds
+        static constexpr int MIN_DETECT_FFT_ROWS = (int)(1 / TIME_SLICE * 2); // 2 seconds
+
 
         double sampleRate = 0.0;
         double centerFrequency = 0.0;
@@ -30,11 +55,12 @@ namespace dsp::detector {
         dsp::arrays::ComplexArray fftInArray;
         dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
-        std::vector<float> fftResultBuffer;  // flat 2D buffer: N_FFT_ROWS * fftSize
-        int fftResultCount = 0;              // number of rows currently filled (<= N_FFT_ROWS)
+        std::vector<std::shared_ptr<std::vector<float>>> suppressedCarrierCandidates;
 
         void updateFFTSize();
         void generateWindow();
-        void perform_detection();
+        void aggregateAndDetect();
+        void addSingleFFTRow(const ArrayView<float> &rowView);
+        void clear();
     };
 }
