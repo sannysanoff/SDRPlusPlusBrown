@@ -69,27 +69,6 @@ namespace dsp::detector {
         return arr[k - 1];
     }
 
-    // Find median of a vector - float version (using ArrayView)
-    static float median(const ArrayView<float>& data) {
-        if (data.size() == 0) {
-            return 0.0f;
-        }
-    
-        // Need to copy for nth_element
-        std::vector<float> temp(data.begin(), data.end());
-        return median_destructive(temp);
-    }
-
-    // Find median of a vector - int version (using ArrayView)
-    static int median(const ArrayView<int>& data) {
-        if (data.size() == 0) {
-            return 0;
-        }
-    
-        // Need to copy for nth_element
-        std::vector<int> temp(data.begin(), data.end());
-        return median_destructive(temp);
-    }
 
     // Find median of a vector - destructively modifies the input vector
     template <typename T>
@@ -100,18 +79,8 @@ namespace dsp::detector {
     
         size_t n = data.size();
     
-        if (n % 2 == 0) {
-            // Even size: median is average of two middle elements
-            std::nth_element(data.begin(), data.begin() + n/2, data.end());
-            T val1 = data[n/2];
-            std::nth_element(data.begin(), data.begin() + (n/2 - 1), data.end());
-            T val2 = data[n/2 - 1];
-            return (val1 + val2) / 2;
-        } else {
-            // Odd size: median is the middle element
-            std::nth_element(data.begin(), data.begin() + n/2, data.end());
-            return data[n/2];
-        }
+        std::nth_element(data.begin(), data.begin() + n/2, data.end());
+        return data[n/2];
     }
 
     // Find the dominant harmonic intervals in a spectrum
@@ -208,9 +177,7 @@ namespace dsp::detector {
             // Extract view of frequency for this section
             std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2);
             
-            // Find dominant frequency (median) directly using int ArrayView
-            ArrayView<int> freqSectionView(freqSection.data(), freqSection.size());
-            int domfreq_int = median(freqSectionView);
+            int domfreq_int = median_destructive(freqSection);
 
             // Initialize offset score
             std::vector<float> offset_score(domfreq_int, 0.0f);
