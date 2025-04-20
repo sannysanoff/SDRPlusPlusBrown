@@ -637,9 +637,25 @@ function percentile_fast(arr, p)
     return partialsort(arr, k)
 end
 
-function normalize_magnitudes(magnitudes: Vector{Float64})
+function normalize_magnitudes(magnitudes::Vector{Float64})
     WINDOW=300
-    # compute moving average around center, and subtract from magnitudes AI!
+    n = length(magnitudes)
+    normalized = copy(magnitudes)
+    
+    # Compute moving average for each point
+    for i in 1:n
+        # Define window boundaries, ensuring they stay within array bounds
+        start_idx = max(1, i - WINDOW÷2)
+        end_idx = min(n, i + WINDOW÷2)
+        
+        # Compute the mean of the window
+        window_mean = mean(magnitudes[start_idx:end_idx])
+        
+        # Subtract the local mean from the current value
+        normalized[i] = magnitudes[i] - window_mean
+    end
+    
+    return normalized
 end
 
 function try3(offs = -8100)
