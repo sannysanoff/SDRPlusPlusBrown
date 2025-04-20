@@ -26,14 +26,13 @@ namespace dsp::detector {
         const T* begin() const { return ptr; }
         const T* end() const { return ptr + length; }
         
-        // Dump the content as a C++ initializer string (only for float type)
+        // Dump the content as a C++ initializer string (for float and int types)
         std::string dump() const {
-            // Return empty string for non-float types
-            if constexpr (!std::is_same_v<T, float>) {
-                return "";
-            } else {
-                std::stringstream ss;
-                ss << "{";
+            std::stringstream ss;
+            ss << "{";
+            
+            if constexpr (std::is_same_v<T, float>) {
+                // Float type
                 for (size_t i = 0; i < length; ++i) {
                     ss << ptr[i];
                     if (i < length - 1) {
@@ -42,9 +41,23 @@ namespace dsp::detector {
                         ss << "f";
                     }
                 }
-                ss << "}";
-                return ss.str();
+            } 
+            else if constexpr (std::is_same_v<T, int>) {
+                // Int type
+                for (size_t i = 0; i < length; ++i) {
+                    ss << ptr[i];
+                    if (i < length - 1) {
+                        ss << ", ";
+                    }
+                }
             }
+            else {
+                // Other types - return empty braces
+                return "{}";
+            }
+            
+            ss << "}";
+            return ss.str();
         }
     };
 
