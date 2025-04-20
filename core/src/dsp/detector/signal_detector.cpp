@@ -302,6 +302,7 @@ namespace dsp::detector {
 
     void SignalDetector::clear() {
         bufferPos = 0;
+        framesSinceLastDetect = 0;
     }
 
     void SignalDetector::updateFFTSize() {
@@ -500,9 +501,14 @@ namespace dsp::detector {
                 suppressedCarrierCandidates.erase(suppressedCarrierCandidates.begin());
             }
 
-            // Only detect when we have enough data
-            if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS) {
+            // Increment counter for frames since last detection
+            framesSinceLastDetect++;
+
+            // Only detect when we have enough data AND detection interval has passed
+            if (suppressedCarrierCandidates.size() > MIN_DETECT_FFT_ROWS && 
+                framesSinceLastDetect >= DETECT_INTERVAL_FRAMES) {
                 aggregateAndDetect();
+                framesSinceLastDetect = 0; // Reset counter after detection
             }
         }
     }
