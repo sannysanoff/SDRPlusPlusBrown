@@ -394,7 +394,8 @@ function find_dominant_harmonic_intervals(
 
     for k in 1:num_intervals
         row_signal = view(raw_responses, k, :)
-        conv_result = DSP.conv(row_signal, gauss_kernel)
+        #conv_result = DSP.conv(row_signal, gauss_kernel)
+        conv_result = row_signal
         # Extract the 'same' part, handling potential edge cases if N < M
         start_idx = pad_len + 1
         end_idx = pad_len + N
@@ -722,7 +723,7 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
 end
 
 function try3()
-    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 6.0)
+    sub, subfs = extract_signal(sig, Float64(sr), 0.0, 25e4, 0.0, 6.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
     timerange = 1:100
     
