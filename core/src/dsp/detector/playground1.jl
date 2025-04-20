@@ -665,22 +665,19 @@ function logline(s:: String)
 end
 
 function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=false)
+    logline("begin get_line_candidates")
     retval = zeros(length(first_slice_db))
     first_slice_db = normalize_magnitudes(first_slice_db)
     freq, score = find_dominant_harmonic_intervals(first_slice_db, 250, 8, 35)
-    cutoff = percentile_fast(copy(score), 0.3) ;
-    print("Cutoff=", cutoff)
-    score_cot = map(x -> x > cutoff ? -10 : -30, score)
 
-
-    plt_combined = plot(freq, size=(2000, 1200));
+    local plot_combined
     if charts
+        plt_combined = plot(freq, size=(2000, 1200));
         plot!(score, xlims=view_lims);
-        plot!(score_cot, xlims=view_lims);
         plot!(first_slice_db, xlims=view_lims);
-        hline!(plt_combined, [cutoff], linestyle=:dash, color=:blue, linewidth=2);
     end
 
+    logline("begin scan")
     for p = 1:50:length(freq)-100
         vl1, vl2 = p, p+100
 
@@ -708,6 +705,8 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
                 if charts
                     vline!(plt_combined,[inphaseix[x]], linestyle=:dash, color=:blue, linewidth=2, label=nothing);
                 end
+                ix = Int(round(inphaseix[x]))
+                retval[ix] = score[ix];
             end
         end
 
@@ -717,6 +716,7 @@ function get_line_candidates(first_slice_db:: Vector{Float64}; charts:: Bool=fal
         imgcat(plt_combined)
     end
 
+    logline("end scan")
     return retval
 
 end
@@ -724,10 +724,13 @@ end
 function try3(offs = -8100)
     sub, subfs = extract_signal(sig, Float64(sr), 0.0, 5e4, 0.0, 7.0)
     mag_db, mag_lin, times, fsh = compute_spectrogram(sub, subfs)
-    timeindex = 100;
-    first_slice_db = mag_db[:, timeindex]
-
-    line_candidates = get_line_candidates(first_slice_db)
+    timerange = 80:100
+    # organize 2d array and add line_candidates to it. AI!
+    for timeindex in 80:100
+        first_slice_db = mag_db[:, timeindex]
+        line_candidates = get_line_candidates(first_slice_db)
+    end
+    #println(line_candidates)
     view_lims=(1, 2000)
 
     hm = heatmap(mag_db', 
