@@ -54,7 +54,7 @@ namespace dsp::detector {
     }
 
     // Normalize magnitudes by subtracting a moving average
-    static std::vector<float> normalizeMagnitudes(const std::vector<float>& magnitudes) {
+    static std::vector<float> normalizeMagnitudes(const ArrayView<float>& magnitudes) {
         const int WINDOW = 300;
         const int n = magnitudes.size();
         std::vector<float> normalized(n);
@@ -88,12 +88,13 @@ namespace dsp::detector {
     }
 
     // Find median of a vector
-    static float median(const std::vector<float>& data) {
-        if (data.empty()) {
+    static float median(const ArrayView<float>& data) {
+        if (data.size() == 0) {
             return 0.0f;
         }
         
-        std::vector<float> temp = data;
+        // Need to copy for nth_element
+        std::vector<float> temp(data.begin(), data.end());
         size_t n = temp.size();
         
         if (n % 2 == 0) {
@@ -112,7 +113,7 @@ namespace dsp::detector {
 
     // Find the dominant harmonic intervals in a spectrum
     static std::pair<std::vector<int>, std::vector<float>> findDominantHarmonicIntervals(
-        const std::vector<float>& spectrum,
+        const ArrayView<float>& spectrum,
         int epsilon,
         int min_interval,
         int max_interval
@@ -219,7 +220,7 @@ namespace dsp::detector {
     }
 
     // Get line candidates from a frequency slice
-    static std::vector<float> getLineCandidates(const std::vector<float>& first_slice_db) {
+    static std::vector<float> getLineCandidates(const ArrayView<float>& first_slice_db) {
         // Initialize return value with -20 for all elements
         std::vector<float> retval(first_slice_db.size(), -20.0f);
         
@@ -236,8 +237,8 @@ namespace dsp::detector {
             size_t vl1 = p;
             size_t vl2 = p + 100;
             
-            // Extract view of data for this section
-            std::vector<float> subdata(normalized_slice.begin() + vl1, normalized_slice.begin() + vl2 + 1);
+            // Extract view of data for this section using ArrayView
+            ArrayView<float> subdata(&normalized_slice[vl1], vl2 - vl1 + 1);
             
             // Extract view of frequency for this section
             std::vector<int> freqSection(freq.begin() + vl1, freq.begin() + vl2 + 1);
@@ -466,7 +467,7 @@ namespace dsp::detector {
 
     void SignalDetector::processSingleRow(int rowCount) {
         float *start = &fftResultBuffer.at(rowCount * fftSize);
-        float *end = start + fftSize;
-        getLineCandidates(ArrayView<float>(start, end-start));
+        ArrayView<float> rowView(start, fftSize);
+        getLineCandidates(rowView);
     }
 }
