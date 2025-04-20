@@ -138,46 +138,8 @@ namespace dsp::detector {
             }
         }
         
-        // 2. Apply smoothing (Gaussian filter approximation)
-        float sigma_smooth = std::max(1.0f, (2.0f * epsilon + 1.0f) / 5.0f);
-        int kernel_radius = std::ceil(3 * sigma_smooth);
-        int kernel_len = 2 * kernel_radius + 1;
-        
-        // Generate Gaussian kernel
-        std::vector<float> gauss_kernel(kernel_len);
-        float kernel_sum = 0.0f;
-        
-        for (int i = 0; i < kernel_len; i++) {
-            int x = i - kernel_radius;
-            gauss_kernel[i] = std::exp(-x*x / (2 * sigma_smooth * sigma_smooth));
-            kernel_sum += gauss_kernel[i];
-        }
-        
-        // Normalize kernel
-        for (int i = 0; i < kernel_len; i++) {
-            gauss_kernel[i] /= kernel_sum;
-        }
-        
-        // Apply 1D convolution to each row
-        std::vector<std::vector<float>> smoothed_responses(num_intervals, std::vector<float>(N, 0.0f));
-        int pad_len = (kernel_len - 1) / 2;
-        
-        for (int k = 0; k < num_intervals; k++) {
-            // Pad the signal for convolution
-            std::vector<float> padded_signal(N + 2 * pad_len, 0.0f);
-            for (int i = 0; i < N; i++) {
-                padded_signal[i + pad_len] = raw_responses[k][i];
-            }
-            
-            // Apply convolution
-            for (int i = 0; i < N; i++) {
-                float sum = 0.0f;
-                for (int j = 0; j < kernel_len; j++) {
-                    sum += padded_signal[i + j] * gauss_kernel[j];
-                }
-                smoothed_responses[k][i] = sum;
-            }
-        }
+        // 2. Use raw responses directly for further processing without smoothing
+        std::vector<std::vector<float>>& smoothed_responses = raw_responses;
         
         // 3. Find dominant interval and confidence for each position
         std::vector<int> dominant_intervals(N, 0);
