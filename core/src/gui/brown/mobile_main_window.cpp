@@ -1728,6 +1728,11 @@ void MobileMainWindow::draw() {
     if (showCredits) {
         lockWaterfallControls = true;
     }
+    if (sigpath::iqFrontEnd.detectorPreprocessor.isEnabled()) {
+        auto &toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
+        // display window with implot with this data. AI!
+
+    }
 
     if (showMenu) {
         menuWidth = core::configManager.conf["menuWidth"];
