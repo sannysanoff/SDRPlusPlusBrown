@@ -1717,31 +1717,8 @@ void MobileMainWindow::draw() {
     buttonsWidth *= buttonsWidthScale;
     defaultButtonsWidth *= buttonsWidthScale;
 
-    if (demoWindow) {
-        lockWaterfallControls = true;
-        ImGui::ShowDemoWindow();
-    }
-    if (logWindow) {
-        lockWaterfallControls = true;
-        ShowLogWindow();
-    }
-    if (showCredits) {
-        lockWaterfallControls = true;
-    }
-    if (sigpath::iqFrontEnd.detectorPreprocessor.isEnabled()) {
-        auto &toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
-        if (!toPlot.empty()) {
-            ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("Signal Detector Output")) {
-                if (ImPlot::BeginPlot("##DetectorPlot", ImVec2(-1, -1))) {
-                    ImPlot::SetupAxes("Frequency Bin", "Smoothed Value");
-                    ImPlot::PlotLine("Smoothed Signal", toPlot.data(), toPlot.size());
-                    ImPlot::EndPlot();
-                }
-            }
-            ImGui::End();
-        }
-    }
+    this->displayVariousWindows();
+
 
     if (showMenu) {
         menuWidth = core::configManager.conf["menuWidth"];
@@ -2507,6 +2484,7 @@ MobileMainWindow::MobileMainWindow() : MainWindow(),
     cwPanel = std::make_shared<CWPanel>();
     audioWaterfall = std::make_shared<SubWaterfall>(trxAudioSampleRate, 5000, "Audio Heard");
 }
+
 
 int mwedit;
 long long lastMwEdit = 0;

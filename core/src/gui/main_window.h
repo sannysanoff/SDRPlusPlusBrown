@@ -75,6 +75,7 @@ public:
 
 
 protected:
+    void displayVariousWindows();
     static void vfoAddedHandler(VFOManager::VFO* vfo, void* ctx);
 
     // FFT Variables

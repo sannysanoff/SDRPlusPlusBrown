@@ -80,6 +80,8 @@ namespace dsp::detector {
     class SignalDetector : public Processor<complex_t, complex_t> {
         using base_type = Processor<complex_t, complex_t>;
     public:
+        std::vector<float> sigs_smoothed; // Smoothed signal vector for detection
+
         SignalDetector();
         ~SignalDetector();
 
@@ -117,7 +119,6 @@ namespace dsp::detector {
         dsp::arrays::Arg<dsp::arrays::FFTPlan> fftPlan;
 
         std::vector<std::shared_ptr<std::vector<float>>> suppressedCarrierCandidates;
-        std::vector<float> sigs_smoothed; // Smoothed signal vector for detection
         int framesSinceLastDetect = 0; // Counter for frames since last detection
 
         void updateFFTSize();

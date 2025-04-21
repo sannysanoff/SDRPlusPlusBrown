@@ -420,40 +420,6 @@ namespace dsp::detector {
         }
 
         // Create a 2D array for chosen candidates (in linearized form)
-        std::vector<float> chosen_candidates(freq_bins * time_bins, 0.0f);
-
-        std::vector<float> fscores(1 + 2 * FREQ_WINDOW_SIZE, 0.0f);
-        // Process frequency windows for candidate selection
-        for (size_t i = 0; i < time_bins; i++) {
-            for (size_t f = 0; f < freq_bins; f += FREQ_WINDOW_SIZE) {
-                // Define window boundaries
-                size_t fmin = (f > FREQ_WINDOW_SIZE) ? f - FREQ_WINDOW_SIZE : 0;
-                size_t fmax = std::min(freq_bins, f + FREQ_WINDOW_SIZE);
-                size_t tmin = (i > 10) ? i - 10 : 0;
-                size_t tmax = std::min(time_bins, i + 10);
-
-                std::fill(fscores.begin(), fscores.end(), 0.0f);
-
-                // Count positive values in each frequency bin across nearby time bins
-                for (size_t fcheck = 0; fcheck < fscores.size(); fcheck++) {
-                    size_t freq_idx = fmin + fcheck;
-                    for (size_t tcheck = tmin; tcheck < tmax; tcheck++) {
-                        const auto& candidates = suppressedCarrierCandidates[tcheck];
-                        if (candidates && freq_idx < candidates->size() && candidates->at(freq_idx) > 0) {
-                            fscores[fcheck] += 1.0f;
-                        }
-                    }
-                }
-
-                // Find the frequency bin with maximum score
-                auto max_it = std::max_element(fscores.begin(), fscores.end());
-                if (max_it != fscores.end()) {
-                    size_t bestf = std::distance(fscores.begin(), max_it);
-                    chosen_candidates[i * freq_bins + f] = fscores[bestf];
-                }
-            }
-        }
-
         // Compute mean across time dimension (vertical mean of all candidates)
         std::vector<float> sigs(freq_bins, 0.0f);
         for (size_t f = 0; f < freq_bins; f++) {

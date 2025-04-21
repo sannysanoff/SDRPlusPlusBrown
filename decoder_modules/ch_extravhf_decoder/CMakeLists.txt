@@ -33,8 +33,6 @@ if(NOT MSVC)
         FILE(READ "${DLROOT}/itpp/CMakeLists.txt" TMPF)
         string(REGEX REPLACE "option.ITPP_SHARED_LIB" "option(ZZZZ_ITPP_SHARED_LIB" TMPF "${TMPF}")
         FILE(WRITE "${DLROOT}/itpp/CMakeLists.txt" "${TMPF}")
-
-
     endif ()
     FILE(REMOVE ${DLROOT}/itpp/version)
     set(CMAKE_MODULE_PATH "${DLROOT}/itpp/cmake" ${CMAKE_MODULE_PATH})
@@ -51,7 +49,7 @@ if(NOT MSVC)
     if ((CMAKE_BUILD_TYPE STREQUAL Release) OR (NOT CMAKE_BUILD_TYPE))
         set (libitpp_target itpp_static)
     else()
-        set (libitpp_target itpp_static_debug)
+        set (libitpp_target itpp_static_debug)   # for RelWithDebInfo, too
     endif()
     target_compile_definitions(${libitpp_target} PUBLIC TIME_WITH_SYS_TIME)
     target_compile_options(${libitpp_target} PUBLIC "-fPIC")

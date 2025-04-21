@@ -1,5 +1,6 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
+#include <implot/implot.h>
 #include <gui/main_window.h>
 #include <gui/gui.h>
 #include "utils/usleep.h"
@@ -510,6 +511,35 @@ void initBrownAIClient(std::function<void(const std::string&, const std::string&
     initialized = true;
 }
 
+void MainWindow::displayVariousWindows() {
+    if (demoWindow) {
+        lockWaterfallControls = true;
+        ImGui::ShowDemoWindow();
+    }
+    if (logWindow) {
+        lockWaterfallControls = true;
+        ShowLogWindow();
+    }
+    if (sigpath::iqFrontEnd.detectorPreprocessor.isEnabled()) {
+        auto &toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
+        if (!toPlot.empty()) {
+            ImGui::SetNextWindowSize(ImVec2(1800, 300), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Signal Detector Output")) {
+                if (ImPlot::BeginPlot("##DetectorPlot", ImVec2(-1, -1))) {
+                    ImPlot::SetupAxes("Frequency Bin", "Smoothed Value");
+                    ImPlot::PlotLine("Smoothed Signal", toPlot.data(), toPlot.size());
+                    ImPlot::EndPlot();
+                }
+            }
+            ImGui::End();
+        }
+    }
+    if (showCredits) {
+        lockWaterfallControls = true;
+    }
+}
+
+
 void MainWindow::draw() {
     auto ctm = currentTimeNanos();
     ImGui::WaterfallVFO* vfo;
@@ -741,17 +771,8 @@ void MainWindow::draw() {
     ImGui::NextColumn();
     ImGui::PopStyleVar();
 
-    if (demoWindow) {
-        lockWaterfallControls = true;
-        ImGui::ShowDemoWindow();
-    }
-    if (logWindow) {
-        lockWaterfallControls = true;
-        ShowLogWindow();
-    }
-    if (showCredits) {
-        lockWaterfallControls = true;
-    }
+    this->displayVariousWindows();
+
 
     ImVec2 wfSize = ImVec2(0, 0);
     if (!bottomWindows.empty()) {
