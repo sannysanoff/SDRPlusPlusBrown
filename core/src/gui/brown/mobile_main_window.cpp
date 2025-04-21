@@ -1730,8 +1730,17 @@ void MobileMainWindow::draw() {
     }
     if (sigpath::iqFrontEnd.detectorPreprocessor.isEnabled()) {
         auto &toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
-        // display window with implot with this data. AI!
-
+        if (!toPlot.empty()) {
+            ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Signal Detector Output")) {
+                if (ImPlot::BeginPlot("##DetectorPlot", ImVec2(-1, -1))) {
+                    ImPlot::SetupAxes("Frequency Bin", "Smoothed Value");
+                    ImPlot::PlotLine("Smoothed Signal", toPlot.data(), toPlot.size());
+                    ImPlot::EndPlot();
+                }
+            }
+            ImGui::End();
+        }
     }
 
     if (showMenu) {
