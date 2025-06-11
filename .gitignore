@@ -19,3 +19,4 @@ android/deps
 android/app/assets
 .aider*
 .env
+node_modules
