@@ -250,9 +250,9 @@ namespace dsp {
                     dmrv_ctr = 0;
                     dmrv_sync[24] = 0;
                     dmrv_syncdata[24] = 0;
-                    if ((strcmp (dmrv_sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (dmrv_sync, DMR_MS_DATA_SYNC) == 0)) {
+                    if ((strcmp (dmrv_sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (dmrv_sync, DMR_MS_DATA_SYNC) == 0) || (strcmp (dmrv_sync, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (dmrv_sync, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
                         dmrv_muteslot = true;
-                    } else if ((strcmp (dmrv_sync, DMR_BS_VOICE_SYNC) == 0) || (strcmp (dmrv_sync, DMR_MS_VOICE_SYNC) == 0)) {
+                    } else if ((strcmp (dmrv_sync, DMR_BS_VOICE_SYNC) == 0) || (strcmp (dmrv_sync, DMR_MS_VOICE_SYNC) == 0) || (strcmp (dmrv_sync, DMR_DIRECT_MODE_TS1_VOICE_SYNC) == 0) || (strcmp (dmrv_sync, DMR_DIRECT_MODE_TS2_VOICE_SYNC) == 0)) {
                         dmrv_muteslot = false;
                     }
                     if ((strcmp (dmrv_sync, DMR_MS_VOICE_SYNC) == 0) || (strcmp (dmrv_sync, DMR_MS_DATA_SYNC) == 0)) {
@@ -481,7 +481,7 @@ namespace dsp {
         sync[24] = 0;
         syncdata[24] = 0;
 
-        if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0)) {
+        if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
             if (currentslot == 0) {
                 sprintf(slot0light, "[slot0]");
             } else {
@@ -635,14 +635,14 @@ namespace dsp {
             sync[24] = 0;
             syncdata[24] = 0;
 
-            if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0)) {
+            if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
                 mutecurrentslot = 1;
                 if (currentslot == 0) {
                     sprintf(slot0light, "[slot0]");
                 } else {
                     sprintf(slot1light, "[slot1]");
                 }
-            } else if ((strcmp (sync, DMR_BS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_MS_VOICE_SYNC) == 0)) {
+            } else if ((strcmp (sync, DMR_BS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_MS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_VOICE_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_VOICE_SYNC) == 0)) {
                 mutecurrentslot = 0;
                 if (currentslot == 0) {
                     sprintf(slot0light, "[SLOT0]");
