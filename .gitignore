@@ -20,3 +20,4 @@ android/app/assets
 .aider*
 .env
 node_modules
+cmake-*
