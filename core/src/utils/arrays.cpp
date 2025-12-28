@@ -754,27 +754,12 @@ namespace dsp {
         // add scalar to all items
         FloatArray add(const FloatArray& v, float e) {
             auto retval = std::make_shared<std::vector<float>>(v->size(), 0);
-#ifndef VOLK_VERSION
             int limit = (int)v->size();
             auto* src = v->data();
             auto* dst = retval->data();
             for (int i=0; i<limit; i++) {
                 dst[i] = src[i] + e;
             }
-#else
-            std::vector<std::complex<float>> tmp(v->size());
-            for (size_t i = 0; i < v->size(); i++) {
-                tmp[i] = std::complex<float>(v->at(i), 0.0f);
-            }
-            volk_32fc_32f_add_32fc(
-                reinterpret_cast<volk_32fc_t*>(tmp.data()),
-                reinterpret_cast<const volk_32fc_t*>(tmp.data()),
-                e,
-                v->size());
-            for (size_t i = 0; i < v->size(); i++) {
-                retval->at(i) = tmp[i].real();
-            }
-#endif
             return retval;
         }
 
