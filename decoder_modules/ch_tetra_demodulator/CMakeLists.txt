@@ -25,6 +25,10 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         COMMAND "${CMAKE_COMMAND}" -E tar xf "${ETSI_CODEC_ZIP}"
         WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
     )
+    message("Listing ETSI codec files (for case/structure diagnostics).")
+    execute_process(
+        COMMAND find "${ETSI_CODEC_DIR}" -maxdepth 3 -print
+    )
     if (EXISTS "${ETSI_CODEC_EXTRACTED_DIR}")
         execute_process(
             COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ETSI_CODEC_EXTRACTED_DIR}" "${ETSI_CODEC_DIR}"
