@@ -135,7 +135,7 @@ namespace core {
     std::unordered_map<int, std::shared_ptr<SpawnCommand>> forkInProgress;
     std::mutex forkInProgressLock;
 
-    bool forkIt(const std::shared_ptr<SpawnCommand> &cmd) {
+    bool forkIt(const std::shared_ptr<SpawnCommand>& cmd) {
 #ifndef _WIN32
         static std::atomic_int _seq;
         forkInProgressLock.lock();
@@ -158,17 +158,17 @@ namespace core {
 
     void cldHandler(int i) {
 #ifndef _WIN32
-//        write(1, "cldHandler\n", strlen("cldHandler\n"));
-//        flog::info("SIGCLD, waiting i={}", i);
+        //        write(1, "cldHandler\n", strlen("cldHandler\n"));
+        //        flog::info("SIGCLD, waiting i={}", i);
         int wstatus;
         auto q = wait(&wstatus);
-//        flog::info("SIGCLD, waited = {}, status={}", q, wstatus);
+        //        flog::info("SIGCLD, waited = {}, status={}", q, wstatus);
         ForkServerResults res;
         res.seq = -1;
         res.pid = q;
         res.terminated = true;
         res.wstatus = wstatus;
-//        flog::info("FORKSERVER, sending pid death: {}", q);
+        //        flog::info("FORKSERVER, sending pid death: {}", q);
         if (write(forkResult[1], &res, sizeof(res)) < 0) {
             flog::warn("Failed to write fork result");
         }
@@ -199,7 +199,7 @@ namespace core {
 //            }
 #endif
 
-//            flog::info("FORKSERVER: fork server runs");
+            //            flog::info("FORKSERVER: fork server runs");
             int myPid = getpid();
             std::thread checkParentAlive([=]() {
                 while (true) {
@@ -225,7 +225,7 @@ namespace core {
 
                 auto newPid = fork();
                 if (0 == newPid) {
-//                    flog::info("FORKSERVER {}, forked ok", cmd.info);
+                    //                    flog::info("FORKSERVER {}, forked ok", cmd.info);
                     auto& args = cmd;
                     std::string execDir = args.executable;
                     auto pos = execDir.rfind('/');
@@ -233,10 +233,10 @@ namespace core {
                         execDir = execDir.substr(0, pos);
                         execDir = "LD_LIBRARY_PATH=" + execDir;
                         putenv((char*)execDir.c_str());
-//                        flog::info("FORKSERVER, in child, before exec putenv {}", execDir);
+                        //                        flog::info("FORKSERVER, in child, before exec putenv {}", execDir);
                     }
-//                    flog::info("decoderPath={}", args.executable);
-//                    flog::info("FT8 Decoder({}): executing: {}", cmd.info, args.executable);
+                    //                    flog::info("decoderPath={}", args.executable);
+                    //                    flog::info("FT8 Decoder({}): executing: {}", cmd.info, args.executable);
 
                     if (true) {
                         close(0);
@@ -271,7 +271,7 @@ namespace core {
                     ForkServerResults res;
                     res.seq = cmd.seq;
                     res.pid = newPid;
-//                    flog::info("FORKSERVER ({}), sending pid: {}", cmd.info, newPid);
+                    //                    flog::info("FORKSERVER ({}), sending pid: {}", cmd.info, newPid);
                     if (write(forkResult[1], &res, sizeof(res)) < 0) {
                         flog::warn("Failed to write fork result");
                     }
@@ -281,7 +281,7 @@ namespace core {
         else {
             std::thread resultReader([]() {
                 SetThreadName("forkserver_resultread");
-//                flog::info("FORKSERVER: resultreader started");
+                //                flog::info("FORKSERVER: resultreader started");
                 while (true) {
                     ForkServerResults res;
                     if (0 != read(forkResult[0], &res, sizeof(res))) {
@@ -300,13 +300,13 @@ namespace core {
                                 found->second->pid = res.pid;
                             }
                             if (res.terminated != 0) {
-//                                flog::info("FORKSERVER: marking terminated: pid={}, res={}", res.pid, (void*)&res);
+                                //                                flog::info("FORKSERVER: marking terminated: pid={}, res={}", res.pid, (void*)&res);
                                 found->second->completeStatus = res.wstatus;
                                 found->second->completed = true;
                             }
                         }
                         else {
-//                            flog::info("FORKSERVER: not found mark status: pid={} seq={}", res.pid, res.seq);
+                            //                            flog::info("FORKSERVER: not found mark status: pid={} seq={}", res.pid, res.seq);
                         }
                         forkInProgressLock.unlock();
                     }
@@ -321,7 +321,7 @@ namespace core {
 
 extern void test1();
 
-//#include "../../decoder_modules/ft8_decoder/src/module_interface.h"
+// #include "../../decoder_modules/ft8_decoder/src/module_interface.h"
 
 // main
 int sdrpp_main(int argc, char* argv[]) {
@@ -380,7 +380,8 @@ int sdrpp_main(int argc, char* argv[]) {
 
         // Run the specified test
         sdrpp::test::TestRegistry::runTest(testName);
-    } else {
+    }
+    else {
         sdrpp::test::renderLoopHook.verifyResultsFrames = -1;
     }
 
@@ -448,26 +449,27 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["max"] = 0.0;
     defConfig["maximized"] = false;
     defConfig["fullscreen"] = false;
+    defConfig["theme"] = "Dark";
 
     // Menu
     defConfig["menuElements"] = json::array();
-    auto &menuElements  = defConfig["menuElements"];
-    std::vector<std::pair<const char *, bool>> openState = {
-        {"Source", true},
-        {"Radio", true},
-        {"Recorder", false},
-        {"Sinks", false},
-        {"Frequency Manager", false},
-        {"VFO Color", false},
-        {"Band Plan", false},
-        {"Display", true},
-        {"WebSDR View", false},
-        {"Noise Reduction logmmse", false},
-        {"FT8/FT4 Decoder", false},
-        {"Rigctl Server", false},
-        {"Module Manager", false},
+    auto& menuElements = defConfig["menuElements"];
+    std::vector<std::pair<const char*, bool>> openState = {
+        { "Source", true },
+        { "Radio", true },
+        { "Recorder", false },
+        { "Sinks", false },
+        { "Frequency Manager", false },
+        { "VFO Color", false },
+        { "Band Plan", false },
+        { "Display", true },
+        { "WebSDR View", false },
+        { "Noise Reduction logmmse", false },
+        { "FT8/FT4 Decoder", false },
+        { "Rigctl Server", false },
+        { "Module Manager", false },
     };
-    for(auto &p: openState) {
+    for (auto& p : openState) {
         menuElements[menuElements.size() - 0]["name"] = p.first;
         menuElements[menuElements.size() - 1]["open"] = p.second;
     }
@@ -582,7 +584,6 @@ int sdrpp_main(int argc, char* argv[]) {
 
 
     // Themes
-    defConfig["theme"] = "Dark";
 #ifdef __ANDROID__
     defConfig["uiScale"] = displaymenu::displayDensity;
 #else
@@ -649,7 +650,7 @@ int sdrpp_main(int argc, char* argv[]) {
     std::error_code ec;
     auto path = std::filesystem::current_path(ec);
     std::cout << "Current path = " << path << std::endl;
-    flog::info("Loading config from: {} (path {})",root, path.string());
+    flog::info("Loading config from: {} (path {})", root, path.string());
     core::configManager.setPath(root + "/config.json");
     core::configManager.load(defConfig);
     core::configManager.enableAutoSave();
@@ -789,11 +790,11 @@ int sdrpp_main(int argc, char* argv[]) {
         if (sdrpp::test::failed) {
             flog::error("TEST FAILED");
             return 1;
-        } else {
+        }
+        else {
             flog::info("TEST OK");
             return 0;
         }
-
     }
 #else
     flog::info("Exiting successfully");
@@ -802,4 +803,3 @@ int sdrpp_main(int argc, char* argv[]) {
 
     return 0;
 }
-

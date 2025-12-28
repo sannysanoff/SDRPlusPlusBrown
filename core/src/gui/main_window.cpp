@@ -25,6 +25,7 @@
 #include <gui/menus/module_manager.h>
 #include <gui/menus/theme.h>
 #include <gui/dialogs/credits.h>
+#include <cstring>
 #include <filesystem>
 #include <signal_path/source.h>
 #include <gui/dialogs/loading_screen.h>
@@ -63,7 +64,7 @@ void MainWindow::init() {
 
     // Load menu elements
     gui::menu.order.clear();
-    for (auto &elem: menuElements) {
+    for (auto& elem : menuElements) {
         if (!elem.contains("name")) {
             flog::error("Menu element is missing name key");
             continue;
@@ -245,10 +246,6 @@ void MainWindow::init() {
     initComplete = true;
 
     core::moduleManager.doPostInitAll();
-
-
-
-
 }
 
 float* MainWindow::acquireFFTBuffer(void* ctx) {
@@ -281,7 +278,7 @@ void MainWindow::vfoAddedHandler(VFOManager::VFO* vfo, void* ctx) {
     sigpath::vfoManager.setCenterOffset(name, _this->initComplete ? newOffset : offset);
 }
 
-void MainWindow::preDraw(ImGui::WaterfallVFO**vfo) {
+void MainWindow::preDraw(ImGui::WaterfallVFO** vfo) {
 
     *vfo = NULL;
     if (gui::waterfall.selectedVFO != "") {
@@ -430,7 +427,6 @@ void MainWindow::drawUpperLine(ImGui::WaterfallVFO* vfo) {
     ImGui::SetCursorPosY(origY + (5.0f * style::uiScale));
     ImGui::SetNextItemWidth(snrWidth);
     ImGui::SNRMeter((vfo != NULL) ? gui::waterfall.selectedVFOSNR : 0);
-
 }
 
 long long lastDrawTime = 0;
@@ -439,8 +435,7 @@ int glSleepTime = 0;
 
 void MainWindow::ShowLogWindow() {
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize * 0.8, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Log Console", &gui::mainWindow.logWindow))
-    {
+    if (!ImGui::Begin("Log Console", &gui::mainWindow.logWindow)) {
         ImGui::End();
         return;
     }
@@ -448,20 +443,17 @@ void MainWindow::ShowLogWindow() {
     // As a specific feature guaranteed by the library, after calling Begin() the last Item represent the title bar.
     // So e.g. IsItemHovered() will return true when hovering the title bar.
     // Here we create a context menu only available from the title bar.
-    if (ImGui::BeginPopupContextItem())
-    {
+    if (ImGui::BeginPopupContextItem()) {
         if (ImGui::MenuItem("Close Console"))
             gui::mainWindow.logWindow = false;
         ImGui::EndPopup();
     }
 
 
-
     // Reserve enough left-over height for 1 separator + 1 input text
     const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
     ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar);
-    if (ImGui::BeginPopupContextWindow())
-    {
+    if (ImGui::BeginPopupContextWindow()) {
         if (ImGui::Selectable("Clear")) {
             flog::outMtx.lock();
             flog::logRecords.clear();
@@ -472,15 +464,20 @@ void MainWindow::ShowLogWindow() {
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
     flog::outMtx.lock();
-    for (int i = 0; i < flog::logRecords.size(); i++)
-    {
+    for (int i = 0; i < flog::logRecords.size(); i++) {
         auto item = flog::logRecords[i];
         // Normally you would store more information in your item than just a string.
         // (e.g. make Items[] an array of structure, store color/type etc.)
         ImVec4 color;
         bool has_color = false;
-        if (item.typ == flog::TYPE_ERROR)          { color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f); has_color = true; }
-        else if (item.typ == flog::TYPE_WARNING) { color = ImVec4(1.0f, 0.8f, 0.6f, 1.0f); has_color = true; }
+        if (item.typ == flog::TYPE_ERROR) {
+            color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
+            has_color = true;
+        }
+        else if (item.typ == flog::TYPE_WARNING) {
+            color = ImVec4(1.0f, 0.8f, 0.6f, 1.0f);
+            has_color = true;
+        }
         if (has_color)
             ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::TextUnformatted(item.message.c_str());
@@ -501,7 +498,7 @@ void MainWindow::ShowLogWindow() {
 void initBrownAIClient(std::function<void(const std::string&, const std::string&)> callback) {
     static bool initialized = false;
     if (initialized) return;
-    
+
     brownAIClient.init("brownai.san.systems:8080"); // Change this to your Brown AI server address
     brownAIClient.onCommandReceived = [callback](const std::string& command) {
         // Process the command received from Brown AI server
@@ -514,14 +511,19 @@ void initBrownAIClient(std::function<void(const std::string&, const std::string&
 void MainWindow::displayVariousWindows() {
     if (demoWindow) {
         lockWaterfallControls = true;
+        ImGuiStyle styleBefore = ImGui::GetStyle();
         ImGui::ShowDemoWindow();
+        ImGuiStyle styleAfter = ImGui::GetStyle();
+        if (memcmp(&styleBefore, &styleAfter, sizeof(ImGuiStyle)) != 0) {
+            thememenu::saveStyle();
+        }
     }
     if (logWindow) {
         lockWaterfallControls = true;
         ShowLogWindow();
     }
     if (sigpath::iqFrontEnd.detectorPreprocessor.isEnabled()) {
-        auto &toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
+        auto& toPlot = sigpath::iqFrontEnd.detectorPreprocessor.sigs_smoothed;
         if (!toPlot.empty()) {
             ImGui::SetNextWindowSize(ImVec2(1800, 300), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Signal Detector Output")) {
@@ -561,8 +563,8 @@ void MainWindow::draw() {
     // Handle space key for microphone input
     static bool wasSpacePressed = false;
     static std::vector<dsp::stereo_t> micSamples;
-    
-    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)  && sigpath::sinkManager.defaultInputAudio.hasInput()) {
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && sigpath::sinkManager.defaultInputAudio.hasInput()) {
         spacePressed = true;
         if (!wasSpacePressed) {
             sigpath::sinkManager.setAllMuted(true);
@@ -599,7 +601,7 @@ void MainWindow::draw() {
                     // Check for error
                     if (json.contains("error") && !json["error"].empty()) {
                         flog::error("Brown AI error: {}", json["error"].get<std::string>());
-                        ImGui::InsertNotification({ImGuiToastType_Error, 5000, "Brown AI error: %s", json["error"].get<std::string>().c_str()});
+                        ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Brown AI error: %s", json["error"].get<std::string>().c_str() });
                         return;
                     }
 
@@ -607,23 +609,24 @@ void MainWindow::draw() {
                     std::string command = json.value("command", "");
                     if (command.empty()) {
                         flog::warn("Empty command received from Brown AI");
-                        ImGui::InsertNotification({ImGuiToastType_Warning, 5000, "Empty command received"});
+                        ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Empty command received" });
                         return;
                     }
 
                     // Process the command
                     flog::info("Response from Brown AI: {}", command);
                     this->performDetectedLLMAction(whisperResult, command);
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     flog::error("Failed to parse Brown AI response: {}", e.what());
-                    ImGui::InsertNotification({ImGuiToastType_Error, 5000, "Failed to parse Brown AI response"});
+                    ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Failed to parse Brown AI response" });
                 }
             });
         }
     }
 
     mainThreadTasksMutex.lock();
-    for(auto& task : mainThreadTasks) {
+    for (auto& task : mainThreadTasks) {
         task();
     }
     mainThreadTasks.clear();
@@ -637,7 +640,7 @@ void MainWindow::draw() {
             // Stop recording
             sigpath::sinkManager.defaultInputAudio.unbindStream(&micStream);
             wasSpacePressed = false;
-            
+
             // Stop mic stream thread
             if (micThread) {
                 micThreadRunning = false;
@@ -647,13 +650,12 @@ void MainWindow::draw() {
                 }
                 micThread.reset();
             }
-            
+
             // micSamples now contains all recorded audio
             flog::info("Recorded {} microphone samples", (int)micSamples.size());
             auto [speechFile, extension] = mpeg::produce_speech_file_for_whisper(micSamples, 48000);
             flog::info("Compressed to {} bytes as {}", (int)speechFile.size(), extension);
             brownAIClient.sendAudioData(speechFile);
-
         }
     }
 
@@ -687,7 +689,7 @@ void MainWindow::draw() {
     // Handle menu resize
     ImVec2 winSize = ImGui::GetWindowSize();
     ImVec2 mousePos = ImGui::GetMousePos();
-    if (!lockWaterfallControls && showMenu &&  ImGui::GetTopMostPopupModal() == NULL) {
+    if (!lockWaterfallControls && showMenu && ImGui::GetTopMostPopupModal() == NULL) {
         float curY = ImGui::GetCursorPosY();
         bool click = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
@@ -755,8 +757,6 @@ void MainWindow::draw() {
         this->drawDebugMenu();
 
         ImGui::EndChild();
-
-
     }
     else {
         // When hiding the menu bar
@@ -801,11 +801,11 @@ void MainWindow::draw() {
     ImVec2 wfSliderSize((displaymenu::phoneLayout ? 40.0 : 20.0) * style::uiScale, (displaymenu::phoneLayout ? 100.0 : 140.0) * style::uiScale - sliderDynamicAdjustmentY);
     const int MIN_SLIDER_HEIGHT = 10;
     if (wfSliderSize.y < MIN_SLIDER_HEIGHT) {
-        wfSliderSize.y = MIN_SLIDER_HEIGHT;    // Prevents dynamic adjustment too large;
+        wfSliderSize.y = MIN_SLIDER_HEIGHT; // Prevents dynamic adjustment too large;
     }
     ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::CalcTextSize("Zoom").x / 2.0));
     ImGui::TextUnformatted("Zoom");
-    ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - wfSliderSize.x/2);
+    ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - wfSliderSize.x / 2);
 
     if (ImGui::VSliderFloat("##_7_", wfSliderSize, &bw, 1.0, 0.0, "")) {
         core::configManager.acquire();
@@ -826,8 +826,8 @@ void MainWindow::draw() {
             const std::pair<int, int>& range = gui::waterfall.autoRange();
             if (range.first == 0 && range.second == 0) {
                 // bad case
-
-            } else {
+            }
+            else {
                 fftMin = range.first;
                 fftMax = range.second;
             }
@@ -841,7 +841,6 @@ void MainWindow::draw() {
             gui::waterfall.setFFTMax(fftMax);
             gui::waterfall.setWaterfallMax(fftMax);
         }
-
     };
 
     auto addMinSlider = [&]() {
@@ -864,7 +863,8 @@ void MainWindow::draw() {
         // min slider is used much more often, if you ask me. So on small screen there should be no need to scroll down to operate it.
         addMinSlider();
         addMaxSlider();
-    } else {
+    }
+    else {
         addMaxSlider();
         addMinSlider();
     }
@@ -895,20 +895,19 @@ void MainWindow::draw() {
 
     // Draw listening popup if space is pressed
     if (spacePressed) {
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), 
-                               ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f),
+                                ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowBgAlpha(0.7f);
-        if (ImGui::Begin("##ListeningPopup", nullptr, 
-                        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | 
-                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | 
-                        ImGuiWindowFlags_NoNav)) {
+        if (ImGui::Begin("##ListeningPopup", nullptr,
+                         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                             ImGuiWindowFlags_NoNav)) {
             ImGui::Text("Listening... Please give your command...");
             ImGui::End();
         }
     }
 
-    lastDrawTime = (currentTimeNanos() - ctm)/1000;
-
+    lastDrawTime = (currentTimeNanos() - ctm) / 1000;
 }
 
 void MainWindow::setPlayState(bool _playing) {
@@ -933,12 +932,11 @@ bool MainWindow::sdrIsRunning() {
 }
 
 
-
 int hzRange(double freq) {
-    return round(log10(freq)/3);
+    return round(log10(freq) / 3);
 }
 
-void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std::string command) {
+void MainWindow::performDetectedLLMAction(const std::string& whisperResult, std::string command) {
     std::string detectedCommand;
     flog::info("Whisper result: {}", whisperResult);
     flog::info("Detected command: {}", detectedCommand);
@@ -947,7 +945,7 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
         return;
     }
     if (command[0] == ':') { // just lazy
-        command = "COMMAND"+command;
+        command = "COMMAND" + command;
     }
 
     // Split command into lines
@@ -976,13 +974,14 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
 
     if (detectedCommand.empty() && lastCaps.empty()) {
         flog::info("Invalid LLM reply, no command: {}", command);
-        ImGui::InsertNotification({ImGuiToastType_Info, 5000, "Invalid LLM reply, no command"});
+        ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Invalid LLM reply, no command" });
     }
 
     if (!detectedCommand.empty()) {
         detectedCommand.erase(0, detectedCommand.find_first_not_of(' '));
         detectedCommand.erase(detectedCommand.find_last_not_of(' ') + 1);
-    } else {
+    }
+    else {
         detectedCommand = lastCaps;
     }
     // Trim leading/trailing whitespace
@@ -990,11 +989,12 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
 
     // Split into parts by spaces
     std::vector<std::string> parts;
-    splitStringV(detectedCommand," ", parts);
-    while(parts.size()) {
+    splitStringV(detectedCommand, " ", parts);
+    while (parts.size()) {
         if (parts[0] == "") {
-            parts.erase(parts.begin(), parts.begin()+1);
-        } else {
+            parts.erase(parts.begin(), parts.begin() + 1);
+        }
+        else {
             break;
         }
     }
@@ -1019,7 +1019,7 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
             sigpath::sinkManager.recentStreeam->setVolume(volume);
         }
     }
-        auto vfo = gui::waterfall.selectedVFO;
+    auto vfo = gui::waterfall.selectedVFO;
     if (parts[0] == "USB") {
         auto mode = RADIO_IFACE_MODE_USB;
         core::modComManager.callInterface(vfo, RADIO_IFACE_CMD_SET_MODE, &mode, NULL);
@@ -1051,10 +1051,10 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
         float freq = atof(parts[1].c_str());
         float mult = 1;
         if (parts.size() > 2) {
-            if (parts[2][0] == 'K' || parts[2][0]=='k') {
+            if (parts[2][0] == 'K' || parts[2][0] == 'k') {
                 mult = 1e3;
             }
-            if (parts[2][0] == 'M' || parts[2][0]=='m') {
+            if (parts[2][0] == 'M' || parts[2][0] == 'm') {
                 mult = 1e6;
             }
         }
@@ -1063,15 +1063,18 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
         float frac = std::modf((double)freq, &intPartF);
         long long intPart = (long long)intPartF;
         double newFreq = 0;
-        if (frac != 0 && mult == 1) {  // e.g 1.7
-            mult = 1e6; // mhz
-            newFreq = mult * freq;   // make 1.7 mhz
-        } else if (mult * freq < 100000 && mult == 1e3) { // 1200 khz spoken as 1.200 khz
-                mult = 1e6;
-                newFreq = mult * freq;
-        } else if (mult == 1e6 || mult == 1e3) { // exact mhz freq
+        if (frac != 0 && mult == 1) { // e.g 1.7
+            mult = 1e6;               // mhz
+            newFreq = mult * freq;    // make 1.7 mhz
+        }
+        else if (mult * freq < 100000 && mult == 1e3) { // 1200 khz spoken as 1.200 khz
+            mult = 1e6;
             newFreq = mult * freq;
-        } else {
+        }
+        else if (mult == 1e6 || mult == 1e3) { // exact mhz freq
+            newFreq = mult * freq;
+        }
+        else {
             while (hzRange(freq) < hzRange(currentFrequency)) {
                 freq *= 1000;
             }
@@ -1083,7 +1086,7 @@ void MainWindow::performDetectedLLMAction(const std::string &whisperResult, std:
         tuner::tune(tuningMode, gui::waterfall.selectedVFO, newFreq);
     }
 
-    ImGui::InsertNotification({ImGuiToastType_Info, 5000, "Voice command: %s", detectedCommand.c_str()});
+    ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Voice command: %s", detectedCommand.c_str() });
 }
 
 bool MainWindow::isPlaying() {
@@ -1168,7 +1171,6 @@ void MainWindow::handleWaterfallInput(ImGui::WaterfallVFO* vfo) {
             core::configManager.release(true);
         }
     }
-
 }
 
 void MainWindow::drawBottomWindows(int dy) {
@@ -1195,7 +1197,8 @@ void MainWindow::addBottomWindow(std::string name, std::function<void()> drawFun
     }
     if (foundIndex != -1) {
         bottomWindows[foundIndex].drawFunc = drawFunc;
-    } else {
+    }
+    else {
         bottomWindows.emplace_back(ButtomWindow{ name, drawFunc });
     }
     updateBottomWindowLayout();
@@ -1210,11 +1213,11 @@ void MainWindow::updateBottomWindowLayout() {
     }
     auto size = fullWidth / nWindows;
     auto scan = 0;
-    for(int i=0; i<bottomWindows.size(); i++) {
+    for (int i = 0; i < bottomWindows.size(); i++) {
         bottomWindows[i].loc.x = scan;
         bottomWindows[i].loc.y = 0;
         bottomWindows[i].size.x = size;
-        bottomWindows[i].size.y = fullHeight/5;
+        bottomWindows[i].size.y = fullHeight / 5;
         scan += size;
     }
 }
@@ -1242,7 +1245,7 @@ void MainWindow::drawDebugMenu() {
     if (ImGui::CollapsingHeader("Debug")) {
         float deltaTimeSec = ImGui::GetIO().DeltaTime;
         ImGui::Text("Frame time: %.3f ms/frame", deltaTimeSec * 1000.0f);
-        ImGui::Text("Draw time: imgui:%lld glwf:%lld us busy=%d%%", lastDrawTime, lastDrawTimeBackend, (int)((double)(lastDrawTime+lastDrawTimeBackend)*100.0/ (deltaTimeSec*1e6)));
+        ImGui::Text("Draw time: imgui:%lld glwf:%lld us busy=%d%%", lastDrawTime, lastDrawTimeBackend, (int)((double)(lastDrawTime + lastDrawTimeBackend) * 100.0 / (deltaTimeSec * 1e6)));
         ImGui::Text("Framerate: %.1f FPS", ImGui::GetIO().Framerate);
         ImGui::Text("Center Frequency: %.0f Hz", gui::waterfall.getCenterFrequency());
         ImGui::Text("Source name: %s", sourceName.c_str());
