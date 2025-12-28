@@ -10,6 +10,16 @@
 #include <hydrasdr.h>
 #include <utils/optionlist.h>
 
+#ifndef RF_PORT_RX0
+#define RF_PORT_RX0 0
+#endif
+#ifndef RF_PORT_RX1
+#define RF_PORT_RX1 1
+#endif
+#ifndef RF_PORT_RX2
+#define RF_PORT_RX2 2
+#endif
+
 #ifdef __ANDROID__
 #include <android_backend.h>
 #endif
@@ -63,7 +73,8 @@ public:
 
     ~HydraSDRSourceModule() {
         stop(this);
-        sigpath::sourceManager.unregisterSource("HydraSDR");;
+        sigpath::sourceManager.unregisterSource("HydraSDR");
+        ;
     }
 
     void postInit() {}
