@@ -162,7 +162,7 @@ namespace dsp {
                 char framesynctest[25];
                 framesynctest[24] = 0;
                 strncpy (framesynctest, &(framesynctest_buf[framesynctest_p - 23]), 24);
-                if ((strcmp (framesynctest, DMR_MS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_DATA_SYNC) == 0)) {
+                if ((strcmp (framesynctest, DMR_MS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
                     //DMR DATA FRAME SYNC FOUND!
                     framesynctest_offset = framesynctest_p;
                     curr_state = STATE_FSFND_DMR_DATA;
@@ -170,7 +170,7 @@ namespace dsp {
                     frame_status.lasttype = Frame_status::LAST_DMR;
                     break;
                 }
-                if ((strcmp (framesynctest, DMR_MS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_VOICE_SYNC) == 0)) {
+                if ((strcmp (framesynctest, DMR_MS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_VOICE_SYNC) == 0)) {
                     //DMR VOICE FRAME SYNC FOUND!
                     framesynctest_offset = framesynctest_p;
                     curr_state = STATE_FSFND_DMR_VOICE;
@@ -1339,7 +1339,7 @@ namespace dsp {
                     }
                 }
                 if (frameDmr == 1) {
-                    if ((strcmp (framesynctest, DMR_MS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_DATA_SYNC) == 0)) {
+                    if ((strcmp (framesynctest, DMR_MS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
                         carrier = 1;
                         offset = framesynctest_pos;
                         max = ((max) + (framesynclmax)) / 2;
@@ -1365,7 +1365,7 @@ namespace dsp {
                             return (11);
                         }
                     }
-                    if ((strcmp (framesynctest, DMR_MS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_VOICE_SYNC) == 0)) {
+                    if ((strcmp (framesynctest, DMR_MS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_BS_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_VOICE_SYNC) == 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_VOICE_SYNC) == 0)) {
                         carrier = 1;
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
@@ -1607,7 +1607,7 @@ namespace dsp {
                         }
                         lastsynctype = -1;
                         return (4);
-                    } else if ((lastsynctype == 11) && ((strcmp (framesynctest, DMR_BS_VOICE_SYNC) != 0) || (strcmp (framesynctest, DMR_MS_VOICE_SYNC) != 0))) {
+                    } else if ((lastsynctype == 11) && ((strcmp (framesynctest, DMR_BS_VOICE_SYNC) != 0) || (strcmp (framesynctest, DMR_MS_VOICE_SYNC) != 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_VOICE_SYNC) != 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_VOICE_SYNC) != 0))) {
                         carrier = 1;
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
@@ -1618,7 +1618,7 @@ namespace dsp {
                         }
                         lastsynctype = -1;
                         return (11);
-                    } else if ((lastsynctype == 12) && ((strcmp (framesynctest, DMR_BS_DATA_SYNC) != 0) || (strcmp (framesynctest, DMR_MS_DATA_SYNC) != 0))) {
+                    } else if ((lastsynctype == 12) && ((strcmp (framesynctest, DMR_BS_DATA_SYNC) != 0) || (strcmp (framesynctest, DMR_MS_DATA_SYNC) != 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS1_DATA_SYNC) != 0) || (strcmp (framesynctest, DMR_DIRECT_MODE_TS2_DATA_SYNC) != 0))) {
                         carrier = 1;
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
