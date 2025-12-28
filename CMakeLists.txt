@@ -189,9 +189,9 @@ if (OPT_BUILD_HERMES_SOURCE)
 add_subdirectory("source_modules/hermes_source")
 endif (OPT_BUILD_HERMES_SOURCE)
 
-#if (OPT_BUILD_HYDRASDR_SOURCE)
+if (OPT_BUILD_HYDRASDR_SOURCE)
 add_subdirectory("source_modules/hydrasdr_source")
-#endif (OPT_BUILD_HYDRASDR_SOURCE)
+endif (OPT_BUILD_HYDRASDR_SOURCE)
 
 if (OPT_BUILD_KCSDR_SOURCE)
 add_subdirectory("source_modules/kcsdr_source")

@@ -10,16 +10,6 @@
 #include <hydrasdr.h>
 #include <utils/optionlist.h>
 
-#ifndef RF_PORT_RX0
-#define RF_PORT_RX0 0
-#endif
-#ifndef RF_PORT_RX1
-#define RF_PORT_RX1 1
-#endif
-#ifndef RF_PORT_RX2
-#define RF_PORT_RX2 2
-#endif
-
 #ifdef __ANDROID__
 #include <android_backend.h>
 #endif
@@ -42,9 +32,9 @@ public:
         this->name = name;
 
         // Define the ports
-        ports.define("rx0", "RX0", RF_PORT_RX0);
-        ports.define("rx1", "RX1", RF_PORT_RX1);
-        ports.define("rx2", "RX2", RF_PORT_RX2);
+        ports.define("rx0", "RX0", HYDRASDR_RF_PORT_RX0);
+        ports.define("rx1", "RX1", HYDRASDR_RF_PORT_RX1);
+        ports.define("rx2", "RX2", HYDRASDR_RF_PORT_RX2);
 
         regStr[0] = 0;
         valStr[0] = 0;
