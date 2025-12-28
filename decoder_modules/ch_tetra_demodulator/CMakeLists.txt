@@ -64,17 +64,54 @@ file(GLOB SRC LIST_DIRECTORIES false
     "src/decoder/src/lower_mac/*.c"
     "src/decoder/src/phy/*.cpp"
     "src/decoder/src/phy/*.c"
-    "${ETSI_CODEC_DIR}/c-code/cdec_tet.c"
-    "${ETSI_CODEC_DIR}/c-code/sub_cd.c"
-    "${ETSI_CODEC_DIR}/c-code/tetra_op.c"
-    "${ETSI_CODEC_DIR}/c-code/sdec_tet.c"
-    "${ETSI_CODEC_DIR}/c-code/sub_sc_d.c"
-    "${ETSI_CODEC_DIR}/c-code/sub_dsp.c"
-    "${ETSI_CODEC_DIR}/c-code/fbas_tet.c"
-    "${ETSI_CODEC_DIR}/c-code/fexp_tet.c"
-    "${ETSI_CODEC_DIR}/c-code/fmat_tet.c"
-    "${ETSI_CODEC_DIR}/c-code/tetra_op.c"
     )
+
+add_library(etsi_codec STATIC
+    ${ETSI_CODEC_DIR}/c-code/cdec_tet.c
+    ${ETSI_CODEC_DIR}/c-code/sub_cd.c
+    ${ETSI_CODEC_DIR}/c-code/tetra_op.c
+    ${ETSI_CODEC_DIR}/c-code/sdec_tet.c
+    ${ETSI_CODEC_DIR}/c-code/sub_sc_d.c
+    ${ETSI_CODEC_DIR}/c-code/sub_dsp.c
+    ${ETSI_CODEC_DIR}/c-code/fbas_tet.c
+    ${ETSI_CODEC_DIR}/c-code/fexp_tet.c
+    ${ETSI_CODEC_DIR}/c-code/fmat_tet.c
+)
+
+set_target_properties(etsi_codec PROPERTIES LINKER_LANGUAGE C)
+
+target_include_directories(etsi_codec PRIVATE "${ETSI_CODEC_DIR}/c-code" "${ETSI_CODEC_DIR}/amr-code")
+
+set_source_files_properties(
+    src/decoder/src/tetra_tdma.c
+    src/decoder/src/tetra_upper_mac.c
+    src/decoder/src/tetra_common.c
+    src/decoder/src/tetra_mle.c
+    src/decoder/src/tetra_mle_pdu.c
+    src/decoder/src/tetra_mm_pdu.c
+    src/decoder/src/tetra_sndcp_pdu.c
+    src/decoder/src/tetra_cmce_pdu.c
+    src/decoder/src/tetra_mac_pdu.c
+    src/decoder/src/crypto/hurdle.c
+    src/decoder/src/crypto/taa1.c
+    src/decoder/src/crypto/tea1.c
+    src/decoder/src/crypto/tea2.c
+    src/decoder/src/crypto/tea3.c
+    src/decoder/src/crypto/tetra_crypto.c
+    src/decoder/src/lower_mac/osmo_conv.c
+    src/decoder/src/lower_mac/crc_simple.c
+    src/decoder/src/lower_mac/tch_reordering.c
+    src/decoder/src/lower_mac/tetra_conv_enc.c
+    src/decoder/src/lower_mac/tetra_interleave.c
+    src/decoder/src/lower_mac/tetra_lower_mac.c
+    src/decoder/src/lower_mac/tetra_rm3014.c
+    src/decoder/src/lower_mac/tetra_scramb.c
+    src/decoder/src/lower_mac/viterbi.c
+    src/decoder/src/lower_mac/viterbi_cch.c
+    src/decoder/src/lower_mac/viterbi_tch.c
+    src/decoder/src/phy/tetra_burst.c
+    src/decoder/src/phy/tetra_burst_sync.c
+    PROPERTIES LANGUAGE C)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
 
@@ -91,4 +128,6 @@ else()
   # target_compile_options(tetra_demodulator PRIVATE -Wall -Wextra)
 endif()
 
-target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}/c-code" )
+target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}" "${ETSI_CODEC_DIR}/c-code" )
+
+target_link_libraries(tetra_demodulator PRIVATE etsi_codec)
