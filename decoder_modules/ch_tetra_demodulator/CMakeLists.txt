@@ -10,6 +10,7 @@ set(ETSI_CODEC_DIR "${CMAKE_CURRENT_BINARY_DIR}/etsi_codec")
 set(ETSI_CODEC_ZIP "${ETSI_CODEC_DIR}/etsi_tetra_codec.zip")
 set(ETSI_CODEC_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/decoder/etsi_codec-patches")
 set(ETSI_CODEC_MARKER "${ETSI_CODEC_DIR}/.patched")
+set(ETSI_CODEC_EXTRACTED_DIR "${ETSI_CODEC_DIR}/en_30039502v010301p0")
 
 if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     file(MAKE_DIRECTORY "${ETSI_CODEC_DIR}")
@@ -20,13 +21,28 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         message("Not downloading ETSI TETRA codec.")
     endif ()
     message("Extracting ETSI TETRA codec.")
-    execute_process(COMMAND unzip -q -L "${ETSI_CODEC_ZIP}" && if [ -d en_30039502v010301p0 ]; then mv en_30039502v010301p0/* . && rmdir en_30039502v010301p0; fi WORKING_DIRECTORY "${ETSI_CODEC_DIR}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E tar xf "${ETSI_CODEC_ZIP}"
+        WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+    )
+    if (EXISTS "${ETSI_CODEC_EXTRACTED_DIR}")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ETSI_CODEC_EXTRACTED_DIR}" "${ETSI_CODEC_DIR}"
+        )
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ETSI_CODEC_EXTRACTED_DIR}"
+        )
+    endif ()
     file(STRINGS "${ETSI_CODEC_PATCH_DIR}/series" ETSI_PATCHES)
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
         execute_process(
-            COMMAND patch -p1 -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+            COMMAND patch -p1 --batch --forward -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
             WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+            RESULT_VARIABLE ETSI_PATCH_RESULT
         )
+        if (NOT ETSI_PATCH_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to apply ETSI patch: ${PATCH_FILE}")
+        endif ()
     endforeach ()
     file(WRITE "${ETSI_CODEC_MARKER}" "ok\n")
 endif ()
