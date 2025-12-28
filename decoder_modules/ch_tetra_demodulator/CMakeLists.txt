@@ -21,22 +21,66 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         message("Not downloading ETSI TETRA codec.")
     endif ()
     message("Extracting ETSI TETRA codec.")
-    find_program(ETSI_UNZIP_PROGRAM unzip)
-    if (NOT ETSI_UNZIP_PROGRAM)
-        message(FATAL_ERROR "Missing 'unzip' command; required to extract ETSI codec with lowercase filenames.")
-    endif ()
-    execute_process(
-        COMMAND "${ETSI_UNZIP_PROGRAM}" -q -L "${ETSI_CODEC_ZIP}"
-        WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
-        RESULT_VARIABLE ETSI_UNZIP_RESULT
-    )
-    if (NOT ETSI_UNZIP_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
+    if (WIN32)
+        find_program(ETSI_7Z_PROGRAM 7z 7za)
+        if (ETSI_7Z_PROGRAM)
+            execute_process(
+                COMMAND "${ETSI_7Z_PROGRAM}" x -y "${ETSI_CODEC_ZIP}"
+                WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+                RESULT_VARIABLE ETSI_UNZIP_RESULT
+            )
+        else ()
+            find_program(ETSI_POWERSHELL_PROGRAM powershell)
+            if (NOT ETSI_POWERSHELL_PROGRAM)
+                message(FATAL_ERROR "Missing '7z' or 'powershell'; required to extract ETSI codec on Windows.")
+            endif ()
+            execute_process(
+                COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
+                        "Expand-Archive -Path '${ETSI_CODEC_ZIP}' -DestinationPath '${ETSI_CODEC_DIR}' -Force"
+                RESULT_VARIABLE ETSI_UNZIP_RESULT
+            )
+        endif ()
+        if (NOT ETSI_UNZIP_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
+        endif ()
+        find_program(ETSI_POWERSHELL_PROGRAM powershell)
+        if (ETSI_POWERSHELL_PROGRAM)
+            execute_process(
+                COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
+                        "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { $tmp=$_.FullName + '.tmp_lowercase'; Rename-Item -LiteralPath $_.FullName -NewName $tmp -Force; Rename-Item -LiteralPath $tmp -NewName $target -Force } }"
+                RESULT_VARIABLE ETSI_LOWER_RESULT
+            )
+            if (NOT ETSI_LOWER_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to normalize ETSI codec filenames to lowercase.")
+            endif ()
+        endif ()
+    else ()
+        find_program(ETSI_UNZIP_PROGRAM unzip)
+        if (NOT ETSI_UNZIP_PROGRAM)
+            message(FATAL_ERROR "Missing 'unzip' command; required to extract ETSI codec with lowercase filenames.")
+        endif ()
+        execute_process(
+            COMMAND "${ETSI_UNZIP_PROGRAM}" -q -L "${ETSI_CODEC_ZIP}"
+            WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+            RESULT_VARIABLE ETSI_UNZIP_RESULT
+        )
+        if (NOT ETSI_UNZIP_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
+        endif ()
     endif ()
     message("Listing ETSI codec files (for case/structure diagnostics).")
-    execute_process(
-        COMMAND find "${ETSI_CODEC_DIR}" -maxdepth 3 -print
-    )
+    if (WIN32)
+        if (ETSI_POWERSHELL_PROGRAM)
+            execute_process(
+                COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
+                        "Get-ChildItem -LiteralPath '${ETSI_CODEC_DIR}' -Recurse | ForEach-Object { $_.FullName }"
+            )
+        endif ()
+    else ()
+        execute_process(
+            COMMAND find "${ETSI_CODEC_DIR}" -maxdepth 3 -print
+        )
+    endif ()
     if (EXISTS "${ETSI_CODEC_EXTRACTED_DIR}")
         execute_process(
             COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ETSI_CODEC_EXTRACTED_DIR}" "${ETSI_CODEC_DIR}"

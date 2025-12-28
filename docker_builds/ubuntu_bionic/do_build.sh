@@ -4,13 +4,13 @@ cd /root
 
 # Update repos to get a more recent cmake version
 apt update
-apt install -y gpg wget
+apt install -y unzip gpg wget
 wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
 echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
 apt update
 
 # Install dependencies and tools
-apt install -y build-essential cmake git libfftw3-dev libglfw3-dev libvolk1-dev libzstd-dev libairspy-dev \
+apt install -y unzip build-essential cmake git libfftw3-dev libglfw3-dev libvolk1-dev libzstd-dev libairspy-dev \
             libiio-dev libad9361-dev librtaudio-dev libhackrf-dev librtlsdr-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
             libcodec2-dev libudev-dev autoconf libtool xxd libspdlog-dev
 
