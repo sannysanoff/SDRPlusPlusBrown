@@ -1,0 +1,37 @@
+This directory contains a series of patches against the TETRA codec reference
+source code as published by the ETSI at in the file named
+	en_30039502v010301p0.zip
+
+You can proceed two ways, a or b:
+
+a) Using the download_and_patch.sh script
+
+simply execute ./download_and_patch.sh which will download the
+reference codec from the ETSI website and patch it accordingly.
+
+
+b) Manually
+
+Modified instructions as of 20141118 (differs from the osmocom description,
+the ETSI site looks different now):
+
+In order to obtain the codec, download it directly from
+http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
+or use the following procedure:
+
+    * go to http://pda.etsi.org/
+    * enter "en 300 395-2" as search term
+    * execute the search, there should a result called "REN/TETRA-05059 "
+    * click on the 'Download icon' link (zip-vice symbol)
+    * you should now have a file called en_30039502v010301p0.zip
+
+Please also see https://osmocom.org/projects/tetra/wiki/Speech_Codec
+
+The en_30039502v010301p0.zip file has 361169 bytes, and has the md5sum:
+a8115fe68ef8f8cc466f4192572a1e3e
+
+Due to the use of uppercase file names in the zip file, you should use the "-L"
+flag to the unzip program, which ensures all files are completely lower-case.
+
+Please apply all of the patches found in this directory to the
+resulting source code.

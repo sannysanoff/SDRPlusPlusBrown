@@ -1,0 +1,34 @@
+diff -Nruw codec.orig/amr-code/source.h codec/amr-code/source.h
+--- codec.orig/amr-code/source.h	2016-12-18 16:17:46.238404730 +0100
++++ codec/amr-code/source.h	2016-12-18 16:18:21.358545740 +0100
+@@ -19,10 +19,11 @@
+ 
+ #ifndef TYPEDEF_H
+ #define TYPEDEF_H
++#include <stdint.h>
+ 
+ 
+-typedef short Word16;
+-typedef long  Word32;
++typedef int16_t Word16;
++typedef int32_t Word32;
+ typedef int   Flag;
+ 
+ #endif
+diff -Nruw codec.orig/c-code/source.h codec/c-code/source.h
+--- codec.orig/c-code/source.h	2016-12-18 16:17:46.242404746 +0100
++++ codec/c-code/source.h	2016-12-18 16:18:54.494678813 +0100
+@@ -19,10 +19,11 @@
+ 
+ #ifndef TYPEDEF_H
+ #define TYPEDEF_H
++#include <stdint.h>
+ 
+ 
+-typedef short Word16;
+-typedef long  Word32;
++typedef int16_t Word16;
++typedef int32_t Word32;
+ typedef int   Flag;
+ 
+ #endif

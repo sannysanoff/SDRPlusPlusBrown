@@ -1,0 +1,66 @@
+Index: etsi/amr-code/makefile
+===================================================================
+--- etsi.orig/amr-code/makefile	2011-05-29 11:38:48.000000000 +0200
++++ etsi/amr-code/makefile	2011-05-29 11:38:50.000000000 +0200
+@@ -21,7 +21,7 @@
+ 
+ CC=gcc
+ 
+-CFLAGS	=	-g -I.
++CFLAGS	=	-g -I. -Wall -O3
+ 
+ SRCS1		=	ccoder.c	ccod_tet.c	init_params.c	sub_cc.c \
+ 			tetra_op.c
+@@ -33,10 +33,10 @@
+ 
+ all:		ccoder	cdecoder
+ 
+-ccoder:
++ccoder: $(SRCS1)
+ 	$(CC) $(SRCS1) $(CFLAGS) -o ccoder
+ 
+-cdecoder:
++cdecoder: $(SRCS2)
+ 	$(CC) $(SRCS2) $(CFLAGS) -o cdecoder
+ 
+ clean:
+Index: etsi/c-code/makefile
+===================================================================
+--- etsi.orig/c-code/makefile	2011-05-29 11:38:59.000000000 +0200
++++ etsi/c-code/makefile	2011-05-29 11:39:31.000000000 +0200
+@@ -21,9 +21,9 @@
+ 
+ # macro definitions
+ 
+-CC=acc
++CC=gcc
+ 
+-CFLAGS	=	-I.
++CFLAGS	=	-I. -Wall -O3
+ 
+ SRCS1		=	scoder.c		scod_tet.c		sub_sc_d.c \
+ 			sub_dsp.c		fbas_tet.c		fexp_tet.c \
+@@ -43,18 +43,18 @@
+ 
+ all:		scoder	ccoder	sdecoder	cdecoder
+ 
+-scoder:
++scoder: $(SRCS1)
+ 	$(CC) $(SRCS1) $(CFLAGS) -o scoder
+ 
+-ccoder:
++ccoder: $(SRCS2)
+ 	$(CC) $(SRCS2) $(CFLAGS) -o ccoder
+ 
+-sdecoder:
++sdecoder: $(SRCS3)
+ 	$(CC) $(SRCS3) $(CFLAGS) -o sdecoder
+ 
+-cdecoder:
++cdecoder: $(SRCS4)
+ 	$(CC) $(SRCS4) $(CFLAGS) -o cdecoder
+ 
+ clean:
+-	rm -f core *.o
++	rm -f core *.o cdecoder sdecoder ccoder scoder
+ 

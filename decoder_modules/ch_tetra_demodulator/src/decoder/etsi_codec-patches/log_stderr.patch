@@ -1,0 +1,149 @@
+diff -ur codec.orig/c-code/cdecoder.c codec.patched/c-code/cdecoder.c
+--- codec.orig/c-code/cdecoder.c	1995-06-06 11:32:14.000000000 +0200
++++ codec.patched/c-code/cdecoder.c	2014-11-18 22:53:06.000000000 +0100
+@@ -67,23 +67,23 @@
+ 	/* Parse arguments */
+ 	if ( argc != 3 )
+ 	{
+-		puts( "usage : cdecoder input_file output_file" );
+-		puts( "format for input_file  : $6B21...114 bits");
+-		puts( "       ...$6B22...114..." );
+-		puts( "       ...$6B26...114...$6B21");
+-		puts( "format for output_file : two 138 (BFI + 137) bit frames");
++		fputs("usage : cdecoder input_file output_file",stderr );
++		fputs("format for input_file  : $6B21...114 bits",stderr);
++		fputs("       ...$6B22...114...",stderr );
++		fputs("       ...$6B26...114...$6B21",stderr);
++		fputs("format for output_file : two 138 (BFI + 137) bit frames",stderr);
+ 		exit( 1 );
+ 	}
+ 
+ 	if ( (fin = fopen( argv[1], "rb" )) == NULL )
+ 	{
+-		puts("cdecoder: can't open input_file" );
++		fputs("cdecoder: can't open input_file" ,stderr);
+ 		exit( 1 );
+ 	}
+ 
+ 	if ( (fout = fopen( argv[2], "wb" )) == NULL )
+ 	{
+-		puts("cdecoder: can't open output_file" );
++		fputs("cdecoder: can't open output_file",stderr );
+ 		exit( 1 );
+ 	}
+ 
+@@ -93,7 +93,7 @@
+ /* read Input_array (1 TETRA frame = 2 speech frames) from input file */
+ 		if (Read_Tetra_File (fin, Interleaved_coded_array) == -1)
+ 		  {
+-		  puts ("cdecoder: reached end of input_file");
++		  fputs ("cdecoder: reached end of input_file",stderr);
+ 		  break;
+ 		  }
+ 				 
+@@ -116,7 +116,7 @@
+ in "Coded_array" */
+ 
+ /* Message in case the Frame was stolen */
+-		if (bfi1) printf("Frame Nb %ld was stolen\n",Loop_counter+1);
++		if (bfi1) fprintf(stderr,"Frame Nb %ld was stolen\n",Loop_counter+1);
+ 
+ /* Channel Decoding */
+ 		bfi2 = Channel_Decoding(first_pass,Frame_stealing,
+@@ -126,35 +126,35 @@
+ /* Increment Loop counter */
+ 		Loop_counter++;
+ /* Message in case the Bad Frame Indicator was set */
+-		if (bfi2) printf("Frame Nb %ld Bfi active\n\n",Loop_counter);
++		if (bfi2) fprintf(stderr,"Frame Nb %ld Bfi active\n\n",Loop_counter);
+ 
+ /* writing  Reordered_array to output file */
+ 			      /* bfi bit */
+ 		if( fwrite( &bfi1, sizeof(short), 1, fout ) != 1 ) {
+-			puts( "cdecoder: can't write to output_file" );
++			fputs( "cdecoder: can't write to output_file",stderr );
+ 			break;
+ 		}
+ 			     /* 1st speech frame */
+ 		if( fwrite( Reordered_array, sizeof(short), 137, fout ) != 137 )
+ 		{
+-			puts( "cdecoder: can't write to output_file" );
++			fputs("cdecoder: can't write to output_file",stderr );
+ 			break;
+ 		}
+ 			      /* bfi bit */
+ 		if( fwrite( &bfi2, sizeof(short), 1, fout ) != 1 ) {
+-			puts( "cdecoder: can't write to output_file" );
++			fputs("cdecoder: can't write to output_file",stderr );
+ 			break;
+ 		}
+ 			     /* 2nd speech frame */
+ 		if( fwrite( Reordered_array+137, sizeof(short), 137, fout ) 
+ 					!= 137 ) {
+-			puts( "cdecoder: can't write to output_file" );
++			fputs("cdecoder: can't write to output_file",stderr );
+ 			break;
+ 		}
+ 	}
+ 		
+-	printf("%ld Channel Frames processed\n",Loop_counter);
+-	printf("ie %ld Speech Frames\n",2*Loop_counter);
++	fprintf(stderr,"%ld Channel Frames processed\n",Loop_counter);
++	fprintf(stderr,"ie %ld Speech Frames\n",2*Loop_counter);
+ 	
+ 	/* closing files */
+ 	fclose( fin );
+diff -ur codec.orig/c-code/sdecoder.c codec.patched/c-code/sdecoder.c
+--- codec.orig/c-code/sdecoder.c	1995-06-06 10:55:28.000000000 +0200
++++ codec.patched/c-code/sdecoder.c	2014-11-18 22:53:06.000000000 +0100
+@@ -58,15 +58,15 @@
+ 
+   if ( argc != 3 )
+   {
+-     printf("Usage : sdecoder  serial_file  synth_file\n");
+-     printf("\n");
+-     printf("Format for serial_file:\n");
+-     printf("  Serial stream input is read from a binary file\n");
+-     printf("  where each 16-bit word represents 1 encoded bit.\n");
+-     printf("  BFI + 137 bits by frame\n");
+-     printf("\n");
+-     printf("Format for synth_file:\n");
+-     printf("  Synthesis is written to a binary file of 16 bits data.\n");
++     fprintf(stderr,"Usage : sdecoder  serial_file  synth_file\n");
++     fprintf(stderr,"\n");
++     fprintf(stderr,"Format for serial_file:\n");
++     fprintf(stderr,"  Serial stream input is read from a binary file\n");
++     fprintf(stderr,"  where each 16-bit word represents 1 encoded bit.\n");
++     fprintf(stderr,"  BFI + 137 bits by frame\n");
++     fprintf(stderr,"\n");
++     fprintf(stderr,"Format for synth_file:\n");
++     fprintf(stderr,"  Synthesis is written to a binary file of 16 bits data.\n");
+      exit( 1 );
+   }
+ 
+@@ -74,13 +74,13 @@
+ 
+   if( (f_serial = fopen(argv[1],"rb") ) == NULL )
+   {
+-    printf("Input file '%s' does not exist !!\n",argv[1]);
++    fprintf(stderr,"Input file '%s' does not exist !!\n",argv[1]);
+     exit(0);
+   }
+ 
+   if( (f_syn = fopen(argv[2], "wb") ) == NULL )
+   {
+-    printf("Cannot open file '%s' !!\n", argv[2]);
++    fprintf(stderr,"Cannot open file '%s' !!\n", argv[2]);
+     exit(0);
+   }
+ 
+@@ -95,7 +95,7 @@
+ 
+   while( fread(serial, sizeof(Word16), serial_size, f_serial) == serial_size)
+   {
+-    printf("frame=%d\n", ++frame);
++    fprintf(stderr,"frame=%d\n", ++frame);
+ 
+     Bits2prm_Tetra(serial, parm);	/* serial to parameters */
+ 
+

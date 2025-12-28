@@ -16,8 +16,13 @@ if(MSVC)
 else()
     add_compile_options(-Wno-deprecated-declarations)
 endif()
-# Set compile arguments
-target_compile_options(${PROJECT_NAME} PRIVATE ${SDRPP_MODULE_COMPILER_FLAGS})
+# Set compile arguments; avoid applying C++-only flags to C sources.
+set(_sdrpp_module_c_flags ${SDRPP_MODULE_COMPILER_FLAGS})
+list(REMOVE_ITEM _sdrpp_module_c_flags -std=c++17 /std:c++17 /EHsc)
+target_compile_options(${PROJECT_NAME} PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SDRPP_MODULE_COMPILER_FLAGS}>
+    $<$<COMPILE_LANGUAGE:C>:${_sdrpp_module_c_flags}>
+)
 
 # Install directives
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp/plugins)

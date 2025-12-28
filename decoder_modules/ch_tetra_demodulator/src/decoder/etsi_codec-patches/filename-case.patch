@@ -1,0 +1,20 @@
+Index: etsi/amr-code/init_params.c
+===================================================================
+--- etsi.orig/amr-code/init_params.c	2011-05-29 12:11:52.000000000 +0200
++++ etsi/amr-code/init_params.c	2011-05-29 12:11:21.000000000 +0200
+@@ -26,11 +26,11 @@
+ #include "const.tab" /* contains constants for channel coding/decoding */
+ #include "arrays.h" /* contains constants for channel coding/decoding */
+ 
+-#include "const_TETRA.tab"   /* contains constants for channel coding/decoding */
+-#include "arrays_TETRA.tab"  /* contains arrays for channel coding/decoding */
++#include "const_tetra.tab"   /* contains constants for channel coding/decoding */
++#include "arrays_tetra.tab"  /* contains arrays for channel coding/decoding */
+ 
+-#include "const_AMR475.tab"   /* contains constants for channel coding/decoding */
+-#include "arrays_AMR475.tab"  /* contains arrays for channel coding/decoding */
++#include "const_amr475.tab"   /* contains constants for channel coding/decoding */
++#include "arrays_amr475.tab"  /* contains arrays for channel coding/decoding */
+ 
+ #define ALLOW_NEG(x) (((x) < 0) ? (((-x)%2 == 1) ?  (-x)/2 - N1_2 + 1 :  (x)/2 + 1) : (x))
+ 

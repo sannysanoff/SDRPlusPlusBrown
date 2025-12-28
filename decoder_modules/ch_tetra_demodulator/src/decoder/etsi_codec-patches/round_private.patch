@@ -1,0 +1,174 @@
+Index: etsi/amr-code/channel.h
+===================================================================
+--- etsi.orig/amr-code/channel.h	2011-05-29 11:42:12.000000000 +0200
++++ etsi/amr-code/channel.h	2011-05-29 11:42:23.000000000 +0200
+@@ -139,7 +139,7 @@
+ Word16 negate(Word16 var1);               /* Short negate,        1 */
+ Word16 norm_l(Word32 L_var1);             /* Long norm,          30 */
+ Word16 norm_s(Word16 var1);               /* Short norm,         15 */
+-Word16 round(Word32 L_var1);              /* Round,               1 */
++Word16 etsi_round(Word32 L_var1);              /* Round,               1 */
+ Word16 shl(Word16 var1, Word16 var2);     /* Short shift left,    1 */
+ Word16 shr(Word16 var1, Word16 var2);     /* Short shift right,   1 */
+ Word16 sub(Word16 var1, Word16 var2);     /* Short sub,           1 */
+Index: etsi/amr-code/source.h
+===================================================================
+--- etsi.orig/amr-code/source.h	2011-05-29 11:41:07.000000000 +0200
++++ etsi/amr-code/source.h	2011-05-29 11:41:20.000000000 +0200
+@@ -164,7 +164,7 @@
+ Word16 negate(Word16 var1);               /* Short negate,        1 */
+ Word16 norm_l(Word32 L_var1);             /* Long norm,          30 */
+ Word16 norm_s(Word16 var1);               /* Short norm,         15 */
+-Word16 round(Word32 L_var1);              /* Round,               1 */
++Word16 etsi_round(Word32 L_var1);              /* Round,               1 */
+ Word16 shl(Word16 var1, Word16 var2);     /* Short shift left,    1 */
+ Word16 shr(Word16 var1, Word16 var2);     /* Short shift right,   1 */
+ Word16 sub(Word16 var1, Word16 var2);     /* Short sub,           1 */
+Index: etsi/amr-code/tetra_op.c
+===================================================================
+--- etsi.orig/amr-code/tetra_op.c	2011-05-29 11:41:07.000000000 +0200
++++ etsi/amr-code/tetra_op.c	2011-05-29 11:41:54.000000000 +0200
+@@ -31,7 +31,7 @@
+ *					- negate()
+ *					- norm_l()
+ *					- norm_s()
+-*					- round()
++*					- etsi_round()
+ *					- sature()
+ *					- shl()
+ *					- shr()
+@@ -1336,14 +1336,14 @@
+ 
+ /************************************************************************
+ *
+-*	Function Name : round
++*	Function Name : etsi_round
+ *
+ *	Purpose :
+ *
+ *		Round the lower 16 bits of the 32 bit input number into its MS 16 bits
+ *		with saturation. Shift the resulting bits right by 16 and return the 16
+ *		bit number:
+-*			round(L_var1) = extract_h(L_add(L_var1,32768))
++*			etsi_round(L_var1) = extract_h(L_add(L_var1,32768))
+ *
+ *	Complexity Weight : 1
+ *
+@@ -1365,7 +1365,7 @@
+ *
+ ************************************************************************/
+ 
+-Word16 round(Word32 L_var1)
++Word16 etsi_round(Word32 L_var1)
+   {
+    Word16 var_out;
+    Word32 L_arrondi;
+Index: etsi/c-code/channel.h
+===================================================================
+--- etsi.orig/c-code/channel.h	2011-05-29 11:46:28.000000000 +0200
++++ etsi/c-code/channel.h	2011-05-29 11:46:57.000000000 +0200
+@@ -130,7 +130,7 @@
+ Word16 negate(Word16 var1);               /* Short negate,        1 */
+ Word16 norm_l(Word32 L_var1);             /* Long norm,          30 */
+ Word16 norm_s(Word16 var1);               /* Short norm,         15 */
+-Word16 round(Word32 L_var1);              /* Round,               1 */
++Word16 etsi_round(Word32 L_var1);              /* Round,               1 */
+ Word16 shl(Word16 var1, Word16 var2);     /* Short shift left,    1 */
+ Word16 shr(Word16 var1, Word16 var2);     /* Short shift right,   1 */
+ Word16 sub(Word16 var1, Word16 var2);     /* Short sub,           1 */
+Index: etsi/c-code/source.h
+===================================================================
+--- etsi.orig/c-code/source.h	2011-05-29 11:46:28.000000000 +0200
++++ etsi/c-code/source.h	2011-05-29 11:47:06.000000000 +0200
+@@ -164,7 +164,7 @@
+ Word16 negate(Word16 var1);               /* Short negate,        1 */
+ Word16 norm_l(Word32 L_var1);             /* Long norm,          30 */
+ Word16 norm_s(Word16 var1);               /* Short norm,         15 */
+-Word16 round(Word32 L_var1);              /* Round,               1 */
++Word16 etsi_round(Word32 L_var1);              /* Round,               1 */
+ Word16 shl(Word16 var1, Word16 var2);     /* Short shift left,    1 */
+ Word16 shr(Word16 var1, Word16 var2);     /* Short shift right,   1 */
+ Word16 sub(Word16 var1, Word16 var2);     /* Short sub,           1 */
+Index: etsi/c-code/sub_dsp.c
+===================================================================
+--- etsi.orig/c-code/sub_dsp.c	2011-05-29 11:46:28.000000000 +0200
++++ etsi/c-code/sub_dsp.c	2011-05-29 11:47:19.000000000 +0200
+@@ -554,7 +554,7 @@
+ 
+   fac[0] = gamma;
+   for(i=1; i<pp; i++)
+-    fac[i] = round( L_mult(fac[i-1], gamma) );
++    fac[i] = etsi_round( L_mult(fac[i-1], gamma) );
+ 
+   return;
+ }
+@@ -1088,7 +1088,7 @@
+ 
+   a_exp[0] = a[0];
+   for(i=1; i<=pp; i++)
+-    a_exp[i] = round( L_mult(a[i], fac[i-1]) );
++    a_exp[i] = etsi_round( L_mult(a[i], fac[i-1]) );
+ 
+   return;
+ }
+Index: etsi/c-code/sub_sc_d.c
+===================================================================
+--- etsi.orig/c-code/sub_sc_d.c	2011-05-29 11:46:28.000000000 +0200
++++ etsi/c-code/sub_sc_d.c	2011-05-29 11:47:36.000000000 +0200
+@@ -1829,7 +1829,7 @@
+     s = L_mac0(s, x[i-15], coef[i]);
+ 
+   s = L_add(s, s);
+-  i = round(s);
++  i = etsi_round(s);
+   return(i);
+ }
+ 
+@@ -1877,7 +1877,7 @@
+     s = L_mac0(s, x[i-16], coef[i]);
+ 
+   s = L_add(s, s);
+-  i = round(s);
++  i = etsi_round(s);
+   return(i);
+ }
+ 
+Index: etsi/c-code/tetra_op.c
+===================================================================
+--- etsi.orig/c-code/tetra_op.c	2011-05-29 11:46:28.000000000 +0200
++++ etsi/c-code/tetra_op.c	2011-05-29 11:46:48.000000000 +0200
+@@ -31,7 +31,7 @@
+ *					- negate()
+ *					- norm_l()
+ *					- norm_s()
+-*					- round()
++*					- etsi_round()
+ *					- sature()
+ *					- shl()
+ *					- shr()
+@@ -1335,14 +1335,14 @@
+ 
+ /************************************************************************
+ *
+-*	Function Name : round
++*	Function Name : etsi_round
+ *
+ *	Purpose :
+ *
+ *		Round the lower 16 bits of the 32 bit input number into its MS 16 bits
+ *		with saturation. Shift the resulting bits right by 16 and return the 16
+ *		bit number:
+-*			round(L_var1) = extract_h(L_add(L_var1,32768))
++*			etsi_round(L_var1) = extract_h(L_add(L_var1,32768))
+ *
+ *	Complexity Weight : 1
+ *
+@@ -1364,7 +1364,7 @@
+ *
+ ************************************************************************/
+ 
+-Word16 round(Word32 L_var1)
++Word16 etsi_round(Word32 L_var1)
+   {
+    Word16 var_out;
+    Word32 L_arrondi;

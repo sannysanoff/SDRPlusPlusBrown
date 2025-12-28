@@ -1,0 +1,10 @@
+*.o
+*.a
+*.pyc
+.*.swp
+conv_enc_test
+tetra-rx
+float_to_bits
+crc_test
+tunctl
+tests_data/*
