@@ -762,7 +762,18 @@ namespace dsp {
                 dst[i] = src[i] + e;
             }
 #else
-            volk_32f_s32f_add_32f(retval->data(), v->data(), e, v->size());
+            std::vector<std::complex<float>> tmp(v->size());
+            for (size_t i = 0; i < v->size(); i++) {
+                tmp[i] = std::complex<float>(v->at(i), 0.0f);
+            }
+            volk_32fc_32f_add_32fc(
+                reinterpret_cast<volk_32fc_t*>(tmp.data()),
+                reinterpret_cast<const volk_32fc_t*>(tmp.data()),
+                e,
+                v->size());
+            for (size_t i = 0; i < v->size(); i++) {
+                retval->at(i) = tmp[i].real();
+            }
 #endif
             return retval;
         }

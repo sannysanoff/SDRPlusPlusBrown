@@ -140,6 +140,7 @@ add_library(etsi_codec STATIC
 )
 
 set_target_properties(etsi_codec PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(etsi_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(etsi_codec PRIVATE "${ETSI_CODEC_DIR}/c-code" "${ETSI_CODEC_DIR}/amr-code")
 
