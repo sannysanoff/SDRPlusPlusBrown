@@ -17,6 +17,7 @@ else ()
     string(REGEX REPLACE "add_custom_target.uninstall" "add_custom_target(mbelib_uninstall" TMPF "${TMPF}")
     string(REGEX REPLACE "OUTPUT_NAME mbe" "" TMPF "${TMPF}")
     string(REGEX REPLACE " OFF" " ON" TMPF "${TMPF}")  # disable test
+    string(REPLACE "VERSION 2.6" "VERSION 3.5" TMPF "${TMPF}")
     FILE(WRITE "${DLROOT}/mbelib/CMakeLists.txt" "${TMPF}")
 endif ()
 
@@ -32,6 +33,7 @@ if(NOT MSVC)
 
         FILE(READ "${DLROOT}/itpp/CMakeLists.txt" TMPF)
         string(REGEX REPLACE "option.ITPP_SHARED_LIB" "option(ZZZZ_ITPP_SHARED_LIB" TMPF "${TMPF}")
+        string(REPLACE "VERSION 2.8.11" "VERSION 3.5" TMPF "${TMPF}")
         FILE(WRITE "${DLROOT}/itpp/CMakeLists.txt" "${TMPF}")
     endif ()
     FILE(REMOVE ${DLROOT}/itpp/version)

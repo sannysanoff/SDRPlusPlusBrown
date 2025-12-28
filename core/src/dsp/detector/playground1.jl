@@ -1,3 +1,4 @@
+println("Begin imports..")
 using WAV
 using DSP
 import StatsBase # Change from 'using' to 'import'
@@ -556,3 +557,5 @@ function try3()
 
     return;
 end
+
+try3()
