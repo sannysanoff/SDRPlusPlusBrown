@@ -21,10 +21,18 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         message("Not downloading ETSI TETRA codec.")
     endif ()
     message("Extracting ETSI TETRA codec.")
+    find_program(ETSI_UNZIP_PROGRAM unzip)
+    if (NOT ETSI_UNZIP_PROGRAM)
+        message(FATAL_ERROR "Missing 'unzip' command; required to extract ETSI codec with lowercase filenames.")
+    endif ()
     execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E tar xf "${ETSI_CODEC_ZIP}"
+        COMMAND "${ETSI_UNZIP_PROGRAM}" -q -L "${ETSI_CODEC_ZIP}"
         WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+        RESULT_VARIABLE ETSI_UNZIP_RESULT
     )
+    if (NOT ETSI_UNZIP_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
+    endif ()
     message("Listing ETSI codec files (for case/structure diagnostics).")
     execute_process(
         COMMAND find "${ETSI_CODEC_DIR}" -maxdepth 3 -print
