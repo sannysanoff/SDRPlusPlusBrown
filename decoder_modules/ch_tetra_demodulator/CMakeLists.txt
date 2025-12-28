@@ -33,6 +33,11 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
             COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ETSI_CODEC_EXTRACTED_DIR}"
         )
     endif ()
+    if (EXISTS "${ETSI_CODEC_DIR}/C-CODE")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E rename "${ETSI_CODEC_DIR}/C-CODE" "${ETSI_CODEC_DIR}/c-code"
+        )
+    endif ()
     file(STRINGS "${ETSI_CODEC_PATCH_DIR}/series" ETSI_PATCHES)
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
         execute_process(
@@ -86,4 +91,4 @@ else()
   # target_compile_options(tetra_demodulator PRIVATE -Wall -Wextra)
 endif()
 
-target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}" )
+target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}/c-code" )
