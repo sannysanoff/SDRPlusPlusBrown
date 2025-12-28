@@ -20,23 +20,23 @@
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
-#define INSR (4800.0f * 2)
-#define CLOCK_RECOVERY_BW 0.1f
+#define INSR                   (4800.0f * 2)
+#define CLOCK_RECOVERY_BW      0.1f
 #define CLOCK_RECOVERY_DAMPN_F 1.0f
 #define CLOCK_RECOVERY_REL_LIM 0.001f
-#define RRC_TAP_COUNT 65
-#define RRC_ALPHA 0.23f
+#define RRC_TAP_COUNT          65
+#define RRC_ALPHA              0.23f
 
 namespace demod {
-    //P25p1 = 13 kHz
-    //DStar = 7 kHz
-    //NXDN48 = 7 kHz
-    //NXDN96 = 13 kHz
-    //ProVoice = ???(assumed 13 kHz)
-    //DMR = 13 kHz
-    //X2-TDMA = 13 kHz
-    //DPMR = 7 kHz
-    //YSF = 17 kHz
+    // P25p1 = 13 kHz
+    // DStar = 7 kHz
+    // NXDN48 = 7 kHz
+    // NXDN96 = 13 kHz
+    // ProVoice = ???(assumed 13 kHz)
+    // DMR = 13 kHz
+    // X2-TDMA = 13 kHz
+    // DPMR = 7 kHz
+    // YSF = 17 kHz
     class DSD : public Demodulator {
     public:
         DSD() {}
@@ -57,7 +57,7 @@ namespace demod {
 
             float recov_bandwidth = CLOCK_RECOVERY_BW;
             float recov_dampningFactor = CLOCK_RECOVERY_DAMPN_F;
-            float recov_denominator = (1.0f + 2.0*recov_dampningFactor*recov_bandwidth + recov_bandwidth*recov_bandwidth);
+            float recov_denominator = (1.0f + 2.0 * recov_dampningFactor * recov_bandwidth + recov_bandwidth * recov_bandwidth);
             float recov_mu = (4.0f * recov_dampningFactor * recov_bandwidth) / recov_denominator;
             float recov_omega = (4.0f * recov_bandwidth * recov_bandwidth) / recov_denominator;
             quadDemod.init(input, 1944.0f, INSR);
@@ -115,62 +115,63 @@ namespace demod {
 
             dsp::NewDSD::Frame_status fr_st = decoder.getFrameSyncStatus();
             ImVec4 color = fr_st.sync ? (ImVec4(0.4f, 1.0f, 0.4f, 1.0f)) : (ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-            switch(fr_st.lasttype) {
-                case dsp::NewDSD::Frame_status::LAST_P25: {
-                    ImGui::TextColored(color, "Mode: P25p1");
-                    if(!fr_st.sync) {
-                        style::beginDisabled();
-                    }
-                    dsp::NewDSD::P25_status p25_st = decoder.getP25Status();
-                    ImGui::Text("NAC     : 0x%03x", p25_st.p25_status_nac);
-                    ImGui::Text("DUID    : %u%u %s", p25_st.p25_status_lastduid[0], p25_st.p25_status_lastduid[1], p25_st.p25_status_lasttype.c_str());
-                    if(p25_st.p25_status_irr_err) {
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " IRRECOV ERROR!");
-                    }
-                    ImGui::Text("SRC     : %u", p25_st.p25_status_src);
-                    ImGui::Text("TG       : (id %u) %u (others %u %u %u)", p25_st.p25_status_tgid, p25_st.p25_status_tg, p25_st.p25_status_othertg1, p25_st.p25_status_othertg2, p25_st.p25_status_othertg3);
-                    ImGui::Text("ALGID : 0x%02x", p25_st.p25_status_algid);
-                    if(p25_st.p25_status_algid != 0x80) {
-                        //Encrypted
-                        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "ENCR? KID: 0x%04x", p25_st.p25_status_kid);
-                    } else {
-                        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "UNENCR");
-                    }
-                    ImGui::Text("MFID    : 0x%02x", p25_st.p25_status_mfid);
-                    ImGui::TextColored((p25_st.p25_status_emr ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "EMR");
-                    ImGui::Text("LCFORMAT: 0x%02x", p25_st.p25_status_lcformat);
-                    ImGui::Text("LCINFO: 0x%016llx", p25_st.p25_status_lcinfo);
-                    ImGui::Text("MI(INV): 0x%016llx %04x", p25_st.p25_status_mi_0, p25_st.p25_status_mi_1);
-                    if(!fr_st.sync) {
-                        style::endDisabled();
-                    }
-                    break;
+            switch (fr_st.lasttype) {
+            case dsp::NewDSD::Frame_status::LAST_P25: {
+                ImGui::TextColored(color, "Mode: P25p1");
+                if (!fr_st.sync) {
+                    style::beginDisabled();
                 }
-                case dsp::NewDSD::Frame_status::LAST_DMR: {
-                    ImGui::TextColored(color, "Mode: DMR");
-                    if(!fr_st.sync) {
-                        style::beginDisabled();
-                    }
-                    dsp::NewDSD::DMR_status dmr_st = decoder.getDMRStatus();
-                    ImGui::Text("SLOT0: (%02d) %s", dmr_st.dmr_status_s0_lastburstt, dmr_st.dmr_status_s0_lasttype.c_str());
-                    ImGui::Text("SLOT1: (%02d) %s", dmr_st.dmr_status_s1_lastburstt, dmr_st.dmr_status_s1_lasttype.c_str());
-                    ImGui::Text("CC: 0x%02x %02x", dmr_st.dmr_status_s1_lastburstt, dmr_st.dmr_status_cc);
-                    if(!fr_st.sync) {
-                        style::endDisabled();
-                    }
-                    break;
+                dsp::NewDSD::P25_status p25_st = decoder.getP25Status();
+                ImGui::Text("NAC     : 0x%03x", p25_st.p25_status_nac);
+                ImGui::Text("DUID    : %u%u %s", p25_st.p25_status_lastduid[0], p25_st.p25_status_lastduid[1], p25_st.p25_status_lasttype.c_str());
+                if (p25_st.p25_status_irr_err) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " IRRECOV ERROR!");
                 }
-                default:
-                    ImGui::TextColored(color, "Mode: -");
-                    break;
+                ImGui::Text("SRC     : %u", p25_st.p25_status_src);
+                ImGui::Text("TG       : (id %u) %u (others %u %u %u)", p25_st.p25_status_tgid, p25_st.p25_status_tg, p25_st.p25_status_othertg1, p25_st.p25_status_othertg2, p25_st.p25_status_othertg3);
+                ImGui::Text("ALGID : 0x%02x", p25_st.p25_status_algid);
+                if (p25_st.p25_status_algid != 0x80) {
+                    // Encrypted
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "ENCR? KID: 0x%04x", p25_st.p25_status_kid);
+                }
+                else {
+                    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "UNENCR");
+                }
+                ImGui::Text("MFID    : 0x%02x", p25_st.p25_status_mfid);
+                ImGui::TextColored((p25_st.p25_status_emr ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "EMR");
+                ImGui::Text("LCFORMAT: 0x%02x", p25_st.p25_status_lcformat);
+                ImGui::Text("LCINFO: 0x%016lx", p25_st.p25_status_lcinfo);
+                ImGui::Text("MI(INV): 0x%016lx %04x", p25_st.p25_status_mi_0, p25_st.p25_status_mi_1);
+                if (!fr_st.sync) {
+                    style::endDisabled();
+                }
+                break;
             }
-            if(!fr_st.sync) {
+            case dsp::NewDSD::Frame_status::LAST_DMR: {
+                ImGui::TextColored(color, "Mode: DMR");
+                if (!fr_st.sync) {
+                    style::beginDisabled();
+                }
+                dsp::NewDSD::DMR_status dmr_st = decoder.getDMRStatus();
+                ImGui::Text("SLOT0: (%02d) %s", dmr_st.dmr_status_s0_lastburstt, dmr_st.dmr_status_s0_lasttype.c_str());
+                ImGui::Text("SLOT1: (%02d) %s", dmr_st.dmr_status_s1_lastburstt, dmr_st.dmr_status_s1_lasttype.c_str());
+                ImGui::Text("CC: 0x%02x %02x", dmr_st.dmr_status_s1_lastburstt, dmr_st.dmr_status_cc);
+                if (!fr_st.sync) {
+                    style::endDisabled();
+                }
+                break;
+            }
+            default:
+                ImGui::TextColored(color, "Mode: -");
+                break;
+            }
+            if (!fr_st.sync) {
                 style::beginDisabled();
             }
             dsp::NewDSD::MBE_status mbe_st = decoder.getMBEStatus();
             ImGui::TextColored((mbe_st.mbe_status_decoding ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "MBE ERR: %s", mbe_st.mbe_status_errorbar.c_str());
-            if(!fr_st.sync) {
+            if (!fr_st.sync) {
                 style::endDisabled();
             }
         }
@@ -205,7 +206,6 @@ namespace demod {
         dsp::stream<dsp::stereo_t>* getOutput() { return &outputMts.out; }
 
     private:
-        
         float bw = 12500.0;
 
         dsp::demod::Quadrature quadDemod;
@@ -230,16 +230,16 @@ namespace demod {
         static void _constDiagSinkHandler(float* data, int count, void* ctx) {
             DSD* _this = (DSD*)ctx;
             dsp::complex_t* cdBuff = _this->constDiag.acquireBuffer();
-            if(count == 1024) {
-                for(int i = 0; i < 1021; i++) {
+            if (count == 1024) {
+                for (int i = 0; i < 1021; i++) {
                     cdBuff[i].re = data[i];
                     cdBuff[i].im = 0;
                 }
-//                cdBuff[1019].re = _this->slicer.max;
-//                cdBuff[1019].im = 0.5f;
-//                cdBuff[1020].re = _this->slicer.min;
-//                cdBuff[1020].im = 0.5f;
-                //Display slicer ranges too
+                //                cdBuff[1019].re = _this->slicer.max;
+                //                cdBuff[1019].im = 0.5f;
+                //                cdBuff[1020].re = _this->slicer.min;
+                //                cdBuff[1020].im = 0.5f;
+                // Display slicer ranges too
                 cdBuff[1021].re = _this->slicer.center;
                 cdBuff[1021].im = 1.0f;
                 cdBuff[1022].re = _this->slicer.umid;
@@ -249,6 +249,5 @@ namespace demod {
             }
             _this->constDiag.releaseBuffer();
         }
-
     };
 }

@@ -20,7 +20,7 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         message("Not downloading ETSI TETRA codec.")
     endif ()
     message("Extracting ETSI TETRA codec.")
-    execute_process(COMMAND unzip -q -L "${ETSI_CODEC_ZIP}" WORKING_DIRECTORY "${ETSI_CODEC_DIR}")
+    execute_process(COMMAND unzip -q -L "${ETSI_CODEC_ZIP}" && if [ -d en_30039502v010301p0 ]; then mv en_30039502v010301p0/* . && rmdir en_30039502v010301p0; fi WORKING_DIRECTORY "${ETSI_CODEC_DIR}")
     file(STRINGS "${ETSI_CODEC_PATCH_DIR}/series" ETSI_PATCHES)
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
         execute_process(

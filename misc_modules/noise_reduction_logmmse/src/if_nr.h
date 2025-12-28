@@ -14,6 +14,7 @@ namespace dsp {
 
     class IFNRLogMMSE : public Processor<complex_t, complex_t> {
         using base_type = Processor<complex_t, complex_t>;
+
     public:
         IFNRLogMMSE() {
             params.forceWideband = true;
@@ -26,13 +27,13 @@ namespace dsp {
         void setInput(stream<complex_t>* in) override {
             if (!_block_init) {
                 init(in);
-            } else {
+            }
+            else {
                 Processor::setInput(in);
             }
         }
 
     public:
-
         ComplexArray worker1c;
         std::mutex workerMutex;
         int freq = 192000;
@@ -48,6 +49,10 @@ namespace dsp {
             params.hold = hold;
         }
 
+        void setDisableCpuDeactivation(bool disable) {
+            disableCpuDeactivation = disable;
+        }
+
         double currentCenterFrequency = -1.0;
 
         bool shouldReset = true;
@@ -55,14 +60,15 @@ namespace dsp {
             shouldReset = true;
         }
 
-        void process(complex_t *in, int count, complex_t *out, int &outCount) {
+        void process(complex_t* in, int count, complex_t* out, int& outCount) {
             if (shouldReset) {
                 flog::info("Resetting IF NR LogMMSE");
                 shouldReset = false;
                 worker1c.reset();
                 if (params.forceSampleRate != 0) {
                     freq = params.forceSampleRate;
-                } else {
+                }
+                else {
                     freq = (int)sigpath::iqFrontEnd.getSampleRate();
                 }
             }
@@ -86,7 +92,8 @@ namespace dsp {
             int retCount = 0;
             freqMutex.lock();
             if (!params.Xk_prev) {
-                std::cout << std::endl << "Sampling initially" << std::endl;
+                std::cout << std::endl
+                          << "Sampling initially" << std::endl;
                 LogMMSE::logmmse_sample(worker1c, freq, 0.15f, &params, noiseFrames);
             }
             auto rv = LogMMSE::logmmse_all(worker1c, freq, 0.15f, &params);
@@ -98,7 +105,7 @@ namespace dsp {
                 auto lp = dta[i];
                 out[i] = lp * 4.0;
             }
-            memmove(worker1c->data(), ((complex_t *) worker1c->data()) + rv->size(), sizeof(complex_t) * (worker1c->size() - rv->size()));
+            memmove(worker1c->data(), ((complex_t*)worker1c->data()) + rv->size(), sizeof(complex_t) * (worker1c->size() - rv->size()));
             worker1c->resize(worker1c->size() - rv->size());
             retCount += rv->size();
             outCount = limit;
@@ -110,7 +117,7 @@ namespace dsp {
         int percentUsage = 0;
         int prevPercentUsage = 0;
 
-        int runMMSE(stream <complex_t> *_in, stream <complex_t> &out) {
+        int runMMSE(stream<complex_t>* _in, stream<complex_t>& out) {
             int count = _in->read();
             if (count < 0) { return -1; }
             int outCount;
@@ -129,7 +136,7 @@ namespace dsp {
                 lastReport = ctm;
                 prevPercentUsage = percentUsage;
                 percentUsage = (usedSinceLastReport * 100) / timeSinceLastReport;
-                if (prevPercentUsage >= 95 && percentUsage >= 95) {
+                if (prevPercentUsage >= 95 && percentUsage >= 95 && !disableCpuDeactivation) {
                     stopReason = "Slow CPU. Reduce sample rate.";
                 }
             }
@@ -142,20 +149,20 @@ namespace dsp {
                 return -1;
             }
 
-//            if (bypass) {
-//                memcpy(out.writeBuf, _in->readBuf, count * sizeof(complex_t));
-//                _in->flush();
-//                if (!out.swap(count)) { return -1; }
-//                return count;
-//            }
-//
+            //            if (bypass) {
+            //                memcpy(out.writeBuf, _in->readBuf, count * sizeof(complex_t));
+            //                _in->flush();
+            //                if (!out.swap(count)) { return -1; }
+            //                return count;
+            //            }
+            //
             runMMSE(_in, out);
             return count;
         }
 
         void start() override {
             txHandler.ctx = this;
-            txHandler.handler = [](bool txActive, void *ctx) {
+            txHandler.handler = [](bool txActive, void* ctx) {
                 auto _this = (IFNRLogMMSE*)ctx;
                 _this->params.hold = txActive;
             };
@@ -170,11 +177,9 @@ namespace dsp {
 
         bool bypass = true;
         std::string stopReason = "";
+        bool disableCpuDeactivation = false;
         EventHandler<bool> txHandler;
-
-
     };
-
 
 
 }
