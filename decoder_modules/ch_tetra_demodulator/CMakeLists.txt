@@ -39,9 +39,14 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         )
     endif ()
     file(STRINGS "${ETSI_CODEC_PATCH_DIR}/series" ETSI_PATCHES)
+    if (EXISTS "${ETSI_CODEC_DIR}/etsi")
+        set(ETSI_PATCH_STRIP "-p0")
+    else ()
+        set(ETSI_PATCH_STRIP "-p1")
+    endif ()
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
         execute_process(
-            COMMAND patch -p1 --batch --forward -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+            COMMAND patch ${ETSI_PATCH_STRIP} --batch --forward -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
             WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
             RESULT_VARIABLE ETSI_PATCH_RESULT
         )
