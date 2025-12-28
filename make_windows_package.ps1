@@ -38,6 +38,10 @@ cp 'C:/Program Files/PothosSDR/bin/hackrf.dll' sdrpp_windows_x64/
 cp $build_dir/source_modules/hermes_source/$RELDIR/hermes_source.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/source_modules/limesdr_source/$RELDIR/limesdr_source.dll sdrpp_windows_x64/modules/
+
+cp $build_dir/source_modules/hydrasdr_source/$RELDIR/hydrasdr_source.dll sdrpp_windows_x64/modules/
+cp 'C:/Program Files (x86)/hydrasdr_all/bin/hydrasdr.dll' sdrpp_windows_x64/
+
 cp 'C:/Program Files/PothosSDR/bin/LimeSuite.dll' sdrpp_windows_x64/
 
 cp $build_dir/source_modules/network_source/$RELDIR/network_source.dll sdrpp_windows_x64/modules/
@@ -83,10 +87,11 @@ cp $build_dir/sink_modules/network_sink/$RELDIR/network_sink.dll sdrpp_windows_x
 
 
 # Copy decoder modules
-cp $build_dir/decoder_modules/m17_decoder/$RELDIR/m17_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/ft8_decoder/$RELDIR/ft8_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/ch_extravhf_decoder/$RELDIR/ch_extravhf_decoder.dll sdrpp_windows_x64/modules/
-#cp $build_dir/decoder_modules/ft8_decoder/$RELDIR/sdrpp_ft8_mshv.exe sdrpp_windows_x64/
+cp $build_dir/decoder_modules/atv_decoder/$RELDIR/atv_decoder.dll sdrpp_windows_x64/modules/
+cp $build_dir/decoder_modules/m17_decoder/$RELDIR/m17_decoder.dll sdrpp_windows_x64/modules/
+
 cp "C:/Program Files/codec2/lib/libcodec2.dll" sdrpp_windows_x64/
 
 cp $build_dir/decoder_modules/meteor_demodulator/$RELDIR/meteor_demodulator.dll sdrpp_windows_x64/modules/

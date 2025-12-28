@@ -80,9 +80,12 @@ jobs:
         - name: Install libfobos
           run: git clone https://github.com/AlexandreRouma/libfobos ; cd libfobos ; mkdir build ; cd build ; cmake .. -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" ; cmake --build . --config Release ; cmake --install .
 
+        - name: Install libhydrasdr
+          run: git clone https://github.com/hydrasdr/rfone_host; cd rfone_host/ ; mkdir build ; cd build ; cmake .. -DCMAKE_BUILD_TYPE=Release "-DLIBUSB_LIBRARIES=C:\Program Files\PothosSDR\lib\libusb-1.0.lib" "-DLIBUSB_INCLUDE_DIR=C:\Program Files\PothosSDR\include\libusb-1.0" "-DTHREADS_PTHREADS_WIN32_LIBRARY=C:\Program Files\PothosSDR\lib\pthreadVC2.lib" "-DTHREADS_PTHREADS_INCLUDE_DIR=C:\Program Files\PothosSDR\include" ; cmake --build . --config Release ; cmake --install .
+
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF
+          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -101,13 +104,9 @@ jobs:
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
 
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
-
 
     build_macos_intel:
-      runs-on: macos-13
+      runs-on: macos-15-intel
 
       steps:
         - uses: actions/checkout@v4
@@ -166,22 +165,14 @@ jobs:
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
 
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
-
-
-
 
 
     build_macos_arm:
+        runs-on: macos-15
 
-
-      runs-on: macos-14
-
-      steps:
+        steps:
         - uses: actions/checkout@v4
-
+        
         - name: Create Build Environment
           run: cmake -E make_directory ${{runner.workspace}}/build
 
@@ -198,7 +189,7 @@ jobs:
           run: wget https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.25.zip && 7z x v0.25.zip && cd libiio-0.25 && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
 
         - name: Install libad9361
-          run: git clone https://github.com/analogdevicesinc/libad9361-iio && cd libad9361-iio && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+          run: git clone https://github.com/analogdevicesinc/libad9361-iio && cd libad9361-iio && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && make -j3 && sudo make install && cd ../../
 
         - name: Install LimeSuite
           run: git clone https://github.com/myriadrf/LimeSuite && cd LimeSuite && mkdir builddir && cd builddir && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
@@ -215,9 +206,12 @@ jobs:
         - name: Install more recent librtlsdr
           run: git clone https://github.com/osmocom/rtl-sdr && cd rtl-sdr && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 LIBRARY_PATH=$(pkg-config --libs-only-L libusb-1.0 | sed 's/\-L//') && sudo make install && cd ../../
 
+        - name: Install libhydrasdr
+          run: git clone https://github.com/hydrasdr/rfone_host && cd rfone_host && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 $GITHUB_WORKSPACE -DOPT_BUILD_PLUTOSDR_SOURCE=ON -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_AUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=OFF -DOPT_BUILD_PERSEUS_SOURCE=OFF -DOPT_BUILD_AUDIO_SOURCE=OFF -DUSE_BUNDLE_DEFAULTS=ON  -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DCMAKE_BUILD_TYPE=Release
+          run: cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 $GITHUB_WORKSPACE -DOPT_BUILD_PLUTOSDR_SOURCE=ON -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_AUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=OFF -DOPT_BUILD_PERSEUS_SOURCE=OFF -DOPT_BUILD_AUDIO_SOURCE=OFF -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DUSE_BUNDLE_DEFAULTS=ON -DCMAKE_BUILD_TYPE=Release -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -236,10 +230,6 @@ jobs:
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
 
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
-
 
     build_debian_buster:
         runs-on: ubuntu-latest
@@ -257,14 +247,17 @@ jobs:
           working-directory: ${{runner.workspace}}
           run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_buster_amd64.deb
 
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_buster_amd64
+              path: ${{runner.workspace}}/sdrpp_debian_buster_amd64.deb
+
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_buster_amd64.deb -R ${{github.repository}} --clobber
 
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_debian_buster_amd64.deb -R ${{github.repository}} --clobber
 
-    build_debian_bullseye:
+    build_debian_bullseye_amd64:
         runs-on: ubuntu-latest
 
         steps:
@@ -280,11 +273,15 @@ jobs:
           working-directory: ${{runner.workspace}}
           run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_bullseye_amd64.deb
 
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_bullseye_amd64
+              path: ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb
+
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb -R ${{github.repository}} --clobber
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb -R ${{github.repository}} --clobber
+
 
     build_debian_bookworm:
         runs-on: ubuntu-latest
@@ -309,25 +306,9 @@ jobs:
 
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
 
-    build_ubuntu_jammy:
-
-      strategy:
-        matrix:
-          include:
-            # AMD64 (what you already have)
-            - arch: amd64
-              runner: ubuntu-latest
-              deb_name: sdrpp_ubuntu_jammy_amd64.deb
-            # ARM64
-            - arch: arm64
-              runner: ubuntu-22.04-arm   # or ubuntu-24.04-arm
-              deb_name: sdrpp_ubuntu_jammy_arm64.deb
-
-      runs-on: ${{ matrix.runner }}
+    build_ubuntu_jammy_amd64:
+      runs-on: ubuntu-latest
 
       steps:
         - uses: actions/checkout@v4
@@ -340,20 +321,191 @@ jobs:
 
         - name: Recover Deb Archive
           working-directory: ${{runner.workspace}}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_${{matrix.arch}}.deb ./sdrpp_ubuntu_jammy_${{matrix.arch}}.deb
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_jammy_amd64.deb
 
         - name: Save Deb Archive
           uses: actions/upload-artifact@v4
           with:
-            name: sdrpp_ubuntu_jammy_${{matrix.arch}}
-            path: ${{runner.workspace}}/sdrpp_ubuntu_jammy_${{matrix.arch}}.deb
+            name: sdrpp_ubuntu_jammy_amd64
+            path: ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb
 
         - name: Update Nightly
-          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_${{matrix.arch}}.deb -R ${{github.repository}} --clobber
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_ubuntu_jammy_${{matrix.arch}}.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb -R ${{github.repository}} --clobber
 
+    build_ubuntu_jammy_aarch64:
+      runs-on: ubuntu-22.04-arm
+
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_jammy && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_jammy_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+            name: sdrpp_ubuntu_jammy_aarch64
+            path: ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb -R ${{github.repository}} --clobber
+
+    build_debian_trixie_amd64:
+        runs-on: ubuntu-latest
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/debian_trixie && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_trixie_amd64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_trixie_amd64
+              path: ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb -R ${{github.repository}} --clobber
+
+    build_debian_trixie_aarch64:
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/debian_trixie && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_trixie_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_trixie_aarch64
+              path: ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb -R ${{github.repository}} --clobber
+
+    build_debian_sid_amd64:
+        runs-on: ubuntu-latest
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/debian_sid && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_sid_amd64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_sid_amd64
+              path: ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb -R ${{github.repository}} --clobber
+
+    build_debian_sid_aarch64:
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/debian_sid && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_sid_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_debian_sid_aarch64
+              path: ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb -R ${{github.repository}} --clobber
+
+    build_ubuntu_focal_amd64:
+        runs-on: ubuntu-latest
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_focal && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_focal_amd64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_ubuntu_focal_amd64
+              path: ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
+
+    build_ubuntu_focal_aarch64:
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+        
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_focal && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_focal_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_ubuntu_focal_aarch64
+              path: ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble:
         runs-on: ubuntu-latest
@@ -378,16 +530,13 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb
         - name: Update Nightly
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb -R ${{github.repository}} --clobber
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb -R ${{github.repository}} --clobber
 
-    build_ubuntu_oracular:
+    build_ubuntu_oracular_amd64:
         runs-on: ubuntu-latest
 
         steps:
         - uses: actions/checkout@v4
-        
+
         - name: Create Docker Image
           run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_oracular && docker build . --tag sdrpp_build
 
@@ -396,14 +545,41 @@ jobs:
 
         - name: Recover Deb Archive
           working-directory: ${{runner.workspace}}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_oracular_amd64.deb
 
         - name: Save Deb Archive
           uses: actions/upload-artifact@v4
           with:
               name: sdrpp_ubuntu_oracular_amd64
-              path: ${{runner.workspace}}/sdrpp_debian_amd64.deb
+              path: ${{runner.workspace}}/sdrpp_ubuntu_oracular_amd64.deb
 
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_oracular_amd64.deb -R ${{github.repository}} --clobber
+
+    build_ubuntu_noble_aarch64:
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_noble && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_noble_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_ubuntu_noble_aarch64
+              path: ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb
+
+        - name: Update Nightly
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb -R ${{github.repository}} --clobber
 
     build_android:
         runs-on: ubuntu-latest
@@ -432,12 +608,9 @@ jobs:
               name: sdrpp_android
               path: ${{runner.workspace}}/sdrpp.apk
 
-        - name: Update_Nightly
+        - name: Update Nightly
           run:  gh release upload rolling ${{runner.workspace}}/sdrpp.apk -R ${{github.repository}} --clobber
 
-        - name: Update Stable
-          if: contains(github.ref_name, 'stable')
-          run: gh release upload stable ${{runner.workspace}}/sdrpp.apk -R ${{github.repository}} --clobber
 
     check_spelling:
         runs-on: ubuntu-latest
