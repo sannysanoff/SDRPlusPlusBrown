@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(tetra_demodulator)
+project(ch_tetra_demodulator)
 
 set(CMAKE_INSTALL_PREFIX "/usr/")
 include(GNUInstallDirs)
@@ -207,18 +207,12 @@ endif ()
 
 include(${SDRPP_MODULE_CMAKE})
 
-if(MSVC)
-  # target_compile_options(tetra_demodulator PRIVATE /W4 /WX)
-else()
-  # target_compile_options(tetra_demodulator PRIVATE -Wall -Wextra)
-endif()
+target_include_directories(ch_tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}" "${ETSI_CODEC_DIR}/c-code" )
 
-target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}" "${ETSI_CODEC_DIR}/c-code" )
-
-target_link_libraries(tetra_demodulator PRIVATE etsi_codec)
+target_link_libraries(ch_tetra_demodulator PRIVATE etsi_codec)
 
 if (NOT ANDROID)
     target_compile_options(etsi_codec PRIVATE -march=native)
-    target_compile_options(tetra_demodulator PRIVATE -march=native)
+    target_compile_options(ch_tetra_demodulator PRIVATE -march=native)
 endif ()
 
