@@ -55,6 +55,13 @@ elif [ -f /usr/local/lib/libsdrplay_api.so.3 ]; then
     SDRPLAY_LIB_CANDIDATE="/usr/local/lib/libsdrplay_api.so.3"
 elif [ -f /Library/Frameworks/libsdrplay_api.so.3 ]; then
     SDRPLAY_LIB_CANDIDATE="/Library/Frameworks/libsdrplay_api.so.3"
+elif [ -d "$HOME/Library/SDRplayAPI" ]; then
+    for candidate in "$HOME"/Library/SDRplayAPI/*/lib/libsdrplay_api.so.3*; do
+        if [ -f "$candidate" ]; then
+            SDRPLAY_LIB_CANDIDATE="$candidate"
+            break
+        fi
+    done
 fi
 if [ -n "$SDRPLAY_LIB_CANDIDATE" ]; then
     bundle_install_binary $BUNDLE $BUNDLE/Contents/Frameworks $SDRPLAY_LIB_CANDIDATE
