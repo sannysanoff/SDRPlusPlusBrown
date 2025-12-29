@@ -45,6 +45,11 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         endif ()
         find_program(ETSI_POWERSHELL_PROGRAM powershell)
         if (ETSI_POWERSHELL_PROGRAM)
+            message("Before lowercasing:")
+            execute_process(
+                COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
+                        "Get-ChildItem -LiteralPath '${ETSI_CODEC_DIR}' -Recurse | ForEach-Object { $_.FullName }"
+            )
             execute_process(
                 COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
                         "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { $tmp=$_.FullName + '.tmp_lowercase'; Rename-Item -LiteralPath $_.FullName -NewName $tmp -Force; Rename-Item -LiteralPath $tmp -NewName $target -Force } }"
@@ -53,6 +58,7 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
             if (NOT ETSI_LOWER_RESULT EQUAL 0)
                 message(FATAL_ERROR "Failed to normalize ETSI codec filenames to lowercase.")
             endif ()
+            message("After lowercasing:")
         endif ()
     else ()
         find_program(ETSI_UNZIP_PROGRAM unzip)
@@ -68,7 +74,7 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
             message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
         endif ()
     endif ()
-    message("Listing ETSI codec files (for case/structure diagnostics).")
+    message("Final listing ETSI codec files (for case/structure diagnostics).")
     if (WIN32)
         if (ETSI_POWERSHELL_PROGRAM)
             execute_process(
@@ -92,6 +98,11 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     if (EXISTS "${ETSI_CODEC_DIR}/C-CODE")
         execute_process(
             COMMAND "${CMAKE_COMMAND}" -E rename "${ETSI_CODEC_DIR}/C-CODE" "${ETSI_CODEC_DIR}/c-code"
+        )
+    endif ()
+    if (EXISTS "${ETSI_CODEC_DIR}/AMR-Code")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E rename "${ETSI_CODEC_DIR}/AMR-Code" "${ETSI_CODEC_DIR}/amr-code"
         )
     endif ()
     file(STRINGS "${ETSI_CODEC_PATCH_DIR}/series" ETSI_PATCHES)
