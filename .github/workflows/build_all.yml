@@ -546,7 +546,7 @@ jobs:
           run: docker build --progress=plain -t android-sdr-kit .
 
         - name: Build
-          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus android-sdr-kit /bin/bash -l -c "cd /root/SDRPlusPlus/android && gradle -PsdrKitRoot=/sdr-kit --info assembleDebug"
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus android-sdr-kit /bin/bash -l -c "apt-get update && apt-get install -y unzip && cd /root/SDRPlusPlus/android && gradle -PsdrKitRoot=/sdr-kit --info assembleDebug"
 
         - name: Recover APK
           working-directory: ${{runner.workspace}}

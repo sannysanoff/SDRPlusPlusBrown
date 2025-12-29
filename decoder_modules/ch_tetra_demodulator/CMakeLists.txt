@@ -100,12 +100,26 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     else ()
         set(ETSI_PATCH_STRIP "-p1")
     endif ()
+    set(ETSI_PATCH_USE_GIT OFF)
+    if (WIN32)
+        find_program(ETSI_GIT_PROGRAM git)
+        if (ETSI_GIT_PROGRAM)
+            set(ETSI_PATCH_USE_GIT ON)
+        endif ()
+    endif ()
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
-        execute_process(
-            COMMAND patch ${ETSI_PATCH_STRIP} --batch --forward -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
-            WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
-            RESULT_VARIABLE ETSI_PATCH_RESULT
-        )
+        if (ETSI_PATCH_USE_GIT)
+            execute_process(
+                COMMAND "${ETSI_GIT_PROGRAM}" apply --whitespace=nowarn --directory="${ETSI_CODEC_DIR}" ${ETSI_PATCH_STRIP} "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+                RESULT_VARIABLE ETSI_PATCH_RESULT
+            )
+        else ()
+            execute_process(
+                COMMAND patch ${ETSI_PATCH_STRIP} --batch --forward -i "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+                WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
+                RESULT_VARIABLE ETSI_PATCH_RESULT
+            )
+        endif ()
         if (NOT ETSI_PATCH_RESULT EQUAL 0)
             message(FATAL_ERROR "Failed to apply ETSI patch: ${PATCH_FILE}")
         endif ()
