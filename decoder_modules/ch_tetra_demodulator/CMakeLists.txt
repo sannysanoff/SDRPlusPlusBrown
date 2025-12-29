@@ -52,9 +52,16 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
             )
             execute_process(
                 COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
-                        "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { $tmp=$_.FullName + '.tmp_lowercase'; Rename-Item -LiteralPath $_.FullName -NewName $tmp -Force; Rename-Item -LiteralPath $tmp -NewName $target -Force } }"
+                        "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Where-Object { $_.PSIsContainer } | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { Rename-Item -LiteralPath $_.FullName -NewName $target -Force } }"
                 RESULT_VARIABLE ETSI_LOWER_RESULT
             )
+            if (ETSI_LOWER_RESULT EQUAL 0)
+                execute_process(
+                    COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
+                            "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Where-Object { -not $_.PSIsContainer } | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { Rename-Item -LiteralPath $_.FullName -NewName $target -Force } }"
+                    RESULT_VARIABLE ETSI_LOWER_RESULT
+                )
+            endif ()
             if (NOT ETSI_LOWER_RESULT EQUAL 0)
                 message(FATAL_ERROR "Failed to normalize ETSI codec filenames to lowercase.")
             endif ()
