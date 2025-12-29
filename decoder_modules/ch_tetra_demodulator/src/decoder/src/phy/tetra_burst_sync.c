@@ -37,14 +37,22 @@ void tetra_burst_rx_cb(const uint8_t *burst, unsigned int len, enum tetra_train_
 
 static void make_bitbuf_space(struct tetra_rx_state *trs, unsigned int len)
 {
+    if (len > sizeof(trs->bitbuf)) {
+        fprintf(stderr, "tetra_burst_sync: bitbuf space too small\n");
+        abort();
+    }
 	unsigned int bitbuf_space = sizeof(trs->bitbuf) - trs->bits_in_buf;
 
 	if (bitbuf_space < len) {
 		unsigned int delta = len - bitbuf_space;
 
 		DEBUGP("bitbuf left: %u, shrinking by %u\n", bitbuf_space, delta);
-		memmove(trs->bitbuf, trs->bitbuf + delta, trs->bits_in_buf - delta);
-		trs->bits_in_buf -= delta;
+	    if (trs->bits_in_buf < delta) {
+	        fprintf(stderr, "tetra_burst_sync: delta > bits_in_buf\n");
+	        abort();
+	    }
+	    memmove(trs->bitbuf, trs->bitbuf + delta, trs->bits_in_buf - delta);
+    	trs->bits_in_buf -= delta;
 		trs->bitbuf_start_bitnum += delta;
 		bitbuf_space = sizeof(trs->bitbuf) - trs->bits_in_buf;
 	}

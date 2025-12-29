@@ -9,10 +9,13 @@ enum rx_state {
 	RX_S_LOCKED,		/* fully locked */
 };
 
+#define BITBUF_ARRAY_SIZE 16384
+typedef uint8_t BITBUF_ARRAY[BITBUF_ARRAY_SIZE];
+
 struct tetra_rx_state {
 	enum rx_state state;
 	unsigned int bits_in_buf;		/* how many bits are currently in bitbuf */
-	uint8_t bitbuf[4096];
+	BITBUF_ARRAY bitbuf;
 	unsigned int bitbuf_start_bitnum;	/* bit number at first element in bitbuf */
 	unsigned int next_frame_start_bitnum;	/* frame start expected at this bitnum */
 

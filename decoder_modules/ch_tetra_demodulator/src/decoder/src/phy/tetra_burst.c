@@ -28,6 +28,8 @@
 
 #include <phy/tetra_burst.h>
 
+#include "tetra_burst_sync.h"
+
 #define DQPSK4_BITS_PER_SYM	2
 
 #define SB_BLK1_OFFSET	((6+1+40)*DQPSK4_BITS_PER_SYM)
@@ -268,7 +270,7 @@ int build_norm_c_d_burst(uint8_t *buf, const uint8_t *bkn1, const uint8_t *bb, c
 	return (int)(cur - buf);
 }
 
-int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
+int tetra_find_train_seq(const BITBUF_ARRAY in, unsigned int end_of_in,
 			 uint32_t mask_of_train_seq, unsigned int *offset)
 {
 	static uint32_t tsq_bytes[5];
@@ -293,6 +295,10 @@ int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
 	const uint8_t *cur;
 
 	for (cur = in; cur < in + end_of_in; cur++) {
+	    if ((cur - in) + FILTER_LOOKAHEAD_LEN-1 >= BITBUF_ARRAY_SIZE) {
+	        fprintf(stderr, "out of bounds access in tetra_burst\n");
+	        abort();
+	    }
 		filter = ((filter << 1) | cur[FILTER_LOOKAHEAD_LEN-1]) & FILTER_LOOKAHEAD_MASK;
 
 		int match = 0;
