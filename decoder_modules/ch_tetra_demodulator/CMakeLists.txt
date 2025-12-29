@@ -189,7 +189,10 @@ set_source_files_properties(
     src/decoder/src/phy/tetra_burst_sync.c
     PROPERTIES LANGUAGE C)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+if (NOT ANDROID)
+    target_compile_options(etsi_codec PRIVATE -march=native)
+    target_compile_options(tetra_demodulator PRIVATE -march=native)
+endif ()
 
 if (NOT SDRPP_MODULE_CMAKE)
     set(SDRPP_MODULE_CMAKE "/usr/share/cmake/Modules/sdrpp_module.cmake")
