@@ -76,7 +76,7 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
     mod.end = (void (*)())GetProcAddress(mod.handle, "_END_");
 #else
     try {
-        mod.handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+        mod.handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     } catch(std::exception& e) {
         flog::error("Couldn't load {}: {}", path, e.what());
         mod.handle = NULL;
@@ -90,11 +90,18 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
         mod.handle = NULL;
         return mod;
     }
+    dlerror();
     mod.info = (ModuleInfo_t*)dlsym(mod.handle, "_INFO_");
     mod.init = (void (*)())dlsym(mod.handle, "_INIT_");
     mod.createInstance = (Instance * (*)(std::string)) dlsym(mod.handle, "_CREATE_INSTANCE_");
     mod.deleteInstance = (void (*)(Instance*))dlsym(mod.handle, "_DELETE_INSTANCE_");
     mod.end = (void (*)())dlsym(mod.handle, "_END_");
+    char *symErr = dlerror();
+    if (symErr != NULL) {
+        flog::error("Symbol resolution failed for {0}: {1}.", path, symErr);
+        mod.handle = NULL;
+        return mod;
+    }
 #endif
     if (mod.info == NULL) {
         flog::error("{0} is missing _INFO_ symbol", path);
@@ -118,6 +125,11 @@ ModuleManager::Module_t ModuleManager::loadModule(std::string path) {
     }
     if (mod.end == NULL) {
         flog::error("{0} is missing _END_ symbol", path);
+        mod.handle = NULL;
+        return mod;
+    }
+    if (mod.info->name == nullptr || mod.info->name[0] == '\0') {
+        flog::error("{0} has an invalid module name", path);
         mod.handle = NULL;
         return mod;
     }

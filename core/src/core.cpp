@@ -591,6 +591,7 @@ int sdrpp_main(int argc, char* argv[]) {
 #endif
 
     defConfig["modules"] = json::array();
+    defConfig["moduleBlacklist"] = json::array();
     defConfig["offsetMode"] = (int)0; // Off
     defConfig["offset"] = 0.0;
 

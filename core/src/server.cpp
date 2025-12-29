@@ -143,6 +143,10 @@ namespace server {
         core::configManager.acquire();
         std::string modulesDir = core::configManager.conf["modulesDirectory"];
         std::vector<std::string> modules = core::configManager.conf["modules"];
+        std::vector<std::string> moduleBlacklist;
+        if (core::configManager.conf.contains("moduleBlacklist")) {
+            moduleBlacklist = core::configManager.conf["moduleBlacklist"];
+        }
         auto modList = core::configManager.conf["moduleInstances"].items();
         std::string sourceName = core::configManager.conf["source"];
         core::configManager.release();
@@ -152,6 +156,15 @@ namespace server {
         SmGui::init(true);
 
         flog::info("Loading modules");
+        auto isBlacklisted = [&](const std::string& path, const std::string& filename) {
+            std::string stem = std::filesystem::path(filename).stem().string();
+            for (const auto& entry : moduleBlacklist) {
+                if (entry == path || entry == filename || entry == stem) {
+                    return true;
+                }
+            }
+            return false;
+        };
         // Load modules and check type to only load sources ( TODO: Have a proper type parameter int the info )
         // TODO LATER: Add whitelist/blacklist stuff
         if (std::filesystem::is_directory(modulesDir)) {
@@ -164,6 +177,10 @@ namespace server {
                 if (!file.is_regular_file()) { continue; }
                 if (fn.find("source") == std::string::npos) { continue; }
 
+                if (isBlacklisted(path, fn)) {
+                    flog::warn("Skipping blacklisted module {0}", path);
+                    continue;
+                }
                 flog::info("Loading {0}", path);
                 core::moduleManager.loadModule(path);
             }
@@ -184,6 +201,10 @@ namespace server {
             if (!std::filesystem::is_regular_file(file)) { continue; }
             if (fn.find("source") == std::string::npos) { continue; }
 
+            if (isBlacklisted(path, fn)) {
+                flog::warn("Skipping blacklisted module {0}", path);
+                continue;
+            }
             flog::info("Loading {0}", path);
             core::moduleManager.loadModule(path);
         }

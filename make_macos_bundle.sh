@@ -48,6 +48,19 @@ bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_sdr_source/rtl_sdr_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_tcp_source/rtl_tcp_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/sdrplay_source/sdrplay_source.dylib
+SDRPLAY_LIB_CANDIDATE=""
+if [ -n "$SDRPLAY_API_LIB" ] && [ -f "$SDRPLAY_API_LIB" ]; then
+    SDRPLAY_LIB_CANDIDATE="$SDRPLAY_API_LIB"
+elif [ -f /usr/local/lib/libsdrplay_api.so.3 ]; then
+    SDRPLAY_LIB_CANDIDATE="/usr/local/lib/libsdrplay_api.so.3"
+elif [ -f /Library/Frameworks/libsdrplay_api.so.3 ]; then
+    SDRPLAY_LIB_CANDIDATE="/Library/Frameworks/libsdrplay_api.so.3"
+fi
+if [ -n "$SDRPLAY_LIB_CANDIDATE" ]; then
+    bundle_install_binary $BUNDLE $BUNDLE/Contents/Frameworks $SDRPLAY_LIB_CANDIDATE
+else
+    echo "Warning: SDRplay API library not found; sdrplay_source may fail to load."
+fi
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/sdrpp_server_source/sdrpp_server_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/spyserver_source/spyserver_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/hl2_source/hl2_source.dylib
