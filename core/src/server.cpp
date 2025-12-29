@@ -145,7 +145,7 @@ namespace server {
         std::vector<std::string> modules = core::configManager.conf["modules"];
         std::vector<std::string> moduleBlacklist;
         if (core::configManager.conf.contains("moduleBlacklist")) {
-            moduleBlacklist = core::configManager.conf["moduleBlacklist"];
+            moduleBlacklist = core::configManager.conf["moduleBlacklist"].get<std::vector<std::string>>();
         }
         auto modList = core::configManager.conf["moduleInstances"].items();
         std::string sourceName = core::configManager.conf["source"];

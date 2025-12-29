@@ -189,11 +189,6 @@ set_source_files_properties(
     src/decoder/src/phy/tetra_burst_sync.c
     PROPERTIES LANGUAGE C)
 
-if (NOT ANDROID)
-    target_compile_options(etsi_codec PRIVATE -march=native)
-    target_compile_options(tetra_demodulator PRIVATE -march=native)
-endif ()
-
 if (NOT SDRPP_MODULE_CMAKE)
     set(SDRPP_MODULE_CMAKE "/usr/share/cmake/Modules/sdrpp_module.cmake")
 endif ()
@@ -210,3 +205,9 @@ endif()
 target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "${ETSI_CODEC_DIR}" "${ETSI_CODEC_DIR}/c-code" )
 
 target_link_libraries(tetra_demodulator PRIVATE etsi_codec)
+
+if (NOT ANDROID)
+    target_compile_options(etsi_codec PRIVATE -march=native)
+    target_compile_options(tetra_demodulator PRIVATE -march=native)
+endif ()
+
