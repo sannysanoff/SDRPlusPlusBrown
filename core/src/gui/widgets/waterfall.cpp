@@ -16,31 +16,29 @@
 #include "utils/strings.h"
 #include <gui/menus/display.h>
 
-#define MEASURE_LOCK_GUARD(mtx) \
-    auto t0 = currentTimeMillis();                      \
-    std::lock_guard lck(mtx); \
-    t0 = currentTimeMillis() - t0; \
-    if (false && t0 > 5) { \
+#define MEASURE_LOCK_GUARD(mtx)                                       \
+    auto t0 = currentTimeMillis();                                    \
+    std::lock_guard lck(mtx);                                         \
+    t0 = currentTimeMillis() - t0;                                    \
+    if (false && t0 > 5) {                                            \
         flog::info("Lock took {0}, line {1}", (int64_t)t0, __LINE__); \
     }
 
-#define MEASURE_LOCK_GUARD1(mtx) \
-    auto t01 = currentTimeMillis();                      \
-    std::lock_guard lck01(mtx); \
-    t01 = currentTimeMillis() - t01; \
-    if (false && t01 > 5) { \
+#define MEASURE_LOCK_GUARD1(mtx)                                       \
+    auto t01 = currentTimeMillis();                                    \
+    std::lock_guard lck01(mtx);                                        \
+    t01 = currentTimeMillis() - t01;                                   \
+    if (false && t01 > 5) {                                            \
         flog::info("Lock took {0}, line {1}", (int64_t)t01, __LINE__); \
     }
 
-#define MEASURE_LOCK(mtx) \
-    auto t0l = currentTimeMillis();                      \
-    mtx.lock(); \
-    t0l = currentTimeMillis() - t0l; \
-    if (false && t0l > 5) { \
+#define MEASURE_LOCK(mtx)                                              \
+    auto t0l = currentTimeMillis();                                    \
+    mtx.lock();                                                        \
+    t0l = currentTimeMillis() - t0l;                                   \
+    if (false && t0l > 5) {                                            \
         flog::info("Lock took {0}, line {1}", (int64_t)t0l, __LINE__); \
     }
-
-
 
 
 float DEFAULT_COLOR_MAP[][3] = {
@@ -129,7 +127,7 @@ inline void doZoom(int offset, int width, int inSize, int outSize, float* in, fl
         constexpr int N = 8;
         auto uFactorN = (((int)uFactor) / N) * N;
         int j;
-        for (j = 0; j < uFactorN; j+=N) {
+        for (j = 0; j < uFactorN; j += N) {
             maxVal = std::max<float>(maxVal, in[sId + j]);
             maxVal1 = std::max<float>(maxVal1, in[sId + j + 1]);
             maxVal2 = std::max<float>(maxVal2, in[sId + j + 2]);
@@ -176,7 +174,7 @@ namespace ImGui {
         waterfallFb = new uint32_t[1];
         tempDataForUpdateWaterfallFb = new float[1];
 
-		usableSpectrumRatio = 1.0;
+        usableSpectrumRatio = 1.0;
         viewBandwidth = 1.0;
         wholeBandwidth = 1.0;
 
@@ -193,7 +191,6 @@ namespace ImGui {
         for (int i = 0; i < WATERFALL_NUMBER_OF_SECTIONS; ++i) {
             setTextureStatus(i, TEXTURE_SPECIFY_REQUIRED);
         }
-
     }
 
     void WaterFall::drawFFT() {
@@ -244,16 +241,16 @@ namespace ImGui {
         if (displaymenu::showFFT) {
             if (latestFFT != NULL && fftLines != 0) {
                 std::vector<ImVec2> traces(dataWidth);
-//                std::vector<ImVec2> shadows(dataWidth);
+                //                std::vector<ImVec2> shadows(dataWidth);
                 for (int i = 0; i < dataWidth; i++) {
                     double bPos = fftAreaMax.y - ((latestFFT[i] - fftMin) * scaleFactor);
                     bPos = std::clamp<double>(bPos, fftAreaMin.y + 1, fftAreaMax.y);
                     traces[i] = ImVec2(fftAreaMin.x + i, roundf(bPos));
                     //                shadows[i] = ImVec2(fftAreaMin.x + i, roundf(bPos));
                     if (displaymenu::showFFTShadows) {
-//                        double aPos = fftAreaMax.y - ((latestFFT[i - 1] - fftMin) * scaleFactor);
-//                        window->DrawList->AddLine(ImVec2(fftAreaMin.x + i - 1, roundf(aPos)),
-//                                                  ImVec2(fftAreaMin.x + i, roundf(bPos)), trace, 1.0);
+                        //                        double aPos = fftAreaMax.y - ((latestFFT[i - 1] - fftMin) * scaleFactor);
+                        //                        window->DrawList->AddLine(ImVec2(fftAreaMin.x + i - 1, roundf(aPos)),
+                        //                                                  ImVec2(fftAreaMin.x + i, roundf(bPos)), trace, 1.0);
                         window->DrawList->AddLine(ImVec2(fftAreaMin.x + i, roundf(bPos)),
                                                   ImVec2(fftAreaMin.x + i, fftAreaMax.y), shadow, 1.0);
                     }
@@ -313,7 +310,7 @@ namespace ImGui {
         }
         ImVec2 mPos = ImGui::GetMousePos();
 
-        if (IS_IN_AREA(mPos, wfMin, wfMax) && !gui::mainWindow.lockWaterfallControls && !inputHandled  && ImGui::GetTopMostPopupModal() == NULL || alwaysDrawLine) {
+        if (IS_IN_AREA(mPos, wfMin, wfMax) && !gui::mainWindow.lockWaterfallControls && !inputHandled && ImGui::GetTopMostPopupModal() == NULL || alwaysDrawLine) {
             for (auto const& [name, vfo] : vfos) {
                 window->DrawList->AddRectFilled(vfo->wfRectMin, vfo->wfRectMax, vfo->color);
                 if (!vfo->lineVisible) { continue; }
@@ -322,8 +319,6 @@ namespace ImGui {
         }
 
         afterWaterfallDraw.emit(WaterfallDrawArgs{ window, wfMin, wfMax });
-
-
     }
 
 
@@ -342,7 +337,7 @@ namespace ImGui {
                                        ImVec2(minX, minY),
                                        ImVec2(maxX, maxY),
                                        ImVec2(0, 0),
-                                       ImVec2(1, (float) imageHeight / waterfallMaxSectionHeight));
+                                       ImVec2(1, (float)imageHeight / waterfallMaxSectionHeight));
             rowsToGo -= imageHeight;
             sectionIndex = (sectionIndex + 1) % WATERFALL_NUMBER_OF_SECTIONS;
             imageHeight = std::min<int>(rowsToGo, waterfallMaxSectionHeight);
@@ -633,6 +628,16 @@ namespace ImGui {
             }
         }
 
+        // Show frequency tooltip when hovering over FFT or waterfall areas with Ctrl pressed
+        if (ImGui::GetIO().KeyCtrl && (mouseInFFT || mouseInWaterfall) && hoveredVFOName == "") {
+            double mouseXRel = mousePos.x - fftAreaMin.x;
+            double freqRange = upperFreq - lowerFreq;
+            double mouseFreq = lowerFreq + (mouseXRel / (double)dataWidth) * freqRange;
+            char buf[128];
+            printAndScale(mouseFreq, buf);
+            ImGui::SetTooltip("Frequency: %sHz", buf);
+        }
+
         // Handle Page Up to cycle through VFOs
         if (ImGui::IsKeyPressed(ImGuiKey_PageUp) && selVfo != NULL) {
             std::string next = (--vfos.end())->first;
@@ -714,27 +719,27 @@ namespace ImGui {
             avgCount++;
         }
 
-//        auto ctm1 = currentTimeNanos();
-//        auto kth0 = percentile::percentile(fftValues, 0.25);    // 25% most silent bins
-//        auto ctm2 = currentTimeNanos();
+        //        auto ctm1 = currentTimeNanos();
+        //        auto kth0 = percentile::percentile(fftValues, 0.25);    // 25% most silent bins
+        //        auto ctm2 = currentTimeNanos();
         if (fftValues.empty()) {
             return false;
         }
-        std::sort(fftValues.begin(), fftValues.end());      // sorting binds by volume
-//        auto ctm3 = currentTimeNanos();
+        std::sort(fftValues.begin(), fftValues.end()); // sorting binds by volume
+                                                       //        auto ctm3 = currentTimeNanos();
         auto lowerPercentile = fftValues.size() / 4;
         auto kth = fftValues[lowerPercentile];
-//        flog::info("size={} kth0={} kth={} time0={} time0={}", fftValues.size(), kth0, kth, int64_t (ctm2-ctm1), int64_t (ctm3-ctm2));
-        for(int i=0; i<fftValues.size(); i++) {              // taking 25% most silent bins
+        //        flog::info("size={} kth0={} kth={} time0={} time0={}", fftValues.size(), kth0, kth, int64_t (ctm2-ctm1), int64_t (ctm3-ctm2));
+        for (int i = 0; i < fftValues.size(); i++) { // taking 25% most silent bins
             if (fftValues[i] <= kth) {
                 qavg += fftValues[i];
             }
         }
-        qavg /= (double)lowerPercentile;                  // "true" noise floor
+        qavg /= (double)lowerPercentile; // "true" noise floor
 
-        avg /= (double)avgCount;                          // "base noise floor"
+        avg /= (double)avgCount; // "base noise floor"
 
-        auto avgdiff = avg-qavg;
+        auto avgdiff = avg - qavg;
 
         // Calculate max
         for (int i = vfoMinOffset; i <= vfoMaxOffset; i++) {
@@ -754,7 +759,7 @@ namespace ImGui {
     /**
      * from raw fft to the waterfallDB, using palette. Also, invalidates opengl textures.
      * */
-    void WaterFall::updateWaterfallFb(const std::string &where) {
+    void WaterFall::updateWaterfallFb(const std::string& where) {
         const int totalNumberOfPixels = dataWidth * waterfallHeight;
         if (!waterfallVisible || rawFFTs == NULL || !wholeBandwidth || !totalNumberOfPixels) {
             return;
@@ -773,19 +778,20 @@ namespace ImGui {
             int waterfallFbIndex;
             if (totalNumberOfPixels == 0) {
                 waterfallFbIndex = (waterfallFbHeadRowIndex * dataWidth);
-            } else {
+            }
+            else {
                 waterfallFbIndex = (waterfallFbHeadRowIndex * dataWidth) % totalNumberOfPixels;
             }
 
-//            for (int i = 0; i < count; i++) {
-//                drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
-//                drawDataStart = (((double)rawFFTSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
-//                doZoom(drawDataStart, drawDataSize, rawFFTSize, dataWidth, &rawFFTs[((i + currentFFTLine) % waterfallHeight) * rawFFTSize], tempData);
-//                for (int j = 0; j < dataWidth; j++) {
-//                    pixel = (std::clamp<float>(tempData[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
-//                    waterfallFb[(i * dataWidth) + j] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
-//                }
-//            }
+            //            for (int i = 0; i < count; i++) {
+            //                drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
+            //                drawDataStart = (((double)rawFFTSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
+            //                doZoom(drawDataStart, drawDataSize, rawFFTSize, dataWidth, &rawFFTs[((i + currentFFTLine) % waterfallHeight) * rawFFTSize], tempData);
+            //                for (int j = 0; j < dataWidth; j++) {
+            //                    pixel = (std::clamp<float>(tempData[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
+            //                    waterfallFb[(i * dataWidth) + j] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
+            //                }
+            //            }
 
 
             if (count != 0) {
@@ -822,7 +828,6 @@ namespace ImGui {
                         }
                     }));
                     wfi = (wfi + cnt * dataWidth) % totalNumberOfPixels;
-
                 }
                 for (int b = 0; b < NTHREADS; b++) {
                     threads[b]->join();
@@ -844,7 +849,7 @@ namespace ImGui {
             }
         }
 
-//        flog::info("Full waterfall update fb: {0} msec, full width: {1}, draw width: {2}", (int64_t)currentTimeMillis() - ctm, dataWidth, drawDataSize);
+        //        flog::info("Full waterfall update fb: {0} msec, full width: {1}, draw width: {2}", (int64_t)currentTimeMillis() - ctm, dataWidth, drawDataSize);
         waterfallUpdate = true;
 
         for (int i = 0; i < WATERFALL_NUMBER_OF_SECTIONS; ++i) {
@@ -965,7 +970,8 @@ namespace ImGui {
 
         if (status == TEXTURE_PIXELS_CHANGE_REQUIRED) {
             changeTexturePixels(textureIndex, pixels);
-        } else {
+        }
+        else {
             specifyTexture(textureIndex, pixels);
         };
 
@@ -981,7 +987,7 @@ namespace ImGui {
     }
 
     void WaterFall::changeTexturePixels(int textureIndex, const uint8_t* pixels) const {
-        glBindTexture(GL_TEXTURE_2D, waterfallTexturesIds[textureIndex]); //A texture you have already created storage for
+        glBindTexture(GL_TEXTURE_2D, waterfallTexturesIds[textureIndex]); // A texture you have already created storage for
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dataWidth, waterfallMaxSectionHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     }
 
@@ -1017,14 +1023,14 @@ namespace ImGui {
             fftHeight = widgetSize.y - (50.0f * style::uiScale);
         }
         dataWidth = widgetSize.x - (60.0f * style::uiScale);
-//        flog::info("onresize: dataWidth={} wsx={}", (int)dataWidth, widgetSize.x);
+        //        flog::info("onresize: dataWidth={} wsx={}", (int)dataWidth, widgetSize.x);
 
         if (waterfallVisible) {
             // Raw FFT resize
             fftLines = std::min<int>(fftLines, waterfallHeight) - 1;
             if (rawFFTs != NULL) {
                 if (currentFFTLine != 0) {
-                    //flog::info("onresize: currentFFTLine={} rawFFTSize={}", currentFFTLine, rawFFTSize);
+                    // flog::info("onresize: currentFFTLine={} rawFFTSize={}", currentFFTLine, rawFFTSize);
                     float* tempWF = new float[currentFFTLine * rawFFTSize];
                     int moveCount = lastWaterfallHeight - currentFFTLine;
                     memcpy(tempWF, rawFFTs, currentFFTLine * rawFFTSize * sizeof(float));
@@ -1058,7 +1064,7 @@ namespace ImGui {
             if (smoothingBuf) { delete[] smoothingBuf; }
             smoothingBuf = new float[dataWidth];
             for (int i = 0; i < dataWidth; i++) {
-                smoothingBuf[i] = -1000.0f; 
+                smoothingBuf[i] = -1000.0f;
             }
         }
 
@@ -1066,7 +1072,7 @@ namespace ImGui {
             delete[] waterfallFb;
             // allocate extra rows, will be used to create continuous pixels for textures
             const int sz = dataWidth * (waterfallHeight + 128);
-            //flog::info("onresize: waterfallHeight={} sz={}", waterfallHeight, sz);
+            // flog::info("onresize: waterfallHeight={} sz={}", waterfallHeight, sz);
             waterfallFb = new uint32_t[sz];
             memset(waterfallFb, 0, sz * sizeof(uint32_t));
 
@@ -1125,7 +1131,7 @@ namespace ImGui {
             onResize();
         }
 
-        //window->DrawList->AddRectFilled(widgetPos, widgetEndPos, IM_COL32( 0, 0, 0, 255 ));
+        // window->DrawList->AddRectFilled(widgetPos, widgetEndPos, IM_COL32( 0, 0, 0, 255 ));
         ImU32 bg = ImGui::ColorConvertFloat4ToU32(gui::themeManager.waterfallBg);
         window->DrawList->AddRectFilled(widgetPos, widgetEndPos, bg);
         window->DrawList->AddRect(widgetPos, widgetEndPos, IM_COL32(50, 50, 50, 255), 0.0, 0, style::uiScale);
@@ -1162,7 +1168,7 @@ namespace ImGui {
             auto streamTime = sigpath::iqFrontEnd.getCurrentStreamTime();
             const time_t epochTime = streamTime / 1000;
 
-            tm *local_time = localtime(&epochTime);
+            tm* local_time = localtime(&epochTime);
 
             // Array to hold the formatted time string
             char time_str[1024];
@@ -1170,9 +1176,7 @@ namespace ImGui {
             // Format the local time string using strftime
             strftime(time_str, sizeof(time_str), "  %Y-%m-%d %H:%M:%S", local_time);
             window->DrawList->AddText(ImVec2(fftAreaMin.x, fftAreaMin.y), ImGui::GetColorU32(ImGuiCol_TextDisabled), time_str);
-
         }
-
     }
 
     float* WaterFall::getFFTBuffer() {
@@ -1248,7 +1252,7 @@ namespace ImGui {
             if (snrSmoothing) {
                 float newSNR = 0.0f;
                 calculateVFOSignalInfo(waterfallVisible ? &rawFFTs[currentFFTLine * rawFFTSize] : rawFFTs, vfos[selectedVFO], dummy, newSNR);
-                selectedVFOSNR = (snrSmoothingBeta*selectedVFOSNR) + (snrSmoothingAlpha*newSNR);
+                selectedVFOSNR = (snrSmoothingBeta * selectedVFOSNR) + (snrSmoothingAlpha * newSNR);
             }
             else {
                 calculateVFOSignalInfo(waterfallVisible ? &rawFFTs[currentFFTLine * rawFFTSize] : rawFFTs, vfos[selectedVFO], dummy, selectedVFOSNR);
@@ -1301,7 +1305,7 @@ namespace ImGui {
         updateWaterfallFb();
     }
 
-    std::pair<int, int> WaterFall::autoRange() {  // min, max
+    std::pair<int, int> WaterFall::autoRange() { // min, max
         float min = INFINITY;
         float max = -INFINITY;
         {
@@ -1331,11 +1335,11 @@ namespace ImGui {
             }
         }
         flog::info("Waterfall: min={} max={}", min, max);
-        min = max-45;   // based on default palette
-        setFFTMin(min-5);
-        setFFTMax(max+5);
-        this->setWaterfallMin(min-5);
-        this->setWaterfallMax(max+20);
+        min = max - 45; // based on default palette
+        setFFTMin(min - 5);
+        setFFTMax(max + 5);
+        this->setWaterfallMin(min - 5);
+        this->setWaterfallMax(max + 20);
         return std::make_pair(min, max);
     }
 
@@ -1351,10 +1355,10 @@ namespace ImGui {
     }
 
     void WaterFall::setBandwidth(double bandWidth) {
- //     double currentRatio = viewBandwidth / wholeBandwidth;
+        //     double currentRatio = viewBandwidth / wholeBandwidth;
         wholeBandwidth = bandWidth;
-//      setViewBandwidth(bandWidth * currentRatio);
-		setViewBandwidth(bandWidth * usableSpectrumRatio);
+        //      setViewBandwidth(bandWidth * currentRatio);
+        setViewBandwidth(bandWidth * usableSpectrumRatio);
         for (auto const& [name, vfo] : vfos) {
             if (vfo->lowerOffset < -(bandWidth / 2)) {
                 vfo->setCenterOffset(-(bandWidth / 2));
@@ -1370,13 +1374,13 @@ namespace ImGui {
         return wholeBandwidth;
     }
 
-	void WaterFall::setUsableSpectrumRatio(double spectrumratio) {
-		usableSpectrumRatio = spectrumratio;
-	}
+    void WaterFall::setUsableSpectrumRatio(double spectrumratio) {
+        usableSpectrumRatio = spectrumratio;
+    }
 
-	double WaterFall::getUsableSpectrumRatio() {
-		return usableSpectrumRatio;
-	}
+    double WaterFall::getUsableSpectrumRatio() {
+        return usableSpectrumRatio;
+    }
 
     void WaterFall::setViewBandwidth(double bandWidth) {
         MEASURE_LOCK_GUARD(buf_mtx);
@@ -1527,7 +1531,7 @@ namespace ImGui {
         fftSmoothing = enabled;
 
         // Free buffer if not null
-        if (smoothingBuf) {delete[] smoothingBuf; }
+        if (smoothingBuf) { delete[] smoothingBuf; }
 
         // If disabled, stop here
         if (!enabled) {
@@ -1596,7 +1600,6 @@ namespace ImGui {
         upperOffsetChanged = true;
         lowerOffsetChanged = true;
         redrawRequired = true;
-
     }
 
     void WaterfallVFO::setCenterOffset(double offset) {
@@ -1784,7 +1787,7 @@ namespace ImGui {
     }
 
     bool WaterFall::containsFrequency(double d) {
-        return d >= getCenterFrequency() - getBandwidth()/2 && d <= getCenterFrequency() + getBandwidth()/2;
+        return d >= getCenterFrequency() - getBandwidth() / 2 && d <= getCenterFrequency() + getBandwidth() / 2;
     }
 
     WaterFall::~WaterFall() {
