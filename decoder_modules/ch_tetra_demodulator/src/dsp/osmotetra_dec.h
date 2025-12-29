@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <dsp/processor.h>
 
 // #include <osmocom/core/utils.h>
@@ -194,7 +195,7 @@ namespace dsp {
                 memset(&(out[outcnt]), 0, remainingOut*sizeof(float));
                 outcnt += remainingOut;
             }
-            outSymsCtr -= (std::min(outSymsCtr, requiredOut));
+            outSymsCtr -= (std::min)(outSymsCtr, requiredOut);
             inSymsCtr -= requiredOut * 36 / 8;
             return outcnt;
         }
