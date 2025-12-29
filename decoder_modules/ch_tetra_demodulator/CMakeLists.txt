@@ -128,7 +128,8 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     foreach (PATCH_FILE IN LISTS ETSI_PATCHES)
         if (ETSI_PATCH_USE_GIT)
             execute_process(
-                COMMAND "${ETSI_GIT_PROGRAM}" apply --whitespace=nowarn --directory="${ETSI_CODEC_DIR}" ${ETSI_PATCH_STRIP} "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+                COMMAND "${ETSI_GIT_PROGRAM}" apply --whitespace=nowarn ${ETSI_PATCH_STRIP} "${ETSI_CODEC_PATCH_DIR}/${PATCH_FILE}"
+                WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
                 RESULT_VARIABLE ETSI_PATCH_RESULT
             )
         else ()

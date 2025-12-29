@@ -17,6 +17,7 @@ m17_decoder/libcorrect
 SDR++.app
 android/deps
 android/app/assets
+android/app/bin
 .aider*
 .env
 node_modules
@@ -25,3 +26,4 @@ source_modules/dragonlabs_source
 source_modules/badgesdr_source
 decoder_modules/mystery_decoder
 decoder_modules/tetra_decoder
+qemu/
