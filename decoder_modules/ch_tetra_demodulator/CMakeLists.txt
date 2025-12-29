@@ -52,13 +52,13 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
             )
             execute_process(
                 COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
-                        "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Where-Object { $_.PSIsContainer } | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { Rename-Item -LiteralPath $_.FullName -NewName $target -Force } }"
+                        "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse -Directory | Sort-Object FullName -Descending | ForEach-Object { $parent=Split-Path -LiteralPath $_.FullName -Parent; $lowerName=$_.Name.ToLower(); if ($_.Name -cne $lowerName) { $tmpName=($lowerName + '.tmp_' + [guid]::NewGuid().ToString()); $tmpPath=Join-Path $parent $tmpName; $finalPath=Join-Path $parent $lowerName; Move-Item -LiteralPath $_.FullName -Destination $tmpPath -Force; Move-Item -LiteralPath $tmpPath -Destination $finalPath -Force } }"
                 RESULT_VARIABLE ETSI_LOWER_RESULT
             )
             if (ETSI_LOWER_RESULT EQUAL 0)
                 execute_process(
                     COMMAND "${ETSI_POWERSHELL_PROGRAM}" -NoProfile -ExecutionPolicy Bypass -Command
-                            "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse | Where-Object { -not $_.PSIsContainer } | Sort-Object FullName -Descending | ForEach-Object { $target=$_.FullName.ToLower(); if ($_.FullName -ne $target) { Rename-Item -LiteralPath $_.FullName -NewName $target -Force } }"
+                            "$root='${ETSI_CODEC_DIR}'; Get-ChildItem -LiteralPath $root -Recurse -File | Sort-Object FullName -Descending | ForEach-Object { $parent=Split-Path -LiteralPath $_.FullName -Parent; $lowerName=$_.Name.ToLower(); if ($_.Name -cne $lowerName) { $tmpName=($lowerName + '.tmp_' + [guid]::NewGuid().ToString()); $tmpPath=Join-Path $parent $tmpName; $finalPath=Join-Path $parent $lowerName; Move-Item -LiteralPath $_.FullName -Destination $tmpPath -Force; Move-Item -LiteralPath $tmpPath -Destination $finalPath -Force } }"
                     RESULT_VARIABLE ETSI_LOWER_RESULT
                 )
             endif ()
@@ -222,4 +222,3 @@ if (NOT ANDROID)
     target_compile_options(etsi_codec PRIVATE -march=native)
     target_compile_options(ch_tetra_demodulator PRIVATE -march=native)
 endif ()
-
