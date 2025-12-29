@@ -89,6 +89,7 @@ cp $build_dir/sink_modules/network_sink/$RELDIR/network_sink.dll sdrpp_windows_x
 # Copy decoder modules
 cp $build_dir/decoder_modules/ft8_decoder/$RELDIR/ft8_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/ch_extravhf_decoder/$RELDIR/ch_extravhf_decoder.dll sdrpp_windows_x64/modules/
+cp $build_dir/decoder_modules/ch_tetra_demodulator/$RELDIR/ch_tetra_demodulator.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/atv_decoder/$RELDIR/atv_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/m17_decoder/$RELDIR/m17_decoder.dll sdrpp_windows_x64/modules/
 
