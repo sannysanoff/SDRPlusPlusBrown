@@ -1,0 +1,68 @@
+#!/bin/bash
+
+BUILD_DIR="/Users/san/Fun/SDRPlusPlus/cmake-build-debug"
+CONFIG_DIR="/tmp/sdrpp_config"
+
+start() {
+    if pgrep -f "sdrpp" > /dev/null 2>&1; then
+        echo "Already running"
+        exit 1
+    fi
+
+    mkdir -p "$CONFIG_DIR"
+    LOG_FILE="$CONFIG_DIR/sdrpp.log"
+    cd "$BUILD_DIR"
+    nohup ./sdrpp -r "$CONFIG_DIR" --http 8080 > "$LOG_FILE" 2>&1 &
+    SPD=$!
+
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 1
+        if curl -s http://localhost:8080/status | grep -q 'mainLoopStarted.*true'; then
+            echo "Started"
+            exit 0
+        fi
+    done
+
+    echo "Start error"
+    pkill -f "sdrpp"
+    exit 1
+}
+
+status() {
+    if pgrep -f "sdrpp" > /dev/null 2>&1; then
+        echo "up"
+    else
+        echo "down"
+    fi
+}
+
+stop() {
+    if pgrep -f "sdrpp" > /dev/null 2>&1; then
+        pkill -f "sdrpp"
+        echo "Stopped"
+    else
+        echo "Was not running"
+    fi
+}
+
+build() {
+    cd "$BUILD_DIR"
+    cmake .. \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -G "Unix Makefiles" \
+        -DOPT_BUILD_PLUTOSDR_SOURCE=OFF \
+        -DCMAKE_INSTALL_PREFIX=/Users/san/Fun/SDRPlusPlus/root_dev/inst \
+        -DOPT_BUILD_CH_EXTRAVHF_DECODER:BOOL=ON \
+        -DOPT_BUILD_CH_TETRA_DEMODULATOR:BOOL=ON > /dev/null 2>&1
+    make -j$(nproc) > /dev/null 2>&1
+    make install > /dev/null 2>&1
+    echo "Build complete"
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    status) status ;;
+    build) build ;;
+    *) echo "Usage: $0 {start|stop|status|build}" ;;
+esac

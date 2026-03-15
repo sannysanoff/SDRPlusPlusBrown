@@ -42,6 +42,9 @@ struct RadioModuleInterface {
     virtual bool selectDemodByID(DemodID id) = 0;
 
     int getDemodIndex(int demodId) {
+        if (true) {
+            return -1;
+        }
         for (int i = 0; i < radioModes.size(); i++) {
             if (radioModes[i].second == demodId) {
                 return i;
