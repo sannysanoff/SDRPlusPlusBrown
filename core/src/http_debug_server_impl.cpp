@@ -9,7 +9,9 @@
 #include <filesystem>
 #include <unordered_map>
 #include <map>
+#include <set>
 #include <cstdarg>
+#include <core.h>
 
 #ifdef __cplusplus
 #include "imgui.h"
@@ -280,6 +282,106 @@ namespace httpdebug {
 
 } // namespace httpdebug
 
+namespace httpdebug {
+    namespace procfs {
+        struct Endpoint {
+            std::string path;
+            ReadFunc read;
+            WriteFunc write;
+            Type type;
+        };
+
+        inline std::vector<Endpoint> endpoints;
+        inline std::mutex endpointsMutex;
+
+        struct PendingRequest {
+            std::string path;
+            std::string method;
+            std::string body;
+            int responseId;
+        };
+
+        inline std::vector<PendingRequest> pendingRequests;
+        inline std::mutex pendingMutex;
+
+        inline std::map<int, ProcResponse> responses;
+        inline std::mutex responseMutex;
+
+        int registerEndpoint(const std::string& path, ReadFunc read, WriteFunc write, Type type) {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            endpoints.push_back({ path, read, write, type });
+            return endpoints.size();
+        }
+
+        void unregister(const std::string& path) {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            endpoints.erase(
+                std::remove_if(endpoints.begin(), endpoints.end(),
+                               [&](const Endpoint& e) { return e.path == path; }),
+                endpoints.end());
+        }
+
+        std::vector<std::string> list() {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            std::vector<std::string> result;
+            for (const auto& e : endpoints) {
+                result.push_back(e.path);
+            }
+            return result;
+        }
+
+        void queueRequest(const std::string& path, const std::string& method, const std::string& body, int responseId) {
+            std::lock_guard<std::mutex> lock(pendingMutex);
+            pendingRequests.push_back({ path, method, body, responseId });
+        }
+
+        bool getResponse(int responseId, ProcResponse& res) {
+            std::lock_guard<std::mutex> lock(responseMutex);
+            auto it = responses.find(responseId);
+            if (it != responses.end()) {
+                res = it->second;
+                responses.erase(it);
+                return true;
+            }
+            return false;
+        }
+
+        void processQueue() {
+            std::vector<PendingRequest> toProcess;
+            {
+                std::lock_guard<std::mutex> lock(pendingMutex);
+                toProcess = std::move(pendingRequests);
+                pendingRequests.clear();
+            }
+
+            for (const auto& req : toProcess) {
+                ProcResponse res{ 404, "not found", "text/plain" };
+
+                std::lock_guard<std::mutex> lock(endpointsMutex);
+                for (const auto& e : endpoints) {
+                    if (e.path == req.path) {
+                        if (req.method == "GET" && e.read) {
+                            res = { 200, e.read(), "text/plain" };
+                        }
+                        else if ((req.method == "POST" || req.method == "PUT") && e.write) {
+                            e.write(req.body);
+                            res = { 200, "ok", "text/plain" };
+                        }
+                        else {
+                            res = { 400, "operation not supported", "text/plain" };
+                        }
+                        break;
+                    }
+                }
+
+                std::lock_guard<std::mutex> lock2(responseMutex);
+                responses[req.responseId] = res;
+            }
+        }
+
+    } // namespace procfs
+} // namespace httpdebug
+
 // Implement createResponseForRequest here
 struct Response* createResponseForRequest(const struct Request* request, struct Connection* connection) {
     if (strcmp(request->path, "/status") == 0 || strcmp(request->path, "/") == 0) {
@@ -363,6 +465,95 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         return responseAllocJSONWithFormat(
             "{\"playing\": %s}",
             httpdebug::isSdrPlaying() ? "true" : "false");
+    }
+
+    if (strcmp(request->path, "/modules") == 0) {
+        std::string json = "{";
+        bool first = true;
+        for (auto& [name, inst] : core::moduleManager.instances) {
+            if (!first) json += ", ";
+            std::string modName = inst.module.info ? inst.module.info->name : "unknown";
+            json += "\"" + name + "\": \"" + modName + "\"";
+            first = false;
+        }
+        json += "}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    if (strncmp(request->path, "/proc", 5) == 0) {
+        std::string fullPath(request->pathDecoded);
+        if (fullPath == "/proc") {
+            auto list = httpdebug::procfs::list();
+            std::string json = "[";
+            for (size_t i = 0; i < list.size(); i++) {
+                if (i > 0) json += ", ";
+                json += "\"" + list[i] + "\"";
+            }
+            json += "]";
+            return responseAllocJSON(json.c_str());
+        }
+
+        std::string path = fullPath.substr(5);
+
+        int responseId = rand();
+        std::string method = "GET";
+        std::string body = "";
+
+        if (strlen(request->method) > 0) {
+            method = request->method;
+        }
+
+        if (request->body.length > 0 && request->body.contents) {
+            body = std::string(request->body.contents, request->body.length);
+        }
+
+        httpdebug::procfs::queueRequest(path, method, body, responseId);
+
+        for (int i = 0; i < 100; i++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            httpdebug::procfs::ProcResponse res;
+            if (httpdebug::procfs::getResponse(responseId, res)) {
+                if (res.statusCode == 200) {
+                    return responseAllocJSON(res.body.c_str());
+                }
+                else {
+                    return responseAllocJSON(res.body.c_str());
+                }
+            }
+        }
+
+        return responseAllocJSON("{\"error\": \"timeout\"}");
+    }
+
+    if (strncmp(request->path, "/ls", 3) == 0 || strncmp(request->pathDecoded, "/ls", 3) == 0) {
+        std::lock_guard<std::mutex> lock(httpdebug::procfs::endpointsMutex);
+        std::string json = "[";
+        for (size_t i = 0; i < httpdebug::procfs::endpoints.size(); i++) {
+            const auto& e = httpdebug::procfs::endpoints[i];
+            if (i > 0) json += ", ";
+            std::string typeStr = "unknown";
+            switch (e.type) {
+            case httpdebug::procfs::Type::Bool:
+                typeStr = "bool";
+                break;
+            case httpdebug::procfs::Type::Int:
+                typeStr = "int";
+                break;
+            case httpdebug::procfs::Type::Float:
+                typeStr = "float";
+                break;
+            case httpdebug::procfs::Type::String:
+                typeStr = "string";
+                break;
+            default:
+                typeStr = "unknown";
+                break;
+            }
+            std::string value = e.read ? e.read() : "";
+            json += "{\"path\": \"" + e.path + "\", \"value\": \"" + value + "\", \"type\": \"" + typeStr + "\", \"writable\": " + (e.write ? "true" : "false") + "}";
+        }
+        json += "]";
+        return responseAllocJSON(json.c_str());
     }
 #endif
 

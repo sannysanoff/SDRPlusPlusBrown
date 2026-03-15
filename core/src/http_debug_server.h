@@ -4,6 +4,9 @@
 #include <thread>
 #include <atomic>
 #include <filesystem>
+#include <functional>
+#include <vector>
+#include <utils/event.h>
 
 #ifdef __cplusplus
 #include "imgui.h"
@@ -110,5 +113,38 @@ namespace httpdebug {
     std::vector<WidgetInfo>& getWidgetRegistry();
 
 #endif // __cplusplus
+
+    namespace procfs {
+        struct ProcRequest {
+            std::string path;
+            std::string method;
+            std::string body;
+        };
+
+        struct ProcResponse {
+            int statusCode;
+            std::string body;
+            std::string contentType;
+        };
+
+        enum class Type { Unknown,
+                          Bool,
+                          Int,
+                          Float,
+                          String };
+
+        using ReadFunc = std::function<std::string()>;
+        using WriteFunc = std::function<void(const std::string&)>;
+
+        int registerEndpoint(const std::string& path, ReadFunc read = nullptr, WriteFunc write = nullptr, Type type = Type::Unknown);
+        void unregister(const std::string& path);
+
+        std::vector<std::string> list();
+
+        void processQueue();
+        void queueRequest(const std::string& path, const std::string& method, const std::string& body, int responseId);
+        bool getResponse(int responseId, ProcResponse& res);
+
+    } // namespace procfs
 
 } // namespace httpdebug

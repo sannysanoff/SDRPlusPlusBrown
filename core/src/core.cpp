@@ -88,6 +88,9 @@ namespace core {
     ModuleComManager modComManager;
     CommandArgsParser args;
 
+    EventHandler<std::string> moduleInstanceCreatedHandler;
+    EventHandler<std::string> moduleInstanceDeletedHandler;
+
 
     SDRPP_EXPORT const char* getRoot() {
         static const char* rootPath = strdup(core::args["root"].s().c_str());
