@@ -14,6 +14,7 @@
 #include <gui/gui.h>
 #include <gui/menus/display.h>
 #include <utils/usleep.h>
+#include <http_debug_server.h>
 
 #ifndef WIN32
 #include <dlfcn.h>
@@ -49,7 +50,7 @@ namespace backend {
         false
     };
 
-    #define OPENGL_VERSION_COUNT (sizeof(OPENGL_VERSIONS_GLSL) / sizeof(char*))
+#define OPENGL_VERSION_COUNT (sizeof(OPENGL_VERSIONS_GLSL) / sizeof(char*))
 
     bool maximized = false;
     bool fullScreen = false;
@@ -89,7 +90,7 @@ namespace backend {
             return 1;
         }
 
-    #ifdef __APPLE__
+#ifdef __APPLE__
         // GL 3.2 + GLSL 150
         const char* glsl_version = "#version 150";
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -103,7 +104,7 @@ namespace backend {
         if (window == NULL)
             return 1;
         glfwMakeContextCurrent(window);
-    #else
+#else
         const char* glsl_version = "#version 120";
         monitor = NULL;
         for (int i = 0; i < OPENGL_VERSION_COUNT; i++) {
@@ -111,9 +112,9 @@ namespace backend {
             glfwWindowHint(GLFW_CLIENT_API, OPENGL_VERSIONS_IS_ES[i] ? GLFW_OPENGL_ES_API : GLFW_OPENGL_API);
             glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, OPENGL_VERSIONS_MAJOR[i]);
             glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, OPENGL_VERSIONS_MINOR[i]);
-    #if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
+#if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
             glfwWindowHintString(GLFW_WAYLAND_APP_ID, "sdrpp");
-    #endif
+#endif
 
             // Create window with graphics context
             monitor = glfwGetPrimaryMonitor();
@@ -127,7 +128,7 @@ namespace backend {
             break;
         }
 
-    #endif
+#endif
 
         // Load app icon
         if (!std::filesystem::is_regular_file(resDir + "/icons/sdrpp.png")) {
@@ -171,13 +172,13 @@ namespace backend {
         }
 
         // Add callback for max/min if GLFW supports it
-    #if (GLFW_VERSION_MAJOR == 3) && (GLFW_VERSION_MINOR >= 3)
+#if (GLFW_VERSION_MAJOR == 3) && (GLFW_VERSION_MINOR >= 3)
         if (maximized) {
             glfwMaximizeWindow(window);
         }
 
         glfwSetWindowMaximizeCallback(window, maximized_callback);
-    #endif
+#endif
 
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
@@ -240,7 +241,6 @@ namespace backend {
         if (glSleepTime != 0) {
             usleep(glSleepTime * 1000);
         }
-
     }
 
     void getMouseScreenPos(double& x, double& y) {
@@ -321,11 +321,55 @@ namespace backend {
                 ImGui::SetNextWindowPos(ImVec2(0, 0));
                 ImGui::SetNextWindowSize(ImVec2(_winWidth, _winHeight));
                 gui::mainWindow.draw();
+
+                if (httpdebug::getSdrStartRequest()) {
+                    gui::mainWindow.setPlayState(true);
+                    httpdebug::setSdrPlaying(true);
+                }
+                if (httpdebug::getSdrStopRequest()) {
+                    gui::mainWindow.setPlayState(false);
+                    httpdebug::setSdrPlaying(false);
+                }
+
+                httpdebug::ImGuiAction action;
+                while (httpdebug::popAction(action)) {
+                    switch (action.type) {
+                    case httpdebug::ImGuiAction::Click:
+                        ImGui::GetIO().MousePos.x = action.x;
+                        ImGui::GetIO().MousePos.y = action.y;
+                        ImGui::GetIO().MouseDown[0] = true;
+                        break;
+                    case httpdebug::ImGuiAction::MouseMove:
+                        ImGui::GetIO().MousePos.x = action.x;
+                        ImGui::GetIO().MousePos.y = action.y;
+                        break;
+                    case httpdebug::ImGuiAction::KeyPress:
+                        ImGui::GetIO().KeysDown[action.key] = true;
+                        break;
+                    case httpdebug::ImGuiAction::TypeText:
+                        for (char c : action.text) {
+                            ImGui::GetIO().InputQueueCharacters.push_back(c);
+                        }
+                        break;
+                    case httpdebug::ImGuiAction::Focus:
+                        ImGui::SetFocusID(action.targetId, ImGui::GetCurrentWindow());
+                        break;
+                    case httpdebug::ImGuiAction::ClickById: {
+                        ImGuiContext* ctx = ImGui::GetCurrentContext();
+                        for (ImGuiWindow* window : ctx->Windows) {
+                            if (window->ID == action.targetId || window->IDStack.contains(action.targetId)) {
+                                ImGui::SetWindowPos(window, ImVec2(100, 100));
+                                ImGui::SetFocusID(action.targetId, window);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    }
+                }
             }
 
             render();
-
-
         }
 
         return 0;

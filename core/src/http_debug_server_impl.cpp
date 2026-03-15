@@ -1,6 +1,7 @@
 // Must include EmbeddableWebServer.h FIRST, before anything else that might set EWS_HEADER_ONLY
 #include "EmbeddableWebServer.h"
 
+#include "http_debug_server.h"
 #include <utils/flog.h>
 #include <string>
 #include <thread>
@@ -35,13 +36,6 @@ int acceptConnectionsWrapper(Server* server, uint16_t port) {
 
 // Define httpdebug namespace functions here
 namespace httpdebug {
-
-    Server* httpServer = nullptr;
-    std::thread* ewsThread = nullptr;
-    std::atomic<bool> httpServerListening{ false };
-    std::atomic<bool> serverReady{ false };
-    std::atomic<bool> mainLoopStarted{ false };
-    std::atomic<bool> shouldExit{ false };
 
     void startHttpServer(int port) {
         if (port <= 0) {
@@ -100,21 +94,6 @@ namespace httpdebug {
 
 #ifdef __cplusplus
 
-    struct ImGuiAction {
-        enum Type { Click,
-                    MouseMove,
-                    KeyPress,
-                    TypeText,
-                    Focus } type;
-        float x, y;
-        int key;
-        std::string text;
-        ImGuiID targetId;
-    };
-
-    std::vector<ImGuiAction> pendingActions;
-    std::mutex actionsMutex;
-
     void queueClick(float x, float y) {
         std::lock_guard<std::mutex> lock(actionsMutex);
         pendingActions.push_back({ ImGuiAction::Click, x, y, 0, "", 0 });
@@ -166,6 +145,62 @@ namespace httpdebug {
         }
         result += "]}";
         return result;
+    }
+
+    std::string getFullLayoutJson() {
+        std::string result = "{\"layout\": {";
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+
+        result += "\"windows\": [";
+        bool firstWin = true;
+        for (ImGuiWindow* window : ctx->Windows) {
+            if (!firstWin) result += ", ";
+            result += "{";
+            result += "\"name\": \"" + std::string(window->Name) + "\", ";
+            result += "\"id\": " + std::to_string(window->ID) + ", ";
+            result += "\"x\": " + std::to_string(window->Pos.x) + ", ";
+            result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
+            result += "\"w\": " + std::to_string(window->Size.x) + ", ";
+            result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            firstWin = false;
+        }
+        result += "], ";
+
+        result += "\"viewport\": {\"w\": " + std::to_string(ctx->IO.DisplaySize.x) + ", \"h\": " + std::to_string(ctx->IO.DisplaySize.y) + "}";
+        result += "}}";
+        return result;
+    }
+
+    std::string getSimpleLayoutJson() {
+        std::string result = "{\"elements\": [";
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+        bool first = true;
+
+        for (ImGuiWindow* window : ctx->Windows) {
+            if (!first) result += ", ";
+            result += "{";
+            result += "\"type\": \"window\", ";
+            result += "\"name\": \"" + std::string(window->Name) + "\", ";
+            result += "\"id\": " + std::to_string(window->ID) + ", ";
+            result += "\"x\": " + std::to_string(window->Pos.x) + ", ";
+            result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
+            result += "\"w\": " + std::to_string(window->Size.x) + ", ";
+            result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            first = false;
+        }
+
+        result += "], \"viewport\": {";
+        result += "\"w\": " + std::to_string(ctx->IO.DisplaySize.x) + ", ";
+        result += "\"h\": " + std::to_string(ctx->IO.DisplaySize.y);
+        result += "}}";
+        return result;
+    }
+
+    void queueClickById(ImGuiID id) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::ClickById, 0, 0, 0, "", id });
     }
 
 #endif // __cplusplus
@@ -227,6 +262,34 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
     if (strcmp(request->path, "/stop") == 0 || strcmp(request->path, "/exit") == 0) {
         httpdebug::stopApp();
         return responseAllocJSON("{\"status\": \"exiting\"}");
+    }
+
+    if (strcmp(request->path, "/layout") == 0) {
+        return responseAllocJSON(httpdebug::getSimpleLayoutJson().c_str());
+    }
+
+    if (strcmp(request->path, "/clickid") == 0) {
+        char* idParam = strdupDecodeGETParam("id=", request, "0");
+        ImGuiID id = (ImGuiID)atoi(idParam);
+        httpdebug::queueClickById(id);
+        free(idParam);
+        return responseAllocJSON("{\"action\": \"click_id\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/start") == 0) {
+        httpdebug::requestSdrStart();
+        return responseAllocJSON("{\"action\": \"sdr_start\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/stop") == 0) {
+        httpdebug::requestSdrStop();
+        return responseAllocJSON("{\"action\": \"sdr_stop\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/status") == 0) {
+        return responseAllocJSONWithFormat(
+            "{\"playing\": %s}",
+            httpdebug::isSdrPlaying() ? "true" : "false");
     }
 #endif
 
