@@ -370,6 +370,7 @@ namespace backend {
             }
 
             render();
+            httpdebug::clearWidgetRegistry();
         }
 
         return 0;

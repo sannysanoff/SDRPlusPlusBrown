@@ -8,6 +8,7 @@
 #include <atomic>
 #include <filesystem>
 #include <unordered_map>
+#include <map>
 #include <cstdarg>
 
 #ifdef __cplusplus
@@ -35,6 +36,37 @@ int acceptConnectionsWrapper(Server* server, uint16_t port) {
 }
 
 // Define httpdebug namespace functions here
+namespace httpdebug {
+
+    std::vector<WidgetInfo> widgetRegistry;
+
+    void registerWidget(ImGuiID id, ImGuiItemStatusFlags flags, const ImRect& rect) {
+        if (id == 0) return;
+        WidgetInfo info;
+        info.id = id;
+        info.label = "";
+        info.flags = flags;
+        info.rect = rect;
+        widgetRegistry.push_back(info);
+    }
+
+    void clearWidgetRegistry() {
+        widgetRegistry.clear();
+    }
+
+    std::vector<WidgetInfo>& getWidgetRegistry() {
+        return widgetRegistry;
+    }
+
+}
+
+// Called from ImGui::ItemAdd to register widgets for the debug layout
+namespace ImGui {
+    void sdrcppRegisterWidget(ImGuiID widgetId, ImGuiItemStatusFlags flags, const ImRect& rect) {
+        httpdebug::registerWidget(widgetId, flags, rect);
+    }
+}
+
 namespace httpdebug {
 
     void startHttpServer(int port) {
@@ -177,6 +209,7 @@ namespace httpdebug {
         ImGuiContext* ctx = ImGui::GetCurrentContext();
         bool first = true;
 
+        // Windows
         for (ImGuiWindow* window : ctx->Windows) {
             if (!first) result += ", ";
             result += "{";
@@ -187,6 +220,46 @@ namespace httpdebug {
             result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
             result += "\"w\": " + std::to_string(window->Size.x) + ", ";
             result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            first = false;
+        }
+
+        // Open popups/menus
+        for (int i = 0; i < ctx->OpenPopupStack.Size; i++) {
+            ImGuiPopupData& popup = ctx->OpenPopupStack[i];
+            if (popup.Window) {
+                if (!first) result += ", ";
+                result += "{";
+                result += "\"type\": \"popup\", ";
+                result += "\"name\": \"" + std::string(popup.Window->Name) + "\", ";
+                result += "\"id\": " + std::to_string(popup.PopupId) + ", ";
+                result += "\"x\": " + std::to_string(popup.Window->Pos.x) + ", ";
+                result += "\"y\": " + std::to_string(popup.Window->Pos.y) + ", ";
+                result += "\"w\": " + std::to_string(popup.Window->Size.x) + ", ";
+                result += "\"h\": " + std::to_string(popup.Window->Size.y);
+                result += "}";
+                first = false;
+            }
+        }
+
+        // Widgets from registry
+        std::map<ImGuiID, WidgetInfo> uniqueWidgets;
+        for (const auto& w : widgetRegistry) {
+            if (w.id != 0) {
+                uniqueWidgets[w.id] = w;
+            }
+        }
+        for (const auto& it : uniqueWidgets) {
+            const WidgetInfo& w = it.second;
+            if (!first) result += ", ";
+            result += "{";
+            result += "\"type\": \"widget\", ";
+            result += "\"name\": \"" + w.label + "\", ";
+            result += "\"id\": " + std::to_string(w.id) + ", ";
+            result += "\"x\": " + std::to_string(w.rect.Min.x) + ", ";
+            result += "\"y\": " + std::to_string(w.rect.Min.y) + ", ";
+            result += "\"w\": " + std::to_string(w.rect.Max.x - w.rect.Min.x) + ", ";
+            result += "\"h\": " + std::to_string(w.rect.Max.y - w.rect.Min.y);
             result += "}";
             first = false;
         }

@@ -99,6 +99,16 @@ namespace httpdebug {
     std::string getAllWindowsJson();
     std::string getSimpleLayoutJson();
 
+    struct WidgetInfo {
+        ImGuiID id;
+        std::string label;
+        ImGuiItemStatusFlags flags;
+        ImRect rect;
+    };
+    void registerWidget(ImGuiID id, ImGuiItemStatusFlags flags, const ImRect& rect);
+    void clearWidgetRegistry();
+    std::vector<WidgetInfo>& getWidgetRegistry();
+
 #endif // __cplusplus
 
 } // namespace httpdebug
