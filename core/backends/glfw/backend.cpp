@@ -331,6 +331,11 @@ namespace backend {
                     httpdebug::setSdrPlaying(false);
                 }
 
+                std::string srcReq = httpdebug::getSourceChangeRequest();
+                if (!srcReq.empty()) {
+                    sigpath::sourceManager.selectSource(srcReq);
+                }
+
                 httpdebug::procfs::processQueue();
 
                 httpdebug::ImGuiAction action;

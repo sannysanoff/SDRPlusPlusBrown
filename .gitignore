@@ -33,3 +33,4 @@ qemu/
 /go
 /android/.gradle
 /xcode
+*.log
