@@ -16,6 +16,8 @@
 #include <backend.h>
 #include <iostream>
 #include <gui/menus/display.h>
+#include <http_debug_server.h>
+#include <thread>
 
 #include "../../tests/test_utils.h"
 
@@ -578,7 +580,7 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["VHF Digital Modes"]["module"] = "ch_extravhf_decoder";
     defConfig["moduleInstances"]["VHF Digital Modes"]["enabled"] = true;
     defConfig["moduleInstances"]["TETRA Demodulator"]["module"] = "ch_tetra_demodulator";
-    defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = true;
+    defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = false;
     // defConfig["moduleInstances"]["Rigctl Client"] = "rigctl_client";
     // TODO: Enable rigctl_client when ready
     // defConfig["moduleInstances"]["Scanner"] = "scanner";
@@ -761,10 +763,30 @@ int sdrpp_main(int argc, char* argv[]) {
 
     gui::mainWindow.init();
 
+    // Start HTTP debug server if port > 0
+    int httpPort = (int)core::args["http"];
+    httpdebug::startHttpServer(httpPort);
+
+    // Wait a bit for HTTP server to start listening
+    if (httpPort > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Signal server is ready before entering main loop
+    httpdebug::signalReady();
+
+    // Wait for debug command file if specified
+    std::string debugWaitFile = (std::string)core::args["debug-wait"];
+    if (!debugWaitFile.empty()) {
+        flog::info("Waiting for debug command file: {}", debugWaitFile);
+        httpdebug::waitForDebugCommand(debugWaitFile);
+    }
+
     flog::info("Ready.");
 
     test1();
 
+    httpdebug::signalMainLoopStarted();
 
     // Run render loop (TODO: CHECK RETURN VALUE)
     backend::renderLoop();

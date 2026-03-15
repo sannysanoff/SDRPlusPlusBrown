@@ -23,18 +23,20 @@ void CommandArgsParser::defineAll() {
 
 
     define('a', "addr", "Server mode address", "0.0.0.0");
-        define('h', "help", "Show help");
-        define('p', "port", "Server mode port", 5259);
-        define('r', "root", "Root directory, where all config files are stored", std::filesystem::absolute(root).string());
-        define('x', "temp", "Temp directory, where all temporary files are stored", tempPath);
-        define('s', "server", "Run in server mode");
-        define('\0', "password", "Protect server mode protocol with password",std::string(""));
-        define('\0', "autostart", "Automatically start the SDR after loading");
+    define('h', "help", "Show help");
+    define('p', "port", "Server mode port", 5259);
+    define('r', "root", "Root directory, where all config files are stored", std::filesystem::absolute(root).string());
+    define('x', "temp", "Temp directory, where all temporary files are stored", tempPath);
+    define('s', "server", "Run in server mode");
+    define('\0', "password", "Protect server mode protocol with password", std::string(""));
+    define('\0', "autostart", "Automatically start the SDR after loading");
+    define('\0', "http", "HTTP debug server port (0 to disable)", 8080);
+    define('\0', "debug-wait", "File to wait for before continuing (for debugging)", std::string(""));
 
-        // Test-related command line arguments. Will not fail in runtime, will be just ignored.
-        define('t', "test", "Run a specific test", std::string(""));
-        define('e', "enable_plugins", "Whitelist of plugins to enable (comma-separated)", std::string(""));
-        define('\0', "test_root", "Root directory for test files", std::string(""));
+    // Test-related command line arguments. Will not fail in runtime, will be just ignored.
+    define('t', "test", "Run a specific test", std::string(""));
+    define('e', "enable_plugins", "Whitelist of plugins to enable (comma-separated)", std::string(""));
+    define('\0', "test_root", "Root directory for test files", std::string(""));
 }
 
 int CommandArgsParser::parse(int argc, char* argv[]) {
