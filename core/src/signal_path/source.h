@@ -40,6 +40,7 @@ public:
 
     std::vector<std::string> getSourceNames();
 
+    Event<std::string> onSourceSelected;
     Event<std::string> onSourceRegistered;
     Event<std::string> onSourceUnregister;
     Event<std::string> onSourceUnregistered;

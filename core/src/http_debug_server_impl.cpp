@@ -550,7 +550,25 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 break;
             }
             std::string value = e.read ? e.read() : "";
-            json += "{\"path\": \"" + e.path + "\", \"value\": \"" + value + "\", \"type\": \"" + typeStr + "\", \"writable\": " + (e.write ? "true" : "false") + "}";
+            std::string valueEscaped;
+            for (char c : value) {
+                if (c == '"')
+                    valueEscaped += "\\\"";
+                else if (c == '\\')
+                    valueEscaped += "\\\\";
+                else
+                    valueEscaped += c;
+            }
+            std::string pathEscaped;
+            for (char c : e.path) {
+                if (c == '"')
+                    pathEscaped += "\\\"";
+                else if (c == '\\')
+                    pathEscaped += "\\\\";
+                else
+                    pathEscaped += c;
+            }
+            json += "{\"path\": \"" + pathEscaped + "\", \"value\": \"" + valueEscaped + "\", \"type\": \"" + typeStr + "\", \"writable\": " + (e.write ? "true" : "false") + "}";
         }
         json += "]";
         return responseAllocJSON(json.c_str());

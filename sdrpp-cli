@@ -92,11 +92,96 @@ for e in sorted(data, key=lambda x: x['path']):
 PYEOF
 }
 
+set_value() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: $0 set <path> <value>"
+        echo "Example: $0 set /source/type File"
+        exit 1
+    fi
+    
+    if ! pgrep -f "sdrpp" > /dev/null 2>&1; then
+        echo "SDR++ is not running. Start with: $0 start"
+        exit 1
+    fi
+    
+    local path="$1"
+    local value="$2"
+    
+    python3 << PYEOF
+import json
+import subprocess
+import sys
+from urllib.parse import quote
+
+path = "$path"
+value = "$2"
+
+# Get endpoint info to determine type
+data = json.loads(subprocess.run(['curl', '-s', 'http://localhost:8080/ls'], capture_output=True, text=True).stdout)
+endpoint = next((e for e in data if e['path'] == path), None)
+
+if not endpoint:
+    print(f"Error: Endpoint {path} not found", file=sys.stderr)
+    sys.exit(1)
+
+if not endpoint.get('writable', False):
+    print(f"Error: Endpoint {path} is not writable", file=sys.stderr)
+    sys.exit(1)
+
+# Convert value to appropriate type based on endpoint type
+endpoint_type = endpoint.get('type', 'string')
+converted_value = value
+
+if endpoint_type == 'bool':
+    if value.lower() in ('true', '1', 'yes'):
+        converted_value = 'true'
+    elif value.lower() in ('false', '0', 'no'):
+        converted_value = 'false'
+    else:
+        print(f"Error: Invalid boolean value: {value}", file=sys.stderr)
+        sys.exit(1)
+elif endpoint_type == 'int':
+    try:
+        converted_value = str(int(value))
+    except ValueError:
+        print(f"Error: Invalid integer value: {value}", file=sys.stderr)
+        sys.exit(1)
+elif endpoint_type == 'float':
+    try:
+        converted_value = str(float(value))
+    except ValueError:
+        print(f"Error: Invalid float value: {value}", file=sys.stderr)
+        sys.exit(1)
+elif endpoint_type == 'string':
+    # Keep as-is, already a string
+    pass
+else:
+    converted_value = value
+
+# URL encode the path for the request
+encoded_path = quote(path, safe='')
+
+# Send POST request
+result = subprocess.run(['curl', '-s', '-X', 'POST', f'http://localhost:8080/proc{encoded_path}', '-d', converted_value], capture_output=True, text=True)
+
+if result.returncode != 0:
+    print(f"Error: Failed to set {path}", file=sys.stderr)
+    sys.exit(1)
+
+if 'error' in result.stdout.lower():
+    print(f"Error: {result.stdout}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Set {path} = {value} (converted to {endpoint_type}: {converted_value})")
+PYEOF
+}
+
 case "$1" in
     start) start ;;
     stop) stop ;;
     status) status ;;
     build) build ;;
     list-all) list-all ;;
-    *) echo "Usage: $0 {start|stop|status|build|list-all}" ;;
+    set) set_value "$2" "$3" ;;
+    *) echo "Usage: $0 {start|stop|status|build|list-all|set}" ;;
 esac

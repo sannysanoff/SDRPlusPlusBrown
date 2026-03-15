@@ -68,6 +68,19 @@ namespace httpdebug::procfs {
 
 All module instances are automatically registered at `/proc/modules/<moduleName>/<instanceName>`. Modules can expose custom handlers by implementing `getInterface("httpEndpoint")`.
 
+**Source Management Endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /proc/source/type` | Get current source type (e.g., "File", "RTL-SDR") |
+| `POST /proc/source/type` | Set source type (triggers source selection) |
+| `GET /proc/source/type:options` | Get JSON array of available source types |
+| `GET /proc/source/<param>` | Get source-specific parameter (varies by source) |
+| `POST /proc/source/<param>` | Set source-specific parameter |
+| `GET /proc/source/<param>:options` | Get JSON array of valid options for parameter |
+
+Source modules register their own endpoints when selected. The `:options` endpoint provides valid values (e.g., available files for File source, device IDs for hardware sources).
+
 **Example Usage:**
 
 ```bash
@@ -76,6 +89,18 @@ curl http://localhost:8080/proc
 
 # List all module instances
 curl http://localhost:8080/modules
+
+# Get available source types
+curl http://localhost:8080/proc/source/type:options
+
+# Get current source type
+curl http://localhost:8080/proc/source/type
+
+# Set source type (e.g., to "File")
+curl -X POST http://localhost:8080/proc/source/type -d "File"
+
+# Get available files for File source
+curl http://localhost:8080/proc/source/filename:options
 
 # Read module info (auto-registered for all modules)
 curl 'http://localhost:8080/proc/modules/noise_reduction_logmmse/Noise%20Reduction%20logmmse'
@@ -106,10 +131,13 @@ A convenience script for managing SDR++ during development and testing.
 
 **Commands:**
 
-- `./sdrpp-cli start` - Start SDR++ with HTTP debug server on port 8080, waits for main loop to start
+- `./sdrpp-cli build` - Rebuild SDR++ and install to `root_dev/inst/` (agent-friendly, no tail/grep needed)
+- `./sdrpp-cli start` - Start SDR++ with HTTP debug server on port 8080 (LLM-friendly, no sleep needed)
 - `./sdrpp-cli stop` - Stop SDR++ (reports "Was not running" if not running)
 - `./sdrpp-cli status` - Returns "up" or "down"
-- `./sdrpp-cli build` - Rebuild SDR++ and install to `root_dev/inst/`
+
+**Key Notes:**
+- Always use `./sdrpp-cli build` instead of running cmake/make directly
 
 ### Usage in Edit/Test/Debug Loop
 

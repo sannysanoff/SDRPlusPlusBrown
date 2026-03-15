@@ -12,6 +12,7 @@ namespace sourcemenu {
     int sourceId = 0;
     EventHandler<std::string> sourcesChangedHandler;
     EventHandler<std::string> sourceUnregisterHandler;
+    EventHandler<std::string> sourceSelectedHandler;
     OptionList<std::string, std::string> sources;
     std::string selectedSource;
 
@@ -131,6 +132,14 @@ namespace sourcemenu {
         // TODO: Stop everything
     }
 
+    void onSourceSelected(std::string name, void* ctx) {
+        // Update GUI state to match the actual selected source
+        if (sources.valueExists(name)) {
+            sourceId = sources.valueId(name);
+            selectedSource = name;
+        }
+    }
+
     void reloadOffsets() {
         // Clear list
         offsets.clear();
@@ -196,7 +205,8 @@ namespace sourcemenu {
         if (callsignFound.dxccname != "") {
             sigpath::iqFrontEnd.operatorCallsign = operatorCallsignRaw;
         }
-        sigpath::iqFrontEnd.operatorLocation = core::configManager.conf["operatorLocation"]; sigpath::iqFrontEnd.operatorLocation.reserve(30);
+        sigpath::iqFrontEnd.operatorLocation = core::configManager.conf["operatorLocation"];
+        sigpath::iqFrontEnd.operatorLocation.reserve(30);
 
         auto ll = utils::gridToLatLng(sigpath::iqFrontEnd.operatorLocation);
         if (ll.isValid()) {
@@ -224,9 +234,11 @@ namespace sourcemenu {
         // Register handlers
         sourcesChangedHandler.handler = onSourcesChanged;
         sourceUnregisterHandler.handler = onSourceUnregister;
+        sourceSelectedHandler.handler = onSourceSelected;
         sigpath::sourceManager.onSourceRegistered.bindHandler(&sourcesChangedHandler);
         sigpath::sourceManager.onSourceUnregister.bindHandler(&sourceUnregisterHandler);
         sigpath::sourceManager.onSourceUnregistered.bindHandler(&sourcesChangedHandler);
+        sigpath::sourceManager.onSourceSelected.bindHandler(&sourceSelectedHandler);
     }
 
     void addOffset(const std::string& name, double offset) {
@@ -344,7 +356,7 @@ namespace sourcemenu {
 
 
         ImGui::LeftLabel("Offset mode");
-        ImGui::SetNextItemWidth(itemWidth - ImGui::GetCursorPosX() - 2.0f*(lineHeight + 1.5f*spacing));
+        ImGui::SetNextItemWidth(itemWidth - ImGui::GetCursorPosX() - 2.0f * (lineHeight + 1.5f * spacing));
         if (ImGui::Combo("##_sdrpp_offset", &offsetId, offsets.txt)) {
             selectOffsetById(offsetId);
             core::configManager.acquire();
@@ -354,22 +366,22 @@ namespace sourcemenu {
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() - spacing);
         if (offsetId < OFFSET_ID_CUSTOM_BASE) { ImGui::BeginDisabled(); }
-        if (ImGui::Button("-##_sdrpp_offset_del_", ImVec2(lineHeight + 0.5f*spacing, 0))) {
+        if (ImGui::Button("-##_sdrpp_offset_del_", ImVec2(lineHeight + 0.5f * spacing, 0))) {
             delOffsetName = selectedOffset;
             showDelOffsetDialog = true;
         }
         if (offsetId < OFFSET_ID_CUSTOM_BASE) { ImGui::EndDisabled(); }
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() - spacing);
-        if (ImGui::Button("+##_sdrpp_offset_add_", ImVec2(lineHeight + 0.5f*spacing, 0))) {
+        if (ImGui::Button("+##_sdrpp_offset_add_", ImVec2(lineHeight + 0.5f * spacing, 0))) {
             strcpy(newOffsetName, "New Offset");
             showAddOffsetDialog = true;
         }
 
         // Offset delete confirmation
         if (ImGui::GenericDialog("sdrpp_del_offset_confirm", showDelOffsetDialog, GENERIC_DIALOG_BUTTONS_YES_NO, []() {
-            ImGui::Text("Deleting offset named \"%s\". Are you sure?", delOffsetName.c_str());
-        }) == GENERIC_DIALOG_BUTTON_YES) {
+                ImGui::Text("Deleting offset named \"%s\". Are you sure?", delOffsetName.c_str());
+            }) == GENERIC_DIALOG_BUTTON_YES) {
             delOffset(delOffsetName);
         }
 
@@ -412,13 +424,15 @@ namespace sourcemenu {
                 if (callsignFound.dxccname != "") {
                     sigpath::iqFrontEnd.operatorCallsign.resize(strlen(sigpath::iqFrontEnd.operatorCallsign.data()));
                     sigpath::iqFrontEnd.operatorCallsign = operatorCallsignRaw;
-                } else {
+                }
+                else {
                     sigpath::iqFrontEnd.operatorCallsign = "";
                 }
                 core::configManager.acquire();
                 core::configManager.conf["operatorCallsign"] = sigpath::iqFrontEnd.operatorCallsign;
                 core::configManager.release(true);
-            } else {
+            }
+            else {
                 callsignFound.dxccname = "[invalid]";
                 sigpath::iqFrontEnd.operatorCallsign = "";
                 core::configManager.acquire();
@@ -438,12 +452,12 @@ namespace sourcemenu {
             core::configManager.release(true);
 
             operatorLatLng = utils::gridToLatLng(sigpath::iqFrontEnd.operatorLocation);
-
         }
         ImGui::SameLine();
         if (operatorLatLng.isValid()) {
             ImGui::Text("%+02.2f %+02.2f", operatorLatLng.lat, operatorLatLng.lon);
-        } else {
+        }
+        else {
             ImGui::Text("Invalid");
         }
 
@@ -452,7 +466,5 @@ namespace sourcemenu {
             core::configManager.conf["secondsAdjustment"] = sigpath::iqFrontEnd.secondsAdjustment;
             core::configManager.release(true);
         }
-
-
     }
 }
