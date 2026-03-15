@@ -8262,6 +8262,13 @@ bool ImGui::ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb_arg, ImGu
     g.LastItemData.InFlags = g.CurrentItemFlags | extra_flags;
     g.LastItemData.StatusFlags = ImGuiItemStatusFlags_None;
 
+#ifdef __cplusplus
+    extern void sdrcppRegisterWidget(ImGuiID widgetId, ImGuiItemStatusFlags flags, const ImRect& rect);
+    if (id != 0) {
+        sdrcppRegisterWidget(id, g.LastItemData.StatusFlags, bb);
+    }
+#endif
+
     // Directional navigation processing
     if (id != 0)
     {
