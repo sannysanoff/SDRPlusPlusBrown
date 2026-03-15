@@ -40,13 +40,36 @@ namespace httpdebug {
     inline std::atomic<bool> mainLoopStarted{ false };
     inline std::atomic<bool> shouldExit{ false };
 
-    inline void startHttpServer(int port);
-    inline void stopHttpServer();
-    inline void signalReady();
-    inline bool isReady();
-    inline void waitForDebugCommand(const std::string& readyFile);
-    inline void signalMainLoopStarted();
-    inline void stopApp();
+    void startHttpServer(int port);
+    void stopHttpServer();
+    void signalReady();
+    bool isReady();
+    void waitForDebugCommand(const std::string& readyFile);
+    void signalMainLoopStarted();
+    void stopApp();
+
+    inline std::atomic<bool> sdrStartRequest{ false };
+    inline std::atomic<bool> sdrStopRequest{ false };
+    inline std::atomic<bool> sdrPlaying{ false };
+
+    inline void requestSdrStart() {
+        sdrStartRequest.store(true, std::memory_order_release);
+    }
+    inline void requestSdrStop() {
+        sdrStopRequest.store(true, std::memory_order_release);
+    }
+    inline bool getSdrStartRequest() {
+        return sdrStartRequest.exchange(false, std::memory_order_acq_rel);
+    }
+    inline bool getSdrStopRequest() {
+        return sdrStopRequest.exchange(false, std::memory_order_acq_rel);
+    }
+    inline void setSdrPlaying(bool playing) {
+        sdrPlaying.store(playing, std::memory_order_release);
+    }
+    inline bool isSdrPlaying() {
+        return sdrPlaying.load(std::memory_order_acquire);
+    }
 
 #ifdef __cplusplus
 
@@ -55,7 +78,8 @@ namespace httpdebug {
                     MouseMove,
                     KeyPress,
                     TypeText,
-                    Focus } type;
+                    Focus,
+                    ClickById } type;
         float x, y;
         int key;
         std::string text;
@@ -65,13 +89,15 @@ namespace httpdebug {
     inline std::vector<ImGuiAction> pendingActions;
     inline std::mutex actionsMutex;
 
-    inline void queueClick(float x, float y);
-    inline void queueKeyPress(int key);
-    inline void queueTypeText(const std::string& text);
-    inline void queueMouseMove(float x, float y);
-    inline void queueFocus(ImGuiID id);
-    inline bool popAction(ImGuiAction& out);
-    inline std::string getAllWindowsJson();
+    void queueClick(float x, float y);
+    void queueKeyPress(int key);
+    void queueTypeText(const std::string& text);
+    void queueMouseMove(float x, float y);
+    void queueFocus(ImGuiID id);
+    void queueClickById(ImGuiID id);
+    bool popAction(ImGuiAction& out);
+    std::string getAllWindowsJson();
+    std::string getSimpleLayoutJson();
 
 #endif // __cplusplus
 
