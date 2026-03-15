@@ -1,7 +1,8 @@
 #!/bin/bash
 
 BUILD_DIR="/Users/san/Fun/SDRPlusPlus/cmake-build-debug"
-CONFIG_DIR="/tmp/sdrpp_config"
+#CONFIG_DIR="/tmp/sdrpp_config"
+CONFIG_DIR="`pwd`/root_dev"
 
 start() {
     if pgrep -f "sdrpp" > /dev/null 2>&1; then
@@ -46,6 +47,7 @@ stop() {
 }
 
 build() {
+    LOG_FILE="/Users/san/Fun/SDRPlusPlus/build.log"
     cd "$BUILD_DIR"
     cmake .. \
         -DCMAKE_OSX_ARCHITECTURES=arm64 \
@@ -53,10 +55,26 @@ build() {
         -DOPT_BUILD_PLUTOSDR_SOURCE=OFF \
         -DCMAKE_INSTALL_PREFIX=/Users/san/Fun/SDRPlusPlus/root_dev/inst \
         -DOPT_BUILD_CH_EXTRAVHF_DECODER:BOOL=ON \
-        -DOPT_BUILD_CH_TETRA_DEMODULATOR:BOOL=ON > /dev/null 2>&1
-    make -j$(nproc) > /dev/null 2>&1
-    make install > /dev/null 2>&1
-    echo "Build complete"
+        -DOPT_BUILD_CH_TETRA_DEMODULATOR:BOOL=ON > "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        tail -50 "$LOG_FILE"
+        exit 1
+    fi
+    
+    make -j$(nproc) >> "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        tail -50 "$LOG_FILE"
+        exit 1
+    fi
+    
+    make install >> "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        tail -50 "$LOG_FILE"
+        exit 1
+    fi
+    
+    WARNINGS=$(grep -ci "warning:" "$LOG_FILE" 2>/dev/null || true)
+    echo "$WARNINGS warnings, log saved in $LOG_FILE"
 }
 
 case "$1" in
