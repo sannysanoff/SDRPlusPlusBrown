@@ -331,6 +331,8 @@ namespace backend {
                     httpdebug::setSdrPlaying(false);
                 }
 
+                httpdebug::procfs::processQueue();
+
                 httpdebug::ImGuiAction action;
                 while (httpdebug::popAction(action)) {
                     switch (action.type) {

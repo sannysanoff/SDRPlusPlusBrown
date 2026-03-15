@@ -77,10 +77,26 @@ build() {
     echo "$WARNINGS warnings, log saved in $LOG_FILE"
 }
 
+list-all() {
+    if ! pgrep -f "sdrpp" > /dev/null 2>&1; then
+        echo "SDR++ is not running. Start with: $0 start"
+        exit 1
+    fi
+    
+    python3 << 'PYEOF'
+import json
+import subprocess
+data = json.loads(subprocess.run(['curl', '-s', 'http://localhost:8080/ls'], capture_output=True, text=True).stdout)
+for e in sorted(data, key=lambda x: x['path']):
+    print(f"{e['path']} = {e['value']} ({e['type']})")
+PYEOF
+}
+
 case "$1" in
     start) start ;;
     stop) stop ;;
     status) status ;;
     build) build ;;
-    *) echo "Usage: $0 {start|stop|status|build}" ;;
+    list-all) list-all ;;
+    *) echo "Usage: $0 {start|stop|status|build|list-all}" ;;
 esac

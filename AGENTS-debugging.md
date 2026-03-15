@@ -27,6 +27,63 @@ SDR++ includes an embedded HTTP debug server from [EmbeddableWebServer](https://
 | `GET /sdr/start` | Start SDR playback |
 | `GET /sdr/stop` | Stop SDR playback |
 | `GET /sdr/status` | Get SDR playing status (true/false) |
+| `GET /modules` | List all module instances with their module names |
+| `GET /proc` | List all registered procfs endpoints |
+| `GET /proc/<path>` | Read from a registered procfs endpoint |
+| `POST /proc/<path>` | Write to a registered procfs endpoint |
+
+### ProcFS (/proc) Endpoint System
+
+SDR++ provides a /proc-style filesystem-like API for reading and writing to module states. All requests are queued and processed in the UI loop (like ImGui actions), ensuring thread safety.
+
+**Core API** (in `http_debug_server.h`):
+
+```cpp
+namespace httpdebug::procfs {
+    // Register a custom handler
+    int registerHandler(const std::string& path, Handler handler);
+    
+    // Convenience: register a boolean value (auto GET/POST)
+    int registerBool(const std::string& path, bool* value);
+    
+    // Convenience: register an integer (read-only if readOnly=true)
+    int registerInt(const std::string& path, int* value, bool readOnly = false);
+    
+    // Convenience: register a float (read-only if readOnly=true)
+    int registerFloat(const std::string& path, float* value, bool readOnly = false);
+    
+    // Register a container with dynamic children
+    int registerContainer(const std::string& path, ListChildren listChildren, ContainerHandler handler);
+    
+    // Unregister by path or handle
+    void unregister(const std::string& path);
+    void unregister(int handle);
+    
+    // List all registered endpoints
+    std::vector<std::string> list();
+}
+```
+
+**Module Auto-Registration:**
+
+All module instances are automatically registered at `/proc/modules/<moduleName>/<instanceName>`. Modules can expose custom handlers by implementing `getInterface("httpEndpoint")`.
+
+**Example Usage:**
+
+```bash
+# List all registered endpoints
+curl http://localhost:8080/proc
+
+# List all module instances
+curl http://localhost:8080/modules
+
+# Read module info (auto-registered for all modules)
+curl 'http://localhost:8080/proc/modules/noise_reduction_logmmse/Noise%20Reduction%20logmmse'
+# Returns: {"module": "noise_reduction_logmmse", "instance": "...", "hasEndpoints": false}
+
+# Access radio module (if has custom handlers)
+curl http://localhost:8080/proc/modules/radio/Radio
+```
 
 ### Usage Example
 

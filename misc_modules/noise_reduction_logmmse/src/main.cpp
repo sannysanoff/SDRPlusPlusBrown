@@ -14,6 +14,7 @@
 #include <radio_interface.h>
 #include "if_nr.h"
 #include "af_nr.h"
+#include <http_debug_server.h>
 
 using namespace ImGui;
 
@@ -49,9 +50,18 @@ public:
         gui::menu.registerEntry(name, menuHandler, this, NULL);
         updateBindings();
         actuateIFNR();
+
+        std::string path = "/modules/noise_reduction_logmmse/" + name;
+        httpdebug::procfs::registerEndpoint(path + "/baseband_nr", [&]() { return ifnr ? "true" : "false"; }, [&](const std::string& v) { ifnr = (v == "true" || v == "1"); actuateIFNR(); }, httpdebug::procfs::Type::Bool);
+        httpdebug::procfs::registerEndpoint(path + "/snr_chart", [&]() { return snrChartWidget ? "true" : "false"; }, [&](const std::string& v) { snrChartWidget = (v == "true" || v == "1"); }, httpdebug::procfs::Type::Bool);
+        httpdebug::procfs::registerEndpoint(path + "/cpu_usage", [&]() { return std::to_string(ifnrProcessor.percentUsage); }, nullptr, httpdebug::procfs::Type::Int);
     }
 
     ~NRModule() {
+        std::string path = "/modules/noise_reduction_logmmse/" + name;
+        httpdebug::procfs::unregister(path + "/baseband_nr");
+        httpdebug::procfs::unregister(path + "/snr_chart");
+        httpdebug::procfs::unregister(path + "/cpu_usage");
         gui::menu.removeEntry(name);
     }
 
