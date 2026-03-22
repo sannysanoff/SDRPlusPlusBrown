@@ -8,7 +8,7 @@ include(${SDRPP_MODULE_CMAKE})
 if (MSVC)
     target_link_directories(hydrasdr_source PRIVATE "C:/Program Files/hydrasdr-host/lib/")
 
-    target_include_directories(hydrasdr_source PUBLIC "C:/Program Files/hydrasdr-host/include/libhydrasdr")
+    target_include_directories(hydrasdr_source PUBLIC "C:/Program Files (x86)/hydrasdr-host/include/libhydrasdr")
 
     target_link_libraries(hydrasdr_source PRIVATE hydrasdr)
 elseif (ANDROID)
