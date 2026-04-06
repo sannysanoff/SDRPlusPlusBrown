@@ -19,6 +19,8 @@ For wideband 8-bit operation, this branch is intended to be used with [`tezuka_f
 
 Build and packaging notes for this LibreSDR-oriented branch are documented in [`docs/libresdr_windows_build.md`](docs/libresdr_windows_build.md).
 
+A Traditional Chinese LibreSDR usage guide is available in [`docs/libresdr_usage_zh-TW.md`](docs/libresdr_usage_zh-TW.md).
+
 **Please do not report bugs in this fork to original author. Use original application, it works better.**
 
 **Report bugs in this fork on this page, in ISSUES.** 
