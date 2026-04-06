@@ -9,6 +9,7 @@
 #include <ad9361.h>
 #include <utils/optionlist.h>
 #include <algorithm>
+#include <cctype>
 #include <regex>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
@@ -26,8 +27,175 @@ ConfigManager config;
 const std::vector<const char*> deviceWhiteList = {
     "PlutoSDR",
     "ANTSDR",
-    "LibreSDR"
+    "LibreSDR",
+    "Pluto+",
+    "ad9361",
+    "FISH"
 };
+
+static std::string toLowerCopy(std::string str) {
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+        return (char)std::tolower(c);
+    });
+    return str;
+}
+
+static bool containsInsensitive(const std::string& haystack, const std::string& needle) {
+    return toLowerCopy(haystack).find(toLowerCopy(needle)) != std::string::npos;
+}
+
+static iio_device* findDeviceByNameContains(iio_context* ctx, const std::string& needle) {
+    unsigned int devCount = iio_context_get_devices_count(ctx);
+    for (unsigned int i = 0; i < devCount; i++) {
+        iio_device* dev = iio_context_get_device(ctx, i);
+        const char* name = iio_device_get_name(dev);
+        if (name != nullptr && containsInsensitive(name, needle)) {
+            return dev;
+        }
+    }
+    return nullptr;
+}
+
+static iio_device* findRxStreamingDevice(iio_context* ctx) {
+    iio_device* dev = iio_context_find_device(ctx, "cf-ad9361-lpc");
+    if (dev != nullptr) {
+        return dev;
+    }
+
+    unsigned int devCount = iio_context_get_devices_count(ctx);
+    for (unsigned int i = 0; i < devCount; i++) {
+        dev = iio_context_get_device(ctx, i);
+        if (iio_device_find_channel(dev, "voltage0", false) != nullptr &&
+            iio_device_find_channel(dev, "voltage1", false) != nullptr) {
+            return dev;
+        }
+    }
+    return nullptr;
+}
+
+static bool looksLikePlutoCompatibleContext(const std::string& uri) {
+    iio_context* ctx = iio_create_context_from_uri(uri.c_str());
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    iio_device* phy = iio_context_find_device(ctx, "ad9361-phy");
+    if (phy == nullptr) {
+        phy = findDeviceByNameContains(ctx, "ad9361-phy");
+    }
+    iio_device* rxDev = findRxStreamingDevice(ctx);
+
+    bool compatible = (phy != nullptr && rxDev != nullptr);
+    iio_context_destroy(ctx);
+    return compatible;
+}
+
+static std::string getContextAttr(iio_context* ctx, const char* key) {
+    const char* value = iio_context_get_attr_value(ctx, key);
+    if (value == nullptr) {
+        return "";
+    }
+    return value;
+}
+
+static std::string buildContextDescription(iio_context* ctx, const std::string& uri) {
+    std::string model = getContextAttr(ctx, "hw_model");
+    std::string serial = getContextAttr(ctx, "hw_serial");
+    std::string ipAddr = getContextAttr(ctx, "ip,ip-addr");
+
+    if (ipAddr.empty()) {
+        ipAddr = uri;
+    }
+    if (model.empty()) {
+        model = "Unknown";
+    }
+    if (serial.empty()) {
+        serial = "unknown";
+    }
+
+    return ipAddr + " (" + model + "), serial=" + serial + " [" + uri + "]";
+}
+
+static std::string stripUriSuffix(const std::string& desc) {
+    size_t uriStart = desc.rfind(" [");
+    size_t uriEnd = desc.size();
+    if (uriStart != std::string::npos && uriEnd > 0 && desc[uriEnd - 1] == ']') {
+        return desc.substr(0, uriStart);
+    }
+    return desc;
+}
+
+static std::string extractSerialFromDescription(const std::string& desc) {
+    std::regex serialRgx("serial=([0-9A-Za-z]+)", std::regex::ECMAScript);
+    std::smatch serialMatch;
+    if (std::regex_search(desc, serialMatch, serialRgx) && serialMatch.size() > 1) {
+        return serialMatch[1].str();
+    }
+    return "";
+}
+
+static std::string findCompatibleConfigKey(const json& devicesConf, const std::string& desc) {
+    if (!devicesConf.is_object()) {
+        return "";
+    }
+
+    if (devicesConf.contains(desc)) {
+        return desc;
+    }
+
+    std::string normalizedDesc = stripUriSuffix(desc);
+    std::string serial = extractSerialFromDescription(desc);
+
+    for (auto it = devicesConf.begin(); it != devicesConf.end(); ++it) {
+        const std::string existingKey = it.key();
+        if (stripUriSuffix(existingKey) == normalizedDesc) {
+            return existingKey;
+        }
+        if (!serial.empty() && extractSerialFromDescription(existingKey) == serial) {
+            return existingKey;
+        }
+    }
+
+    return "";
+}
+
+static std::string getPreferredNetworkUri(iio_context* ctx, const std::string& fallbackUri) {
+    std::string ipAddr = getContextAttr(ctx, "ip,ip-addr");
+    if (!ipAddr.empty()) {
+        return "ip:" + ipAddr;
+    }
+    return fallbackUri;
+}
+
+static std::string buildContextDeviceName(const std::string& uri, const std::string& desc) {
+    std::regex backendRgx(".+(?=:)", std::regex::ECMAScript);
+    std::regex modelRgx("\\(.+(?=\\),)", std::regex::ECMAScript);
+    std::regex serialRgx("serial=[0-9A-Za-z]+", std::regex::ECMAScript);
+
+    std::string backend = "unknown";
+    std::smatch backendMatch;
+    if (std::regex_search(uri, backendMatch, backendRgx)) {
+        backend = backendMatch[0];
+    }
+
+    std::string model = "Unknown";
+    std::smatch modelMatch;
+    if (std::regex_search(desc, modelMatch, modelRgx)) {
+        model = modelMatch[0];
+        int parenthPos = model.find('(');
+        if (parenthPos != std::string::npos) {
+            model = model.substr(parenthPos + 1);
+        }
+    }
+
+    std::string serial = "unknown";
+    std::smatch serialMatch;
+    if (std::regex_search(desc, serialMatch, serialRgx)) {
+        serial = serialMatch[0].str().substr(7);
+    }
+
+    return '(' + backend + ") " + model + " [" + serial + ']';
+}
 
 class PlutoSDRSourceModule : public ModuleManager::Instance {
 public:
@@ -51,6 +219,9 @@ public:
         gainModes.define("fast_attack", "Fast Attack", "fast_attack");
         gainModes.define("slow_attack", "Slow Attack", "slow_attack");
         gainModes.define("hybrid", "Hybrid", "hybrid");
+
+        iqModeSelect.define("cs16", "CS16", "cs16");
+        iqModeSelect.define("cs8", "CS8", "cs8");
 
         // Enumerate devices
         refresh();
@@ -85,11 +256,26 @@ public:
     }
 
     void disable() {
-        enabled = true;
+        enabled = false;
     }
 
     bool isEnabled() {
         return enabled;
+    }
+
+    static void applySampleRateChange(PlutoSDRSourceModule* _this) {
+        bool wasRunning = _this->running;
+        double keepFreq = _this->freq;
+
+        core::setInputSampleRate(_this->samplerate);
+
+        if (!wasRunning) {
+            return;
+        }
+
+        stop(_this);
+        start(_this);
+        tune(keepFreq, _this);
     }
 
 private:
@@ -118,16 +304,12 @@ private:
             return;
         }
 
-        // Create parsing regexes
-        std::regex backendRgx(".+(?=:)", std::regex::ECMAScript);
-        std::regex modelRgx("\\(.+(?=\\),)", std::regex::ECMAScript);
-        std::regex serialRgx("serial=[0-9A-Za-z]+", std::regex::ECMAScript);
-
         // Enumerate devices
         iio_context_info** ctxInfoList;
         ssize_t count = iio_scan_context_get_info_list(sctx, &ctxInfoList);
         if (count < 0) {
             flog::error("Failed to enumerate contexts");
+            iio_scan_context_destroy(sctx);
             return;
         }
         for (ssize_t i = 0; i < count; i++) {
@@ -138,9 +320,15 @@ private:
             // If the device is not a plutosdr, don't include it
             bool isPluto = false;
             for (const auto type : deviceWhiteList) {
-                if (desc.find(type) != std::string::npos) {
+                if (containsInsensitive(desc, type)) {
                     isPluto = true;
                     break;
+                }
+            }
+            if (!isPluto) {
+                isPluto = looksLikePlutoCompatibleContext(duri);
+                if (isPluto) {
+                    flog::info("Accepted IIO device by capability probe: [{}] {}", duri, desc);
                 }
             }
             if (!isPluto) {
@@ -148,33 +336,8 @@ private:
                 continue;
             }
 
-            // Extract the backend
-            std::string backend = "unknown";
-            std::smatch backendMatch;
-            if (std::regex_search(duri, backendMatch, backendRgx)) {
-                backend = backendMatch[0];
-            }
-
-            // Extract the model
-            std::string model = "Unknown";
-            std::smatch modelMatch;
-            if (std::regex_search(desc, modelMatch, modelRgx)) {
-                model = modelMatch[0];
-                int parenthPos = model.find('(');
-                if (parenthPos != std::string::npos) {
-                    model = model.substr(parenthPos+1);
-                }
-            }
-
-            // Extract the serial
-            std::string serial = "unknown";
-            std::smatch serialMatch;
-            if (std::regex_search(desc, serialMatch, serialRgx)) {
-                serial = serialMatch[0].str().substr(7);
-            }
-
             // Construct the device name
-            std::string devName = '(' + backend + ") " + model + " [" + serial + ']';
+            std::string devName = buildContextDeviceName(duri, desc);
 
             // Skip duplicate devices
             if (devices.keyExists(desc) || devices.nameExists(devName) || devices.valueExists(duri)) { continue; }
@@ -186,6 +349,44 @@ private:
         
         // Destroy scan context
         iio_scan_context_destroy(sctx);
+
+        const std::vector<std::string> manualUris = {
+            "ip:192.168.2.1",
+            "ip:libresdr.local"
+        };
+
+        for (const auto& manualUri : manualUris) {
+            if (devices.valueExists(manualUri)) {
+                continue;
+            }
+
+            iio_context* ctx = iio_create_context_from_uri(manualUri.c_str());
+            if (ctx == nullptr) {
+                continue;
+            }
+
+            iio_device* phy = iio_context_find_device(ctx, "ad9361-phy");
+            if (phy == nullptr) {
+                phy = findDeviceByNameContains(ctx, "ad9361-phy");
+            }
+            iio_device* rxDev = findRxStreamingDevice(ctx);
+            if (phy == nullptr || rxDev == nullptr) {
+                iio_context_destroy(ctx);
+                continue;
+            }
+
+            std::string preferredUri = getPreferredNetworkUri(ctx, manualUri);
+            std::string desc = buildContextDescription(ctx, preferredUri);
+            std::string devName = buildContextDeviceName(preferredUri, desc);
+            iio_context_destroy(ctx);
+
+            if (devices.keyExists(desc) || devices.nameExists(devName) || devices.valueExists(preferredUri)) {
+                continue;
+            }
+
+            flog::info("Accepted IIO device by direct URI probe: [{}] {}", preferredUri, desc);
+            devices.define(desc, devName, preferredUri);
+        }
 
 #ifdef __ANDROID__
         // On Android, a default IP entry must be made (TODO: This is not ideal since the IP cannot be changed)
@@ -199,17 +400,21 @@ private:
         // If no device is available, give up
         if (devices.empty()) {
             devDesc.clear();
+            uri.clear();
             return;
         }
 
+        std::string selectedDesc = desc;
+
         // If the device is not available, select the first one
-        if (!devices.keyExists(desc)) {
-            select(devices.key(0));
+        if (!devices.keyExists(selectedDesc)) {
+            selectedDesc = devices.key(0);
         }
 
         // Update URI
-        devDesc = desc;
-        uri = devices.value(devices.keyId(desc));
+        devDesc = selectedDesc;
+        devId = devices.keyId(selectedDesc);
+        uri = devices.value(devId);
 
         // TODO: Enumerate capabilities
 
@@ -218,18 +423,30 @@ private:
         bandwidth = 0;
         gmId = 0;
         gain = -1.0f;
+        iqModeId = 0;
 
         // Load device config
         config.acquire();
-        if (config.conf["devices"][devDesc].contains("samplerate")) {
-            samplerate = config.conf["devices"][devDesc]["samplerate"];
+        std::string configKey = findCompatibleConfigKey(config.conf["devices"], devDesc);
+        if (!configKey.empty() && configKey != devDesc) {
+            config.conf["devices"][devDesc] = config.conf["devices"][configKey];
+            if (config.conf["device"] == configKey) {
+                config.conf["device"] = devDesc;
+            }
+            configKey = devDesc;
+            config.release(true);
+            config.acquire();
         }
-        if (config.conf["devices"][devDesc].contains("bandwidth")) {
-            bandwidth = config.conf["devices"][devDesc]["bandwidth"];
+
+        if (!configKey.empty() && config.conf["devices"][configKey].contains("samplerate")) {
+            samplerate = config.conf["devices"][configKey]["samplerate"];
         }
-        if (config.conf["devices"][devDesc].contains("gainMode")) {
+        if (!configKey.empty() && config.conf["devices"][configKey].contains("bandwidth")) {
+            bandwidth = config.conf["devices"][configKey]["bandwidth"];
+        }
+        if (!configKey.empty() && config.conf["devices"][configKey].contains("gainMode")) {
             // Select given gain mode or default if invalid
-            std::string gm = config.conf["devices"][devDesc]["gainMode"];
+            std::string gm = config.conf["devices"][configKey]["gainMode"];
             if (gainModes.keyExists(gm)) {
                 gmId = gainModes.keyId(gm);
             }
@@ -237,9 +454,15 @@ private:
                 gmId = 0;
             }
         }
-        if (config.conf["devices"][devDesc].contains("gain")) {
-            gain = config.conf["devices"][devDesc]["gain"];
-            gain = std::clamp<int>(gain, -1.0f, 73.0f);
+        if (!configKey.empty() && config.conf["devices"][configKey].contains("gain")) {
+            gain = config.conf["devices"][configKey]["gain"];
+            gain = std::clamp(gain, -1.0f, 73.0f);
+        }
+        if (!configKey.empty() && config.conf["devices"][configKey].contains("iqmode")) {
+            std::string iqMode = config.conf["devices"][configKey]["iqmode"];
+            if (iqModeSelect.keyExists(iqMode)) {
+                iqModeId = iqModeSelect.keyId(iqMode);
+            }
         }
         config.release();
 
@@ -290,36 +513,47 @@ private:
         // Get phy and device handle
         _this->phy = iio_context_find_device(_this->ctx, "ad9361-phy");
         if (_this->phy == NULL) {
+            _this->phy = findDeviceByNameContains(_this->ctx, "ad9361-phy");
+        }
+        if (_this->phy == NULL) {
             flog::error("Could not connect to pluto phy");
             iio_context_destroy(_this->ctx);
+            _this->ctx = NULL;
             return;
         }
-        _this->dev = iio_context_find_device(_this->ctx, "cf-ad9361-lpc");
+        _this->dev = findRxStreamingDevice(_this->ctx);
         if (_this->dev == NULL) {
             flog::error("Could not connect to pluto dev");
             iio_context_destroy(_this->ctx);
+            _this->ctx = NULL;
             return;
         }
 
         // Get RX channels
         _this->rxChan = iio_device_find_channel(_this->phy, "voltage0", false);
         _this->rxLO = iio_device_find_channel(_this->phy, "altvoltage0", true);
+        iio_channel* txLO = iio_device_find_channel(_this->phy, "altvoltage1", true);
+        if (_this->rxChan == NULL || _this->rxLO == NULL || txLO == NULL) {
+            flog::error("Could not acquire required Pluto/LibreSDR channels");
+            iio_context_destroy(_this->ctx);
+            _this->ctx = NULL;
+            return;
+        }
 
         // Enable RX LO and disable TX
-        iio_channel_attr_write_bool(iio_device_find_channel(_this->phy, "altvoltage1", true), "powerdown", true);
+        iio_channel_attr_write_bool(txLO, "powerdown", true);
         iio_channel_attr_write_bool(_this->rxLO, "powerdown", false);
 
         // Configure RX channel
         iio_channel_attr_write(_this->rxChan, "rf_port_select", "A_BALANCED");
+        if (_this->freq <= 0.0) {
+            _this->freq = 100000000.0;
+        }
         iio_channel_attr_write_longlong(_this->rxLO, "frequency", round(_this->freq));                              // Freq
-        iio_channel_attr_write_bool(_this->rxChan, "filter_fir_en", true);                                          // Digital filter
         iio_channel_attr_write_longlong(_this->rxChan, "sampling_frequency", round(_this->samplerate));             // Sample rate
         iio_channel_attr_write_double(_this->rxChan, "hardwaregain", _this->gain);                                  // Gain
         iio_channel_attr_write(_this->rxChan, "gain_control_mode", _this->gainModes.value(_this->gmId).c_str());    // Gain mode
         _this->setBandwidth(_this->bandwidth);
-        
-        // Configure the ADC filters
-        ad9361_set_bb_rate(_this->phy, round(_this->samplerate));
 
         // Start worker thread
         _this->running = true;
@@ -370,9 +604,11 @@ private:
             config.release(true);
         }
 
+        if (_this->running) { SmGui::EndDisabled(); }
+
         if (SmGui::Combo(CONCAT("##_pluto_sr_", _this->name), &_this->srId, _this->samplerates.txt)) {
             _this->samplerate = _this->samplerates.value(_this->srId);
-            core::setInputSampleRate(_this->samplerate);
+            applySampleRateChange(_this);
             if (!_this->devDesc.empty()) {
                 config.acquire();
                 config.conf["devices"][_this->devDesc]["samplerate"] = _this->samplerate;
@@ -381,6 +617,7 @@ private:
         }
 
         // Refresh button
+        if (_this->running) { SmGui::BeginDisabled(); }
         SmGui::SameLine();
         SmGui::FillWidth();
         SmGui::ForceSync();
@@ -433,6 +670,19 @@ private:
             }
         }
         if (_this->gmId) { SmGui::EndDisabled(); }
+
+        if (_this->running) { SmGui::BeginDisabled(); }
+        SmGui::LeftLabel("IQ Mode");
+        SmGui::FillWidth();
+        SmGui::ForceSync();
+        if (SmGui::Combo(CONCAT("##_pluto_iqmode_select_", _this->name), &_this->iqModeId, _this->iqModeSelect.txt)) {
+            if (!_this->devDesc.empty()) {
+                config.acquire();
+                config.conf["devices"][_this->devDesc]["iqmode"] = _this->iqModeSelect.key(_this->iqModeId);
+                config.release(true);
+            }
+        }
+        if (_this->running) { SmGui::EndDisabled(); }
     }
 
     void setBandwidth(int bw) {
@@ -446,7 +696,10 @@ private:
 
     static void worker(void* ctx) {
         PlutoSDRSourceModule* _this = (PlutoSDRSourceModule*)ctx;
-        int blockSize = _this->samplerate / 200.0f;
+        constexpr size_t MAX_BUFFER_PLUTO = 64000000 / 2;
+        size_t bufferSize = (size_t)(_this->samplerate / 20.0f);
+        size_t blockSize = std::min<size_t>(STREAM_BUFFER_SIZE, bufferSize);
+        size_t kernelBuffers = std::max<size_t>(1, std::min<size_t>(8, MAX_BUFFER_PLUTO / std::max<size_t>(1, blockSize)));
 
         // Acquire channels
         iio_channel* rx0_i = iio_device_find_channel(_this->dev, "voltage0", 0);
@@ -458,26 +711,44 @@ private:
 
         // Start streaming
         iio_channel_enable(rx0_i);
-        iio_channel_enable(rx0_q);
+        if (_this->iqModeId == 0) {
+            iio_channel_enable(rx0_q);
+        }
+        else {
+            iio_channel_disable(rx0_q);
+        }
 
         // Allocate buffer
+        iio_device_set_kernel_buffers_count(_this->dev, (unsigned int)kernelBuffers);
+        flog::info("PlutoSDRSourceModule '{0}': Allocate {1} kernel buffers", _this->name, kernelBuffers);
+        flog::info("PlutoSDRSourceModule '{0}': Allocate buffer size {1}", _this->name, blockSize);
         iio_buffer* rxbuf = iio_device_create_buffer(_this->dev, blockSize, false);
         if (!rxbuf) {
             flog::error("Could not create RX buffer");
+            iio_channel_disable(rx0_i);
+            iio_channel_disable(rx0_q);
             return;
         }
 
         // Receive loop
         while (true) {
             // Read samples
-            iio_buffer_refill(rxbuf);
+            ssize_t refillRes = iio_buffer_refill(rxbuf);
+            if (refillRes < 0) {
+                flog::error("PlutoSDRSourceModule worker refill failed: {}", refillRes);
+                break;
+            }
 
-            // Get buffer pointer
-            int16_t* buf = (int16_t*)iio_buffer_first(rxbuf, rx0_i);
-            if (!buf) { break; }
-
-            // Convert samples to CF32
-            volk_16i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 32768.0f, blockSize * 2);
+            if (_this->iqModeId == 0) {
+                int16_t* buf = (int16_t*)iio_buffer_start(rxbuf);
+                if (!buf) { break; }
+                volk_16i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 2048.0f, blockSize * 2);
+            }
+            else {
+                int8_t* buf = (int8_t*)iio_buffer_start(rxbuf);
+                if (!buf) { break; }
+                volk_8i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 128.0f, blockSize * 2);
+            }
 
             // Send out the samples
             if (!_this->stream.swap(blockSize)) { break; };
@@ -506,7 +777,7 @@ private:
     std::string devDesc = "";
     std::string uri = "";
 
-    double freq;
+    double freq = 100000000.0;
     int samplerate = 4000000;
     int bandwidth = 0;
     float gain = -1;
@@ -515,11 +786,13 @@ private:
     int srId = 0;
     int bwId = 0;
     int gmId = 0;
+    int iqModeId = 0;
 
     OptionList<std::string, std::string> devices;
     OptionList<int, double> samplerates;
     OptionList<int, double> bandwidths;
     OptionList<std::string, std::string> gainModes;
+    OptionList<std::string, std::string> iqModeSelect;
 };
 
 MOD_EXPORT void _INIT_() {

@@ -2,6 +2,23 @@
 
 [Changelog](changelog.md)
 
+## LibreSDR Special Branch
+
+This branch is a LibreSDR-focused SDR++ Brown build intended for boards that expose PlutoSDR-compatible IIO devices.
+
+What is added in this branch:
+
+* detects LibreSDR more reliably on Windows, including cases where `iio_scan_context` does not return the board but direct `ip:` access works
+* accepts LibreSDR-compatible device descriptions instead of relying on a single hardcoded scan string
+* keeps per-device settings when the same board is rediscovered under a normalized URI such as `ip:192.168.2.1`
+* supports `CS16` and `CS8` IQ streaming modes in the Pluto/LibreSDR source module
+* allows sample-rate changes without requiring a full SDR++ restart
+* includes a Windows packaging script that collects the actual built modules and runtime DLLs used on this machine
+
+For wideband 8-bit operation, this branch is intended to be used with [`tezuka_fw`](https://github.com/F5OEO/tezuka_fw). That firmware adds a complex 8-bit streaming mode for LibreSDR/ZynqSDR; in practice this branch is prepared for 8-bit operation up to 40 MHz on compatible LibreSDR firmware and network setups.
+
+Build and packaging notes for this LibreSDR-oriented branch are documented in [`docs/libresdr_windows_build.md`](docs/libresdr_windows_build.md).
+
 **Please do not report bugs in this fork to original author. Use original application, it works better.**
 
 **Report bugs in this fork on this page, in ISSUES.** 
@@ -52,4 +69,3 @@ Found an issue? Fork is worse than original? File an [issue](https://github.com/
   * use this filename (debug2.keystore) in app/build.gradle along with passwords in the signingConfigs -> debug section.
 
 Good luck.
-

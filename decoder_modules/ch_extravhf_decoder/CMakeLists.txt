@@ -17,7 +17,7 @@ else ()
     string(REGEX REPLACE "add_custom_target.uninstall" "add_custom_target(mbelib_uninstall" TMPF "${TMPF}")
     string(REGEX REPLACE "OUTPUT_NAME mbe" "" TMPF "${TMPF}")
     string(REGEX REPLACE " OFF" " ON" TMPF "${TMPF}")  # disable test
-    string(REPLACE "VERSION 2.6" "VERSION 3.5" TMPF "${TMPF}")
+    string(REPLACE "VERSION 2.6" "VERSION 3.13" TMPF "${TMPF}")
     FILE(WRITE "${DLROOT}/mbelib/CMakeLists.txt" "${TMPF}")
 endif ()
 
