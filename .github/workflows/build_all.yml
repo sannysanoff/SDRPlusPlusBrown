@@ -615,7 +615,29 @@ jobs:
             name: sdrpp_all
             path: sdrpp_all/
 
-    update_nightly_release:
+    build_appimage_amd64:
+        runs-on: ubuntu-latest
+
+        steps:
+        - uses: actions/checkout@v4
+
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/appimage && docker build . --tag sdrpp_appimage_build
+
+        - name: Build AppImage
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_appimage_build bash /root/make_appimage.sh
+
+        - name: Recover AppImage
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlusBrown-x86_64.AppImage ./
+
+        - name: Save AppImage
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_appimage_x64
+              path: ${{runner.workspace}}/SDRPlusPlusBrown-x86_64.AppImage
+
+    nightly_release:
         needs: [create_full_archive]
         runs-on: ubuntu-latest
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}

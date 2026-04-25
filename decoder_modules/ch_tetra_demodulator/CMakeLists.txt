@@ -4,7 +4,7 @@ project(ch_tetra_demodulator)
 set(CMAKE_INSTALL_PREFIX "/usr/")
 include(GNUInstallDirs)
 
-set(ETSI_CODEC_URL "http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip")
+set(ETSI_CODEC_URL "https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip")
 set(ETSI_CODEC_MD5 "a8115fe68ef8f8cc466f4192572a1e3e")
 set(ETSI_CODEC_DIR "${CMAKE_CURRENT_BINARY_DIR}/etsi_codec")
 set(ETSI_CODEC_ZIP "${ETSI_CODEC_DIR}/etsi_tetra_codec.zip")
