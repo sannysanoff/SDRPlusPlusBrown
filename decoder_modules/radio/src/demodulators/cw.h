@@ -18,7 +18,6 @@ namespace demod {
         void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, double audioSR) {
             this->name = name;
             this->_config = config;
-            this->afbwChangeHandler = afbwChangeHandler;
 
             // Load config
             config->acquire();

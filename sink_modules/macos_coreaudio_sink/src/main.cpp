@@ -264,7 +264,10 @@ public:
 private:
     bool doStart() {
         if (devId < 0 || devId >= devices.size()) { return false; }
-        
+
+        // Clear any stale data from internal buffer before starting
+        stereoBuffer.clear();
+
         // Create output audio unit for the selected device
         AudioComponentDescription desc = {
             .componentType = kAudioUnitType_Output,
@@ -537,39 +540,41 @@ private:
             if (status != noErr) {
                 flog::warn("Failed to stop audio unit: {}", status);
             }
-            
+
             status = AudioUnitUninitialize(audioUnit);
             if (status != noErr) {
                 flog::warn("Failed to uninitialize audio unit: {}", status);
             }
-            
+
             status = AudioComponentInstanceDispose(audioUnit);
             if (status != noErr) {
                 flog::warn("Failed to dispose audio unit: {}", status);
             }
             audioUnit = nullptr;
         }
-        
+
         if (inputUnit) {
             // Stop and uninitialize in the correct order
             OSStatus status = AudioOutputUnitStop(inputUnit);
             if (status != noErr) {
                 flog::warn("Failed to stop input unit: {}", status);
             }
-            
+
             status = AudioUnitUninitialize(inputUnit);
             if (status != noErr) {
                 flog::warn("Failed to uninitialize input unit: {}", status);
             }
-            
+
             status = AudioComponentInstanceDispose(inputUnit);
             if (status != noErr) {
                 flog::warn("Failed to dispose input unit: {}", status);
             }
             inputUnit = nullptr;
         }
-        
+
         stereoPacker.stop();
+        // Clear internal buffer to prevent stale audio on restart
+        stereoBuffer.clear();
         if (useMic) {
             sigpath::sinkManager.defaultInputAudio.stop();
             sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
@@ -619,6 +624,15 @@ private:
 
         for (int i = 0; i < count; i++) {
             _this->stereoBuffer[oldSize + i] = _this->stereoPacker.out.readBuf[i];
+        }
+
+        // Prevent buffer from growing too large - limit to ~170ms of audio (2x the 4096 buffer)
+        // This prevents accumulated latency when DSP rate slightly exceeds audio playback rate
+        const size_t MAX_BUFFER_SAMPLES = 8192;
+        if (_this->stereoBuffer.size() > MAX_BUFFER_SAMPLES) {
+            // Drop oldest samples to maintain low latency
+            size_t excess = _this->stereoBuffer.size() - MAX_BUFFER_SAMPLES;
+            _this->stereoBuffer.erase(_this->stereoBuffer.begin(), _this->stereoBuffer.begin() + excess);
         }
 
         int limit = std::min<uint32_t>(inNumberFrames, _this->stereoBuffer.size());

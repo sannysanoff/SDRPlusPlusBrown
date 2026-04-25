@@ -3010,7 +3010,7 @@ void QSOPanel::startAudioPipeline() {
         hipass.init(nullptr, hipassTaps);
         auto lopassTaps = dsp::taps::lowPass0<float>(prevLowPass, 300, trxAudioSampleRate);
         lopass.init(nullptr, lopassTaps);
-        dsp::noise_reduction::Squelch squelch;
+        dsp::noise_reduction::PowerSquelch squelch;
         squelch.init(nullptr, -40);
 
         while (true) {

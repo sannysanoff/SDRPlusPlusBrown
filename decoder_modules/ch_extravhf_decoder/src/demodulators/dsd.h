@@ -203,6 +203,8 @@ namespace demod {
         bool getDynamicAFBandwidth() { return false; }
         bool getFMIFNRAllowed() { return false; }
         bool getNBAllowed() { return false; }
+        bool getHighPassAllowed() { return false; }
+        bool getSquelchAllowed() { return false; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &outputMts.out; }
 
     private:

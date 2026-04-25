@@ -74,8 +74,10 @@ public:
         selectedDemodID = config.conf[name]["selectedDemodId"];
         config.release(created);
 
-        // Initialize the VFO
+        // Initialize the VFO (will be properly configured when selectDemod is called)
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 200000, 200000, 50000, 200000, false);
+        
+        // Bind VFO event handlers
         onUserChangedBandwidthHandler.handler = vfoUserChangedBandwidthHandler;
         onUserChangedBandwidthHandler.ctx = this;
         vfo->wtfVFO->onUserChangedBandwidth.bindHandler(&onUserChangedBandwidthHandler);
@@ -182,9 +184,13 @@ public:
         txHandler.ctx = this;
         txHandler.handler = [](bool txActive, void *ctx){
             auto _this = (RadioModule*)ctx;
-            _this->selectedDemod->setFrozen(txActive);
+            (void)txActive;
         };
         sigpath::txState.bindHandler(&txHandler);
+        
+        // NOW select the demodulator based on config - this will configure the VFO properly
+        // This fixes the bug where VFO bandwidth stays at default 200kHz
+        selectDemodByID((DemodID)selectedDemodID);
     }
 
     // Automation channel — invoked by debug HTTP server
@@ -230,6 +236,20 @@ public:
             } catch (...) {
                 return "{\"error\": \"invalid frequency: '" + args + "'\"}";
             }
+        }
+        if (cmd == "get_vfo_bandwidth") {
+            if (!vfo) {
+                return "{\"error\": \"VFO not initialized\"}";
+            }
+            double wtfBw = vfo->wtfVFO->bandwidth;
+            double lowerOffset = vfo->wtfVFO->lowerOffset;
+            double upperOffset = vfo->wtfVFO->upperOffset;
+            return "{\"vfo_bandwidth\": " + std::to_string(wtfBw) +
+                   ", \"lower_offset\": " + std::to_string(lowerOffset) +
+                   ", \"upper_offset\": " + std::to_string(upperOffset) +
+                   ", \"module_bandwidth\": " + std::to_string(bandwidth) +
+                   ", \"min_bandwidth\": " + std::to_string(minBandwidth) +
+                   ", \"max_bandwidth\": " + std::to_string(maxBandwidth) + "}";
         }
         if (cmd == "get_spectrum") {
             // Parse: bandwidth_hz,num_buckets (optional)
@@ -325,10 +345,6 @@ public:
         sigpath::txState.unbindHandler(&txHandler);
         core::modComManager.unregisterInterface(name);
         gui::menu.removeEntry(name);
-        afsplitter.stop();
-        for (auto& s : streams) {
-            s->stop();
-        }
         if (enabled) {
             disable();
         }
@@ -383,9 +399,9 @@ public:
         core::configManager.release(true);
     }
 
-    void postInit() {}
+    void postInit() override {}
 
-    void enable() {
+    void enable() override {
         enabled = true;
         if (!vfo) {
             vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 200000, 200000, 50000, 200000, false);
@@ -403,7 +419,7 @@ public:
         }
     }
 
-    void disable() {
+    void disable() override {
         enabled = false;
         for (auto& s : streams) {
             s->stop();
@@ -414,29 +430,21 @@ public:
         if (selectedDemod) { selectedDemod->stop(); }
         afChain.stop();
         if (vfo) {
-            sigpath::vfoManager.deleteVFO(vfo);
             vfo->wtfVFO->onUserChangedDemodulator.unbindHandler(&onUserChangedDemodulatorHandler);
+            sigpath::vfoManager.deleteVFO(vfo);
         }
         vfo = NULL;
     }
 
-    bool isEnabled() {
+    bool isEnabled() override {
         return enabled;
     }
 
-    std::string name;
+    int getSelectedDemodId() override {
+        return selectedDemodID;
+    }
 
-    enum DemodID {
-        RADIO_DEMOD_NFM,
-        RADIO_DEMOD_WFM,
-        RADIO_DEMOD_AM,
-        RADIO_DEMOD_DSB,
-        RADIO_DEMOD_USB,
-        RADIO_DEMOD_CW,
-        RADIO_DEMOD_LSB,
-        RADIO_DEMOD_RAW,
-        _RADIO_DEMOD_COUNT,
-    };
+    std::string name;
 
 private:
     static void menuHandler(void* ctx) {
@@ -525,13 +533,20 @@ private:
                 break;
 
             case SQUELCH_MODE_CTCSS_MUTE:
-                if (_this->squelchModes[_this->squelchModeId] == SQUELCH_MODE_CTCSS_MUTE) {
-                    ImGui::LeftLabel("CTCSS Tone");
-                    ImGui::FillWidth();
-                    if (ImGui::Combo(("##_radio_ctcss_tone_" + _this->name).c_str(), &_this->ctcssToneId, _this->ctcssTones.txt)) {
-                        _this->setCTCSSTone(_this->ctcssTones[_this->ctcssToneId]);
-                    }
+            case SQUELCH_MODE_CTCSS_DECODE:
+                ImGui::LeftLabel("CTCSS Tone");
+                ImGui::FillWidth();
+                if (ImGui::Combo(("##_radio_ctcss_tone_" + _this->name).c_str(), &_this->ctcssToneId, _this->ctcssTones.txt)) {
+                    _this->setCTCSSTone(_this->ctcssTones[_this->ctcssToneId]);
                 }
+                break;
+
+            case SQUELCH_MODE_OFF:
+            case SQUELCH_MODE_SNR:
+            case SQUELCH_MODE_DCS_MUTE:
+            case SQUELCH_MODE_DCS_DECODE:
+            default:
+                break;
             }
         }
 
@@ -573,11 +588,14 @@ private:
         }
 
         // Demodulator specific menu
-        _this->selectedDemod->showMenu();
+        if (_this->selectedDemod) {
+            _this->selectedDemod->showMenu();
+        }
 
         // Display the squelch diagnostics
         switch (_this->squelchModes[_this->squelchModeId]) {
         case SQUELCH_MODE_CTCSS_MUTE:
+        case SQUELCH_MODE_CTCSS_DECODE:
             ImGui::TextUnformatted("Received Tone:");
             ImGui::SameLine();
             {
@@ -596,19 +614,13 @@ private:
                 }
             }
             break;
-            
-        case SQUELCH_MODE_CTCSS_DECODE:
-            ImGui::TextUnformatted("Received Tone:");
-            ImGui::SameLine();
-            {
-                auto ctone = _this->ctcss.getCurrentTone();
-                if (ctone != dsp::noise_reduction::CTCSS_TONE_NONE) {
-                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "%.1fHz", dsp::noise_reduction::CTCSS_TONES[_this->ctcss.getCurrentTone()]);
-                }
-                else {
-                    ImGui::TextUnformatted("None");
-                }
-            }
+
+        case SQUELCH_MODE_OFF:
+        case SQUELCH_MODE_POWER:
+        case SQUELCH_MODE_SNR:
+        case SQUELCH_MODE_DCS_MUTE:
+        case SQUELCH_MODE_DCS_DECODE:
+        default:
             break;
         }
 
@@ -646,17 +658,17 @@ private:
         bw = std::clamp<double>(bw, demod->getMinBandwidth(), demod->getMaxBandwidth());
 
         // Initialize
-        demod->init(name, &config, ifChain.out, bw, stream.getSampleRate());
+        demod->init(name, &config, ifChain.out, bw, streams[0]->getSampleRate());
 
         return demod;
     }
 
-    void selectDemodByID(DemodID id) {
+    bool selectDemodByID(DemodID id) override {
         auto startTime = std::chrono::high_resolution_clock::now();
         demod::Demodulator* demod = instantiateDemod(id);
         if (!demod) {
             flog::error("Demodulator {0} not implemented", (int)id);
-            return;
+            return false;
         }
         selectedDemodID = id;
         selectDemod(demod);
@@ -667,11 +679,12 @@ private:
         config.release(true);
         auto endTime = std::chrono::high_resolution_clock::now();
         flog::warn("Demod switch took {0} us", (int64_t)((std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)).count()));
+        return true;
     }
 
     void selectDemod(demod::Demodulator* demod) {
         // Stopcurrently selected demodulator and select new
-        afChain.setInput(&dummyAudioStream, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+        afChain.setInput(&dummyAudioStream, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
         if (selectedDemod) {
             selectedDemod->stop();
             delete selectedDemod;
@@ -685,7 +698,7 @@ private:
         selectedDemod->setInput(ifChain.out);
 
         // Set AF chain's input
-        afChain.setInput(selectedDemod->getOutput(), [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+        afChain.setInput(selectedDemod->getOutput(), [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
 
         // Load config
         bandwidth = selectedDemod->getDefaultBandwidth();
@@ -796,7 +809,7 @@ private:
             double afsr = selectedDemod->getAFSampleRate();
             ctcss.setSamplerate(afsr);
             resamp.setInSamplerate(afsr);
-            afChain.enableBlock(&resamp, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+            afChain.enableBlock(&resamp, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
             setAudioSampleRate(audioSampleRate);
 
             // Configure the HPF
@@ -807,7 +820,7 @@ private:
         }
         else {
             // Disable everything if post processing is disabled
-            afChain.disableAllBlocks([=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+            afChain.disableAllBlocks([=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
         }
 
         // Start new demodulator
@@ -864,7 +877,7 @@ private:
         if (!postProcEnabled || !selectedDemod) { return; }
 
         // Set the state of the HPF in the AF chain
-        afChain.setBlockEnabled(&hpf, enabled, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+        afChain.setBlockEnabled(&hpf, enabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
 
         // Save config
         config.acquire();
@@ -877,7 +890,7 @@ private:
         if (!postProcEnabled || !selectedDemod) { return; }
         bool deempEnabled = (mode != DEEMP_MODE_NONE);
         if (deempEnabled) { deemp.setTau(deempTaus[mode]); }
-        afChain.setBlockEnabled(&deemp, deempEnabled, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+        afChain.setBlockEnabled(&deemp, deempEnabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
 
         // Save config
         config.acquire();
@@ -913,7 +926,7 @@ private:
 
         // Disable all squelch blocks
         ifChain.disableBlock(&powerSquelch, [=](dsp::stream<dsp::complex_t>* out){ selectedDemod->setInput(out); });
-        afChain.disableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+        afChain.disableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
 
         // Enable the block depending on the mode
         switch (mode) {
@@ -932,13 +945,13 @@ private:
         case SQUELCH_MODE_CTCSS_MUTE:
             // Set the required tone and enable the CTCSS squelch block
             ctcss.setRequiredTone(ctcssTones[ctcssToneId]);
-            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
             break;
 
         case SQUELCH_MODE_CTCSS_DECODE:
             // Set the required tone to none and enable the CTCSS squelch block
             ctcss.setRequiredTone(dsp::noise_reduction::CTCSS_TONE_NONE);
-            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
+            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
             break;
 
         case SQUELCH_MODE_DCS_MUTE:
@@ -1017,6 +1030,13 @@ private:
     static void vfoUserChangedBandwidthHandler(double newBw, void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
         _this->setBandwidth(newBw);
+    }
+
+    static void vfoUserChangedDemodulatorHandler(int newDemodulator, void* ctx) {
+        RadioModule* _this = (RadioModule*)ctx;
+        if (_this->selectedDemodID != (DemodID)newDemodulator) {
+            _this->selectDemodByID((DemodID)newDemodulator);
+        }
     }
 
     static void sampleRateChangeHandler(float sampleRate, void* ctx) {

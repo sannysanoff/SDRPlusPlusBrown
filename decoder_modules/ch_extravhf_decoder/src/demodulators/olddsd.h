@@ -43,7 +43,7 @@ namespace demod {
 
             // Define structure
 
-            fmdemod.init(input, getIFSampleRate(), bandwidth, true, false);
+            fmdemod.init(input, getIFSampleRate(), bandwidth, true);
             inputDcBlock.init(&fmdemod.out, 100.0f / getIFSampleRate());
             inputConv.init(&inputDcBlock.out);
             inputPacker.init(&inputConv.out, 120);
@@ -140,6 +140,8 @@ namespace demod {
         bool getDynamicAFBandwidth() { return false; }
         bool getFMIFNRAllowed() { return false; }
         bool getNBAllowed() { return false; }
+        bool getHighPassAllowed() { return false; }
+        bool getSquelchAllowed() { return false; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &outputMts.out; }
 
     private:
