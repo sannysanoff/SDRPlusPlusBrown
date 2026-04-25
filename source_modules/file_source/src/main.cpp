@@ -64,14 +64,24 @@ public:
             std::string path = config.conf["path"];
             config.release();
             httpdebug::procfs::registerEndpoint("/source/filename", [path]() { return path; }, [](const std::string& val) { config.acquire(); config.conf["path"] = val; config.release(true); }, httpdebug::procfs::Type::String);
-            auto wavFiles = _this->getWavFiles("/Users/san/Fun/SDRPlusPlus");
-            std::string json = "[";
-            for (size_t i = 0; i < wavFiles.size(); i++) {
-                if (i > 0) json += ",";
-                json += "\"" + wavFiles[i] + "\"";
+            // Get directory from the configured file path
+            std::string dirPath = _this->getDirectoryPath(path);
+            if (dirPath.empty()) {
+                dirPath = std::filesystem::current_path().string();
             }
-            json += "]";
-            httpdebug::procfs::registerEndpoint("/source/filename:options", [json]() { return json; }, nullptr, httpdebug::procfs::Type::String);
+            try {
+                auto wavFiles = _this->getWavFiles(dirPath);
+                std::string json = "[";
+                for (size_t i = 0; i < wavFiles.size(); i++) {
+                    if (i > 0) json += ",";
+                    json += "\"" + wavFiles[i] + "\"";
+                }
+                json += "]";
+                httpdebug::procfs::registerEndpoint("/source/filename:options", [json]() { return json; }, nullptr, httpdebug::procfs::Type::String);
+            } catch (const std::exception& e) {
+                flog::error("FileSource: could not list WAV files: {}", e.what());
+                httpdebug::procfs::registerEndpoint("/source/filename:options", []() { return "[]"; }, nullptr, httpdebug::procfs::Type::String);
+            }
         };
         onSourceSelectedHandler.ctx = this;
     }

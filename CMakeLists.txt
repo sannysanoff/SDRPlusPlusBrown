@@ -312,6 +312,9 @@ if (NOT ANDROID)
     endif (OPT_BUILD_NEW_PORTAUDIO_SINK)
 endif ()
 
+# Null audio sink (always built, no deps)
+add_subdirectory("sink_modules/null_audio_sink")
+
 
 # Decoders
 if (OPT_BUILD_ATV_DECODER)
