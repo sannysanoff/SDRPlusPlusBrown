@@ -68,6 +68,7 @@ option(OPT_BUILD_M17_DECODER "Build the M17 decoder module (Dependencies: codec2
 option(OPT_BUILD_CH_EXTRAVHF_DECODER "Build the extra VHF decoder module" ON)
 option(OPT_BUILD_CH_TETRA_DEMODULATOR "Build the tetra demodulator" ON)
 option(OPT_BUILD_FT8_DECODER "Build the FT8 decoder module" ON)
+option(OPT_BUILD_DAWSON_CW_DECODER "Build the Dawson CW decoder module (HamFist based)" ON)
 option(OPT_BUILD_DSDCC_DECODER "Build the DSDCC decoder module" OFF)
 option(OPT_BUILD_METEOR_DEMODULATOR "Build the meteor demodulator module (no dependencies required)" ON)
 option(OPT_BUILD_PAGER_DECODER "Build the pager decoder module (no dependencies required)" ON)
@@ -353,6 +354,10 @@ endif (OPT_BUILD_CH_TETRA_DEMODULATOR)
 if (OPT_BUILD_FT8_DECODER)
     add_subdirectory("decoder_modules/ft8_decoder")
 endif (OPT_BUILD_FT8_DECODER)
+
+if (OPT_BUILD_DAWSON_CW_DECODER)
+    add_subdirectory("decoder_modules/dawson_cw_decoder")
+endif (OPT_BUILD_DAWSON_CW_DECODER)
 
 if (OPT_BUILD_DSDCC_DECODER)
     add_subdirectory("decoder_modules/dsdcc_decoder")
