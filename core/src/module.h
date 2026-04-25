@@ -42,6 +42,13 @@ public:
         virtual void *getInterface(const char *name) {
             return nullptr;
         }
+        // Optional automation channel — invoked by the debug HTTP server.
+        // cmd: the command name (e.g. "set_demod", "set_filename", "select_sink")
+        // args: command arguments (module-defined format)
+        // Returns JSON response string. Default no-op returns empty JSON.
+        virtual std::string handleDebugCommand(const std::string& cmd, const std::string& args) {
+            return "{}";
+        }
     };
 
     struct Module_t {

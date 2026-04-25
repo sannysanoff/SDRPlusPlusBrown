@@ -170,6 +170,30 @@ public:
         return enabled;
     }
 
+    // Automation channel — invoked by debug HTTP server
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "set_filename" || cmd == "set_path") {
+            config.acquire();
+            config.conf["path"] = args;
+            config.release(true);
+            if (!args.empty()) {
+                try {
+                    openPath(args);
+                } catch (const std::exception& e) {
+                    return "{\"error\": \"" + std::string(e.what()) + "\"}";
+                }
+            }
+            return "{\"status\": \"ok\", \"filename\": \"" + args + "\"}";
+        }
+        if (cmd == "get_filename" || cmd == "get_path") {
+            config.acquire();
+            std::string path = config.conf["path"];
+            config.release();
+            return "{\"filename\": \"" + path + "\"}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
+    }
+
 #ifndef BUILD_TESTS
 private:
 #endif

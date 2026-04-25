@@ -183,6 +183,38 @@ public:
         return enabled;
     }
 
+    // Automation channel — invoked by debug HTTP server
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "select") {
+            std::string streamName = args;
+            if (streamName.empty()) {
+                auto names = sigpath::sinkManager.getStreamNames();
+                if (!names.empty()) streamName = names[0];
+            }
+            if (!streamName.empty()) {
+                flog::info("NullAudioSink: selecting for stream '{}'", streamName);
+                sigpath::sinkManager.setStreamSink(streamName, "NullAudioSink");
+                selectedStream = streamName;
+                return "{\"status\": \"ok\", \"stream\": \"" + streamName + "\"}";
+            }
+            return "{\"error\": \"no stream available\"}";
+        }
+        if (cmd == "get_samples") {
+            if (sink) {
+                return "{\"samples\": " + std::to_string((long long)sink->totalSamples.load()) + "}";
+            }
+            return "{\"samples\": 0}";
+        }
+        if (cmd == "get_status") {
+            if (sink) {
+                std::string status = sink->totalSamples.load() > 0 ? "active" : "idle";
+                return "{\"status\": \"" + status + "\", \"samples\": " + std::to_string((long long)sink->totalSamples.load()) + ", \"sample_rate\": " + std::to_string((double)sink->currentSampleRate.load()) + "}";
+            }
+            return "{\"status\": \"uninitialized\"}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
+    }
+
 private:
     static SinkManager::Sink* create_sink(SinkManager::Stream* stream, std::string streamName, void* ctx) {
         auto module = (NullAudioSinkModule*)ctx;
