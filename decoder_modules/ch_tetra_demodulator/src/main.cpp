@@ -167,6 +167,40 @@ public:
         return enabled;
     }
 
+    // Automation channel
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "get_status") {
+            int dec_st = osmotetradecoder.getRxState();
+            std::string lockState = (dec_st == 0) ? "unlocked" : ((dec_st == 2) ? "locked" : "know_next_start");
+            std::string status = "{\"decoder_state\": \"" + lockState + "\", "
+                "\"sync\": " + std::string(symbolExtractor.sync ? "true" : "false") + ", "
+                "\"signal_quality\": " + std::to_string(1.0f - symbolExtractor.standarderr) + ", "
+                "\"mode\": " + std::to_string(decoder_mode);
+            if (decoder_mode == 0 && enabled) {
+                status += ", \"hyperframe\": " + std::to_string(osmotetradecoder.getCurrHyperframe());
+                status += ", \"multiframe\": " + std::to_string(osmotetradecoder.getCurrMultiframe());
+                status += ", \"frame\": " + std::to_string(osmotetradecoder.getCurrFrame());
+                status += ", \"mcc\": " + std::to_string(osmotetradecoder.getMcc());
+                status += ", \"mnc\": " + std::to_string(osmotetradecoder.getMnc());
+                status += std::string(", \"voice_service\": ") + (osmotetradecoder.getVoiceService() ? "true" : "false");
+            }
+            status += "}";
+            return status;
+        }
+        if (cmd == "set_mode") {
+            try {
+                int mode = std::stoi(args);
+                if (mode == 0 || mode == 1) {
+                    decoder_mode = mode;
+                    setMode();
+                    return "{\"status\": \"ok\", \"mode\": " + std::to_string(mode) + "}";
+                }
+            } catch (...) {}
+            return "{\"error\": \"invalid mode: " + args + "\"}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
+    }
+
 private:
 
     void startNetwork() {

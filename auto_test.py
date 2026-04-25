@@ -6,8 +6,8 @@ SDR++Brown Automated Test Script
 3. Uses HTTP debug protocol to configure everything at runtime:
    - Select File source, load the TETRA WAV file
    - Select NullAudioSink via generic automation channel
-   - Set FM demodulator via generic automation channel
-   - Start playback, monitor sample counter, stop after 5 seconds
+   - Check TETRA Demodulator status via generic automation channel
+   - Start playback, monitor null audio sink and TETRA status
 """
 
 import json
@@ -120,12 +120,12 @@ def create_minimal_config():
         "modules": [
             os.path.join(BUILD_DIR, "sink_modules/null_audio_sink/null_audio_sink.so"),
             os.path.join(BUILD_DIR, "source_modules/file_source/file_source.so"),
-            os.path.join(BUILD_DIR, "decoder_modules/radio/radio.so"),
+            os.path.join(BUILD_DIR, "decoder_modules/ch_tetra_demodulator/ch_tetra_demodulator.so"),
         ],
         "moduleInstances": {
             "NullAudioSink": {"module": "null_audio_sink", "enabled": True},
             "File Source": {"module": "file_source", "enabled": True},
-            "Radio": {"module": "radio", "enabled": True},
+            "TETRA Demodulator": {"module": "ch_tetra_demodulator", "enabled": True},
         },
         "showMenu": True,
         "source": "None",
@@ -141,6 +141,9 @@ def create_minimal_config():
             f.write("{}")
     with open(os.path.join(CONFIG_DIR, "file_source_config.json"), "w") as f:
         f.write('{"path": ""}')
+    # TETRA config: start in osmo-tetra mode (0) with defaults
+    with open(os.path.join(CONFIG_DIR, "tetra_demodulator_config.json"), "w") as f:
+        f.write('{"TETRA Demodulator": {"mode": 0, "hostname": "localhost", "port": 8355, "sending": false}}')
 
     print(f"[OK] Minimal config created at {CONFIG_DIR}")
     print(f"     No pre-set source, sink, or demod — all via HTTP debug protocol")
@@ -173,9 +176,9 @@ def run_test():
 
         time.sleep(1.5)  # Let modules initialize
 
-        # Step 2: Select NullAudioSink as the sink for the Radio stream
-        print("\n[STEP] Selecting NullAudioSink sink (generic channel)...")
-        resp = module_command("NullAudioSink", "select", "Radio")
+        # Step 2: Select NullAudioSink for the TETRA Demodulator's stream
+        print("\n[STEP] Selecting NullAudioSink for TETRA Demodulator stream...")
+        resp = module_command("NullAudioSink", "select", "TETRA Demodulator")
         print(f"       Response: {resp}")
         time.sleep(0.5)
 
@@ -191,13 +194,10 @@ def run_test():
         print(f"       Response: {resp}")
         time.sleep(0.5)
 
-        # Step 5: Select FM demodulator via generic module command
-        print("\n[STEP] Setting FM demodulator (generic channel)...")
-        resp = module_command("Radio", "set_demod", "FM")
-        print(f"       Response: {resp}")
-        # Verify
-        resp = module_command_get("Radio", "get_demod")
-        print(f"       Current demod: {resp}")
+        # Step 5: Check TETRA Demodulator status
+        print("\n[STEP] Checking TETRA Demodulator status (generic channel)...")
+        resp = module_command_get("TETRA Demodulator", "get_status")
+        print(f"       Status: {resp}")
         time.sleep(0.5)
 
         # Step 6: Start SDR playback
@@ -206,9 +206,9 @@ def run_test():
         print(f"       Response: {resp}")
         time.sleep(1)
 
-        # Step 7: Monitor null audio sink via generic channel
-        print("\n[STEP] Monitoring null audio sink (generic channel)...")
-        initial_samples = 0
+        # Step 7: Monitor null audio sink and TETRA status
+        print("\n[STEP] Monitoring...")
+        prev_samples = 0
         samples_increasing = 0
         max_poll_seconds = 15
         success = False
@@ -226,10 +226,23 @@ def run_test():
                 status = "parse_error"
                 print(f"       [WARN] Could not parse: {resp}")
 
-            # Check if samples are increasing compared to last poll
-            if i > 0 and samples > initial_samples:
+            # Periodically check TETRA status
+            if i % 3 == 0:
+                tetra_resp = module_command_get("TETRA Demodulator", "get_status")
+                try:
+                    tetra_data = json.loads(tetra_resp)
+                    tetra_state = tetra_data.get("decoder_state", "?")
+                    tetra_sync = tetra_data.get("sync", "?")
+                    tetra_quality = tetra_data.get("signal_quality", 0)
+                    tetra_status = f"sync={tetra_sync} state={tetra_state} qual={float(tetra_quality):.3f}"
+                except:
+                    tetra_status = tetra_resp[:80]
+                print(f"       TETRA: {tetra_status}")
+
+            # Check if samples are increasing
+            if i > 0 and samples > prev_samples:
                 samples_increasing += 1
-            initial_samples = samples
+            prev_samples = samples
 
             print(f"       Second {i+1}: samples={samples:,} @ {sr:.0f} Hz status={status}")
 
