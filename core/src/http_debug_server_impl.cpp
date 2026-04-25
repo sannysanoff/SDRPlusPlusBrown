@@ -468,6 +468,57 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
             httpdebug::isSdrPlaying() ? "true" : "false");
     }
 
+    // List available sink providers: GET /sinks
+    if (strcmp(request->path, "/sinks") == 0) {
+        std::string json = "{\"sinks\": [";
+        auto names = sigpath::sinkManager.getSinkProviderNames();
+        for (size_t i = 0; i < names.size(); i++) {
+            if (i > 0) json += ", ";
+            json += "\"" + names[i] + "\"";
+        }
+        json += "]}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    // List streams and their current sinks: GET /streams
+    if (strcmp(request->path, "/streams") == 0) {
+        std::string json = "{\"streams\": [";
+        bool first = true;
+        for (auto& [name, stream] : sigpath::sinkManager.streams) {
+            if (!first) json += ", ";
+            json += "{\"name\": \"" + name +
+                    "\", \"sink\": \"" + sigpath::sinkManager.getStreamSinkName(name) +
+                    "\", \"running\": " + (sigpath::sinkManager.isStreamRunning(name) ? "true" : "false") + "}";
+            first = false;
+        }
+        json += "]}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    // Set sink for a specific stream: POST /sink/select with body {"stream":"Radio","sink":"NullAudioSink"}
+    if (strcmp(request->path, "/sink/select") == 0) {
+        std::string streamName = "Radio";
+        std::string sinkName = "None";
+        if (request->body.length > 0 && request->body.contents) {
+            std::string body(request->body.contents, request->body.length);
+            try {
+                json j = json::parse(body);
+                if (j.contains("stream")) streamName = j["stream"];
+                if (j.contains("sink")) sinkName = j["sink"];
+            } catch (...) {
+                return responseAllocJSON("{\"error\": \"invalid JSON body\"}");
+            }
+        }
+        if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
+            return responseAllocJSONWithFormat(
+                "{\"error\": \"stream '%s' not found\"}", streamName.c_str());
+        }
+        sigpath::sinkManager.setStreamSink(streamName, sinkName);
+        return responseAllocJSONWithFormat(
+            "{\"status\": \"ok\", \"stream\": \"%s\", \"sink\": \"%s\"}",
+            streamName.c_str(), sinkName.c_str());
+    }
+
     // Generic VFO control: /vfo/set_offset?name=TETRA%20Demodulator&offset=-686597
     if (strncmp(request->path, "/vfo/set_offset", 15) == 0) {
         char* nameParam = strdupDecodeGETParam("name=", request, "");
