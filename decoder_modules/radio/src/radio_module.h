@@ -15,6 +15,8 @@
 #include <core.h>
 #include <stdint.h>
 #include <utils/optionlist.h>
+#include <cmath>
+#include <fftw3.h>
 #include "radio_interface.h"
 #include "demod.h"
 #include "radio_module_interface.h"
@@ -68,7 +70,23 @@ public:
         // Initialize IF DSP chain
         ifChainOutputChanged.ctx = this;
         ifChainOutputChanged.handler = ifChainOutputChangeHandler;
-        ifChain.init(vfo->output);
+        
+        // Insert spectrum capture splitter before IF chain
+        ifSplitter.init(vfo->output);
+        ifSplitter.bindStream(&ifChainInputStream);
+        ifSplitter.setHook([this](dsp::complex_t* data, int count) {
+            std::lock_guard<std::mutex> lock(spectrumMtx);
+            int toCopy = std::min(count, SPECTRUM_BUF_SIZE);
+            if (spectrumBufPos + toCopy > SPECTRUM_BUF_SIZE) {
+                int first = SPECTRUM_BUF_SIZE - spectrumBufPos;
+                memcpy(&spectrumBuf[spectrumBufPos], data, first * sizeof(dsp::complex_t));
+                memcpy(spectrumBuf, &data[first], (toCopy - first) * sizeof(dsp::complex_t));
+            } else {
+                memcpy(&spectrumBuf[spectrumBufPos], data, toCopy * sizeof(dsp::complex_t));
+            }
+            spectrumBufPos = (spectrumBufPos + toCopy) % SPECTRUM_BUF_SIZE;
+        });
+        ifChain.init(&ifChainInputStream);
 
         nb.init(NULL, 500.0 / 24000.0, 10.0);
         fmnr.init(NULL, 32);
@@ -121,6 +139,7 @@ public:
         }
 
         // Start IF chain
+        ifSplitter.start();
         ifChain.start();
 
         // Start AF chain
@@ -180,6 +199,89 @@ public:
                 }
             }
             return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + "}";
+        }
+        if (cmd == "set_freq") {
+            try {
+                double freq = std::stod(args);
+                sigpath::sourceManager.tune(freq);
+                return "{\"status\": \"ok\", \"frequency\": " + std::to_string(freq) + "}";
+            } catch (...) {
+                return "{\"error\": \"invalid frequency: '" + args + "'\"}";
+            }
+        }
+        if (cmd == "get_spectrum") {
+            // Parse: bandwidth_hz,num_buckets (optional)
+            int numBuckets = 256;
+            try {
+                auto commaPos = args.find(',');
+                if (commaPos != std::string::npos) {
+                    numBuckets = std::stoi(args.substr(commaPos + 1));
+                }
+            } catch (...) {}
+            if (numBuckets < 8) numBuckets = 8;
+            if (numBuckets > 2048) numBuckets = 2048;
+            
+            // Capture a snapshot of the spectrum buffer
+            std::vector<dsp::complex_t> snap;
+            {
+                std::lock_guard<std::mutex> lock(spectrumMtx);
+                snap.resize(SPECTRUM_BUF_SIZE);
+                memcpy(snap.data(), spectrumBuf, SPECTRUM_BUF_SIZE * sizeof(dsp::complex_t));
+            }
+            
+            // Compute FFT on the captured data
+            int fftSize = SPECTRUM_BUF_SIZE;
+            std::vector<float> window(fftSize);
+            for (int i = 0; i < fftSize; i++) {
+                window[i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / (fftSize - 1))); // Hann
+            }
+            
+            // FFT via simple DFT for buckets (faster: average FFT bins into buckets)
+            // Use FFTW if available, otherwise do a simple calculation
+            // For bucket averaging: compute FFT, then average into buckets
+            float* fftIn = (float*)fftwf_malloc(sizeof(fftwf_complex) * fftSize);
+            fftwf_complex* fftOut = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * fftSize);
+            auto plan = fftwf_plan_dft_1d(fftSize, (fftwf_complex*)fftIn, fftOut, FFTW_FORWARD, FFTW_ESTIMATE);
+            
+            for (int i = 0; i < fftSize; i++) {
+                fftIn[2*i] = snap[i].re * window[i];
+                fftIn[2*i+1] = snap[i].im * window[i];
+            }
+            fftwf_execute(plan);
+            
+            // Power spectrum
+            std::vector<float> power(fftSize);
+            float maxPower = 1e-30f;
+            for (int i = 0; i < fftSize; i++) {
+                float re = fftOut[i][0];
+                float im = fftOut[i][1];
+                power[i] = re*re + im*im;
+                if (power[i] > maxPower) maxPower = power[i];
+            }
+            
+            // Average into buckets
+            int binsPerBucket = fftSize / numBuckets;
+            std::string json = "{\"spectrum\": [";
+            for (int b = 0; b < numBuckets; b++) {
+                float sum = 0;
+                for (int j = 0; j < binsPerBucket; j++) {
+                    sum += power[b * binsPerBucket + j];
+                }
+                float avg = sum / binsPerBucket;
+                float db = 10.0f * log10f(avg / maxPower + 1e-10f);
+                if (b > 0) json += ", ";
+                json += std::to_string(db);
+            }
+            json += "], \"num_buckets\": " + std::to_string(numBuckets);
+            json += ", \"fft_size\": " + std::to_string(fftSize);
+            json += ", \"max_bin\": " + std::to_string(maxPower);
+            json += "}";
+            
+            fftwf_destroy_plan(plan);
+            fftwf_free(fftIn);
+            fftwf_free(fftOut);
+            
+            return json;
         }
         return "{\"error\": \"unknown command: " + cmd + "\"}";
     }
@@ -291,7 +393,10 @@ public:
             vfo->wtfVFO->onUserChangedBandwidth.bindHandler(&onUserChangedBandwidthHandler);
             vfo->wtfVFO->onUserChangedDemodulator.bindHandler(&onUserChangedDemodulatorHandler);
         }
-        ifChain.setInput(vfo->output, [=](dsp::stream<dsp::complex_t>* out){ ifChainOutputChangeHandler(out, this); });
+        ifSplitter.init(vfo->output);
+        ifSplitter.bindStream(&ifChainInputStream);
+        ifSplitter.start();
+        ifChain.setInput(&ifChainInputStream, [=](dsp::stream<dsp::complex_t>* out){ ifChainOutputChangeHandler(out, this); });
         ifChain.start();
         selectDemodByID((DemodID)selectedDemodID);
         afChain.start();
@@ -300,6 +405,7 @@ public:
     void disable() override {
         enabled = false;
         ifChain.stop();
+        ifSplitter.stop();
         if (selectedDemod) { selectedDemod->stop(); }
         afChain.stop();
         if (vfo) { sigpath::vfoManager.deleteVFO(vfo); }
@@ -867,6 +973,7 @@ private:
 
     // IF chain
     dsp::chain<dsp::complex_t> ifChain;
+    dsp::stream<dsp::complex_t> ifChainInputStream;
     dsp::noise_reduction::NoiseBlanker nb;
     dsp::noise_reduction::FMIF fmnr;
     dsp::noise_reduction::Squelch squelch;
@@ -876,6 +983,13 @@ private:
     dsp::chain<dsp::stereo_t> afChain;
     dsp::multirate::RationalResampler<dsp::stereo_t> resamp;
     dsp::filter::Deemphasis<dsp::stereo_t> deemp;
+
+    // Spectrum capture splitter (taps VFO output before IF chain)
+    dsp::routing::Splitter<dsp::complex_t> ifSplitter;
+    static const int SPECTRUM_BUF_SIZE = 131072;
+    dsp::complex_t spectrumBuf[SPECTRUM_BUF_SIZE];
+    int spectrumBufPos = 0;
+    std::mutex spectrumMtx;
 
     dsp::routing::Splitter<dsp::stereo_t> afsplitter;
     std::vector<std::shared_ptr<SinkManager::Stream>> streams;
