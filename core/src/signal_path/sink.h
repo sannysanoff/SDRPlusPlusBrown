@@ -137,6 +137,21 @@ public:
     void registerSinkProvider(std::string name, SinkProvider provider);
     void unregisterSinkProvider(std::string name);
 
+    /** Get the list of registered sink provider names */
+    std::vector<std::string> getSinkProviderNames() { return providerNames; }
+
+    /** Get the name of the sink assigned to a specific stream */
+    std::string getStreamSinkName(std::string name) {
+        if (streams.find(name) == streams.end()) return "";
+        return streams[name]->providerName;
+    }
+
+    /** Check if a stream is running */
+    bool isStreamRunning(std::string name) {
+        if (streams.find(name) == streams.end()) return false;
+        return streams[name]->running;
+    }
+
     void registerStream(std::string name, Stream* stream);
     void unregisterStream(std::string name);
 
