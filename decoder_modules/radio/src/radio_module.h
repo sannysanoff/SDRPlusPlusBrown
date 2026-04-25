@@ -986,7 +986,7 @@ private:
 
     // Spectrum capture splitter (taps VFO output before IF chain)
     dsp::routing::Splitter<dsp::complex_t> ifSplitter;
-    static const int SPECTRUM_BUF_SIZE = 131072;
+    static constexpr int SPECTRUM_BUF_SIZE = 131072;
     dsp::complex_t spectrumBuf[SPECTRUM_BUF_SIZE];
     int spectrumBufPos = 0;
     std::mutex spectrumMtx;
@@ -1037,4 +1037,3 @@ private:
 
     EventHandler<bool> txHandler;
 };
-
