@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-SDR++Brown Automated Test Script
-=================================
+SDR++Brown Automated TETRA Test Script
+========================================
 1. Starts SDR++ with minimal config (just module references)
-3. Uses HTTP debug protocol to configure everything at runtime:
+2. Uses HTTP debug protocol to configure everything at runtime:
    - Select File source, load the TETRA WAV file
-   - Select NullAudioSink via generic automation channel
-   - Check TETRA Demodulator status via generic automation channel
-   - Start playback, monitor null audio sink and TETRA status
+   - Select NullAudioSink for TETRA Demodulator's stream
+   - Set TETRA VFO offset to tune to the actual signal frequency
+   - Start playback, monitor TETRA demodulator status
+   - Verify TETRA decoder achieves sync
 """
 
 import json
@@ -27,9 +28,16 @@ TETRA_WAV = "/opt/data/baseband_468811597Hz_18-53-50_29-12-2025___tetra.wav"
 CONFIG_DIR = "/tmp/sdrpp_auto_test"
 HTTP_PORT = 8080
 BASE_URL = f"http://localhost:{HTTP_PORT}"
-SAMPLE_RATE = 2400000  # WAV file sample rate
-DURATION_SECONDS = 5
-EXPECTED_SAMPLES = SAMPLE_RATE * DURATION_SECONDS  # 12,000,000 stereo frames
+
+# Source center frequency from filename
+SOURCE_CENTER_HZ = 468811597.0
+
+# TETRA signal frequency identified from WAV spectral analysis
+# The recording covers 467.612 - 470.012 MHz centered at 468.811597 MHz
+# Strongest persistent signal at ~468.125 MHz (on 25 kHz TETRA grid)
+# VFO offset = signal_freq - source_center_freq
+TETRA_SIGNAL_HZ = 468125000.0  # strongest peak, on 25 kHz grid
+VFO_OFFSET_HZ = TETRA_SIGNAL_HZ - SOURCE_CENTER_HZ  # = -686597 Hz
 
 # Environment
 DEPS_PREFIX = "/opt/data/.local/build_deps"
@@ -70,18 +78,23 @@ def http_post(path, data=""):
 
 
 def module_command(instance, cmd, args=""):
-    """Send a command to a module via the generic automation channel.
-    Uses POST with JSON body: {"cmd": "...", "args": "..."}
-    URL-encodes the instance name for spaces/special chars."""
+    """Send a command to a module via the generic automation channel."""
     path = f"/module/{urllib.parse.quote(instance, safe='')}/command"
     body = json.dumps({"cmd": cmd, "args": args})
     return http_post(path, body)
 
 
 def module_command_get(instance, cmd, args=""):
-    """Query a module via GET with query params.
-    Some modules also support GET for read-only commands."""
+    """Query a module via GET with query params."""
     path = f"/module/{urllib.parse.quote(instance, safe='')}/command?cmd={urllib.parse.quote(cmd)}&args={urllib.parse.quote(args)}"
+    return http_get(path)
+
+
+def vfo_set_offset(name, offset_hz):
+    """Set VFO center offset for any module by instance name.
+    Core endpoint - works for any VFO regardless of module type.
+    """
+    path = f"/vfo/set_offset?name={urllib.parse.quote(name)}&offset={offset_hz}"
     return http_get(path)
 
 
@@ -129,37 +142,36 @@ def create_minimal_config():
         },
         "showMenu": True,
         "source": "None",
-        "frequency": 468811597.0,
+        "frequency": SOURCE_CENTER_HZ,
         "streams": {"Radio": {"muted": False, "sink": "None", "volume": 1.0}},
     }
     with open(os.path.join(CONFIG_DIR, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
 
-    # Config files must have their proper defaults
     for cfg_file in ["radio_config.json", "null_audio_sink_config.json"]:
         with open(os.path.join(CONFIG_DIR, cfg_file), "w") as f:
             f.write("{}")
     with open(os.path.join(CONFIG_DIR, "file_source_config.json"), "w") as f:
         f.write('{"path": ""}')
-    # TETRA config: start in osmo-tetra mode (0) with defaults
     with open(os.path.join(CONFIG_DIR, "tetra_demodulator_config.json"), "w") as f:
         f.write('{"TETRA Demodulator": {"mode": 0, "hostname": "localhost", "port": 8355, "sending": false}}')
 
     print(f"[OK] Minimal config created at {CONFIG_DIR}")
-    print(f"     No pre-set source, sink, or demod — all via HTTP debug protocol")
+    print(f"     WAV: {TETRA_WAV}")
+    print(f"     Source center: {SOURCE_CENTER_HZ} Hz")
+    print(f"     TETRA signal:  {TETRA_SIGNAL_HZ} Hz")
+    print(f"     VFO offset:    {VFO_OFFSET_HZ} Hz")
 
 
 def run_test():
     create_minimal_config()
 
-    # Build command
     sdrpp_bin = os.path.join(BUILD_DIR, "sdrpp")
     cmd = [sdrpp_bin, "-r", CONFIG_DIR, "--http", str(HTTP_PORT)]
 
     print(f"[INFO] Starting SDR++: {' '.join(cmd)}")
     print(f"[INFO] Config dir: {CONFIG_DIR}")
 
-    # Start SDR++ in background
     log_file = open(os.path.join(CONFIG_DIR, "sdrpp.log"), "w")
     process = subprocess.Popen(
         cmd,
@@ -174,7 +186,7 @@ def run_test():
         if not wait_for_ready():
             return False
 
-        time.sleep(1.5)  # Let modules initialize
+        time.sleep(1.5)
 
         # Step 2: Select NullAudioSink for the TETRA Demodulator's stream
         print("\n[STEP] Selecting NullAudioSink for TETRA Demodulator stream...")
@@ -186,7 +198,7 @@ def run_test():
         print("\n[STEP] Selecting File source...")
         resp = http_post("/proc/source/type", "File")
         print(f"       Response: {resp}")
-        time.sleep(1.5)  # Allow main loop to process source change
+        time.sleep(1.5)
 
         # Step 4: Set the filename via generic module command
         print(f"\n[STEP] Setting filename (generic channel)...")
@@ -194,82 +206,121 @@ def run_test():
         print(f"       Response: {resp}")
         time.sleep(0.5)
 
-        # Step 5: Check TETRA Demodulator status
-        print("\n[STEP] Checking TETRA Demodulator status (generic channel)...")
+        # Step 5: Set TETRA VFO offset to tune to the actual signal
+        # This shifts the VFO from source center to the TETRA signal frequency
+        print(f"\n[STEP] Setting TETRA VFO offset to {VFO_OFFSET_HZ} Hz...")
+        resp = vfo_set_offset("TETRA Demodulator", VFO_OFFSET_HZ)
+        print(f"       Response: {resp}")
+        time.sleep(0.3)
+
+        # Step 6: Check initial TETRA Demodulator status
+        print("\n[STEP] Checking TETRA Demodulator initial status...")
         resp = module_command_get("TETRA Demodulator", "get_status")
         print(f"       Status: {resp}")
         time.sleep(0.5)
 
-        # Step 6: Start SDR playback
+        # Step 7: Start SDR playback
         print("\n[STEP] Starting SDR playback...")
         resp = http_get("/sdr/start")
         print(f"       Response: {resp}")
-        time.sleep(1)
+        time.sleep(2)  # Give TETRA demod time to start processing
 
-        # Step 7: Monitor null audio sink and TETRA status
-        print("\n[STEP] Monitoring...")
-        prev_samples = 0
-        samples_increasing = 0
+        # Step 8: Monitor TETRA status and null audio sink
+        print("\n[STEP] Monitoring (15 seconds)...")
         max_poll_seconds = 15
-        success = False
+        tetra_synced = False
+        audio_flowing = False
+        prev_samples = 0
+
         for i in range(max_poll_seconds):
             time.sleep(1)
+
+            # Check TETRA status
+            tetra_resp = module_command_get("TETRA Demodulator", "get_status")
+            try:
+                tetra_data = json.loads(tetra_resp)
+                tetra_state = tetra_data.get("decoder_state", "?")
+                tetra_sync = tetra_data.get("sync", False)
+                tetra_quality = float(tetra_data.get("signal_quality", 0))
+                tetra_status = f"sync={'✓' if tetra_sync else '✗'} state={tetra_state} qual={tetra_quality:.3f}"
+                
+                # Show more details if available
+                extras = ""
+                if "mcc" in tetra_data:
+                    extras = f" | MCC={tetra_data['mcc']} MNC={tetra_data['mnc']}"
+                if "voice_service" in tetra_data:
+                    extras += f" voice={'✓' if tetra_data['voice_service'] else '✗'}"
+                if "hyperframe" in tetra_data:
+                    extras += f" HF={tetra_data['hyperframe']}:{tetra_data['multiframe']}:{tetra_data['frame']}"
+            except Exception as e:
+                tetra_status = tetra_resp[:80]
+                extras = ""
+                tetra_sync = False
+
+            # Check null audio sink
             resp = module_command("NullAudioSink", "get_status")
             try:
                 status_data = json.loads(resp)
                 samples = int(status_data.get("samples", 0))
                 sr = float(status_data.get("sample_rate", 0))
-                status = status_data.get("status", "unknown")
+                sink_status = status_data.get("status", "unknown")
             except (ValueError, json.JSONDecodeError):
                 samples = 0
                 sr = 0
-                status = "parse_error"
-                print(f"       [WARN] Could not parse: {resp}")
+                sink_status = "?"
 
-            # Periodically check TETRA status
-            if i % 3 == 0:
-                tetra_resp = module_command_get("TETRA Demodulator", "get_status")
-                try:
-                    tetra_data = json.loads(tetra_resp)
-                    tetra_state = tetra_data.get("decoder_state", "?")
-                    tetra_sync = tetra_data.get("sync", "?")
-                    tetra_quality = tetra_data.get("signal_quality", 0)
-                    tetra_status = f"sync={tetra_sync} state={tetra_state} qual={float(tetra_quality):.3f}"
-                except:
-                    tetra_status = tetra_resp[:80]
-                print(f"       TETRA: {tetra_status}")
-
-            # Check if samples are increasing
-            if i > 0 and samples > prev_samples:
-                samples_increasing += 1
+            if samples > prev_samples:
+                audio_flowing = True
             prev_samples = samples
 
-            print(f"       Second {i+1}: samples={samples:,} @ {sr:.0f} Hz status={status}")
+            print(f"       Second {i+1}: {tetra_status}{extras}")
+            print(f"         Audio: {samples:,} samples @ {sr:.0f} Hz status={sink_status}")
 
-            if samples_increasing >= DURATION_SECONDS:
-                print(f"\n[SUCCESS] ✓ Audio flowing for {DURATION_SECONDS}s!")
-                print(f"          Total samples consumed: {samples:,}")
-                print(f"          Sample rate: {sr:.0f} Hz")
-                success = True
-                break
+            if tetra_sync:
+                tetra_synced = True
+                print(f"\n[SUCCESS] TETRA demodulator achieved sync! ✓")
+                # Continue monitoring to see more data
+                if i >= 5:  # Give it 5 seconds of extra monitoring after sync
+                    break
 
-        if not success:
-            resp = module_command("NullAudioSink", "get_status")
-            try:
-                status_data = json.loads(resp)
-                final_samples = int(status_data.get("samples", 0))
-            except (ValueError, json.JSONDecodeError):
-                final_samples = 0
-            if final_samples > 1000:
-                print(f"\n[CHECK] Final: {final_samples:,} samples — audio IS flowing (partial test PASS)")
-                success = True
-            else:
-                print(f"\n[FAIL] No audio detected — {final_samples:,} samples")
+        # Final summary
+        print(f"\n{'='*60}")
+        print(f"=== TEST RESULTS ===")
+        print(f"{'='*60}")
+        print(f"  TETRA Sync achieved:   {'✓ YES' if tetra_synced else '✗ NO'}")
+        print(f"  Audio flowing:         {'✓ YES' if audio_flowing else '✗ NO'}")
 
-        return success
+        if tetra_synced:
+            print(f"\n[PASS] TETRA demodulator successfully decoded the signal!")
+            # Get final status for display
+            final = module_command_get("TETRA Demodulator", "get_status")
+            print(f"Final status: {final}")
+            return True
+        else:
+            print(f"\n[PARTIAL] Audio flowing but TETRA not synced.")
+            print(f"Possible reasons:")
+            print(f"  - Signal might not be TETRA at {TETRA_SIGNAL_HZ} Hz")
+            print(f"  - VFO offset may need adjustment (trying nearby frequencies...)")
+            
+            # Try a few nearby frequencies
+            for try_offset in [-684000, -685000, -686597, -688000, -689000]:
+                print(f"\n  Trying offset {try_offset} Hz...")
+                vfo_set_offset("TETRA Demodulator", try_offset)
+                time.sleep(2)
+                resp = module_command_get("TETRA Demodulator", "get_status")
+                try:
+                    data = json.loads(resp)
+                    if data.get("sync"):
+                        print(f"  ✓ SYNC achieved at offset {try_offset} Hz!")
+                        return True
+                    print(f"    sync={data.get('sync')} state={data.get('decoder_state')} qual={data.get('signal_quality',0):.3f}")
+                except:
+                    print(f"    {resp[:60]}")
+            
+            return False
 
     finally:
-        # Step 8: Stop SDR++
+        # Stop SDR++
         print("\n[STEP] Stopping SDR++...")
         try:
             http_get("/stop")
@@ -277,7 +328,6 @@ def run_test():
         except:
             pass
 
-        # Force kill if still running
         if process.poll() is None:
             print("[INFO] Force killing SDR++...")
             process.terminate()

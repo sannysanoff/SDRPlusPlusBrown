@@ -12,6 +12,7 @@
 #include <set>
 #include <cstdarg>
 #include <core.h>
+#include <signal_path/signal_path.h>
 
 #ifdef __cplusplus
 #include "imgui.h"
@@ -465,6 +466,25 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         return responseAllocJSONWithFormat(
             "{\"playing\": %s}",
             httpdebug::isSdrPlaying() ? "true" : "false");
+    }
+
+    // Generic VFO control: /vfo/set_offset?name=TETRA%20Demodulator&offset=-686597
+    if (strncmp(request->path, "/vfo/set_offset", 15) == 0) {
+        char* nameParam = strdupDecodeGETParam("name=", request, "");
+        char* offsetParam = strdupDecodeGETParam("offset=", request, "0");
+        double offset = atof(offsetParam);
+        std::string name(nameParam);
+        if (name.empty()) {
+            free(nameParam);
+            free(offsetParam);
+            return responseAllocJSON("{\"error\": \"name parameter required\"}");
+        }
+        sigpath::vfoManager.setCenterOffset(name, offset);
+        free(nameParam);
+        free(offsetParam);
+        return responseAllocJSONWithFormat(
+            "{\"status\": \"ok\", \"vfo\": \"%s\", \"offset_hz\": %f}",
+            name.c_str(), offset);
     }
 
     if (strcmp(request->path, "/modules") == 0) {
