@@ -279,21 +279,24 @@ private:
             }
             return;
         }
-        config.acquire();
-        std::string cfgPath = config.conf["path"];
-        config.release();
-        if (!_this->fileSelect.pathIsValid() || (cfgPath != _this->fileSelect.path && !cfgPath.empty())) {
-            _this->fileSelect.setPath(cfgPath, true);
-            if (_this->fileSelect.pathIsValid()) {
-                if (_this->reader != NULL) {
-                    _this->reader->close();
-                    delete _this->reader;
-                }
-                try {
-                    _this->openPathFromFileSelect();
-                }
-                catch (const std::exception& e) {
-                    flog::error("Error: {}", e.what());
+        // Skip config sync when dialog is open (dialog will set path when done)
+        if (!_this->fileSelect.dialogOpen) {
+            config.acquire();
+            std::string cfgPath = config.conf["path"];
+            config.release();
+            if (!_this->fileSelect.pathIsValid() || (cfgPath != _this->fileSelect.path && !cfgPath.empty())) {
+                _this->fileSelect.setPath(cfgPath, true);
+                if (_this->fileSelect.pathIsValid()) {
+                    if (_this->reader != NULL) {
+                        _this->reader->close();
+                        delete _this->reader;
+                    }
+                    try {
+                        _this->openPathFromFileSelect();
+                    }
+                    catch (const std::exception& e) {
+                        flog::error("FileSourceModule: Error opening file: {}", e.what());
+                    }
                 }
             }
         }
@@ -308,11 +311,13 @@ private:
                     _this->openPathFromFileSelect();
                 }
                 catch (const std::exception& e) {
-                    flog::error("Error: {}", e.what());
+                    flog::error("FileSourceModule: Error opening file: {}", e.what());
                 }
                 config.acquire();
                 config.conf["path"] = _this->fileSelect.path;
                 config.release(true);
+            } else {
+                flog::warn("FileSourceModule: Selected path is not valid: {0}", _this->fileSelect.path);
             }
         }
 
@@ -356,21 +361,20 @@ private:
             double newFrequency = getFrequency(filename);
             streamStartTime = getStartTime(filename);
             bool fineTune = gui::waterfall.containsFrequency(newFrequency);
-            //                    auto prevFrequency = sigpath::vfoManager.getName();
             centerFreq = newFrequency;
             centerFreqSet = true;
             tuner::tune(tuner::TUNER_MODE_IQ_ONLY, "", centerFreq);
             if (isServer) {
                 server::sendCenterFrequency(centerFreq);
             }
+            flog::info("FileSourceModule: Opened file: {0} @ {1} Hz", path, (int)sampleRate);
             if (fineTune) {
                 // restore the fine tune. When working with file source and restarting the app, the fine tune is lost
-                //                        tuner::tune(tuner::TUNER_MODE_NORMAL, "_current", prevFrequency);
             }
         }
         catch (std::exception& e) {
             lastError = e.what();
-            flog::error("Error: {0}", e.what());
+            flog::error("FileSourceModule: Error opening file: {0}", e.what());
         }
     }
 

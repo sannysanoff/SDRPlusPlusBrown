@@ -3,6 +3,9 @@
 #include <filesystem>
 #include <gui/file_dialogs.h>
 #include <core.h>
+#include <utils/flog.h>
+#include <thread>
+#include <chrono>
 
 FileSelect::FileSelect(std::string defaultPath, std::vector<std::string> filter) {
     _filter = filter;
@@ -37,8 +40,14 @@ bool FileSelect::render(std::string id) {
     ImGui::SameLine();
     if (ImGui::Button(("..." + id + "_winselect").c_str(), ImVec2(buttonWidth - 8.0f, 0)) && !dialogOpen) {
         dialogOpen = true;
+#if __APPLE__
+        // On macOS, run dialog synchronously on main thread to avoid WindowServer/threading issues
+        worker();
+#else
+        // On other platforms, use background thread
         if (workerThread.joinable()) { workerThread.join(); }
         workerThread = std::thread(&FileSelect::worker, this);
+#endif
     }
 
     _pathChanged |= pathChanged;
@@ -49,7 +58,11 @@ bool FileSelect::render(std::string id) {
 void FileSelect::setPath(std::string path, bool markChanged) {
     this->path = path;
     std::string expandedPath = expandString(path);
-    pathValid = std::filesystem::is_regular_file(expandedPath);
+    try {
+        pathValid = std::filesystem::is_regular_file(expandedPath);
+    } catch (const std::exception& e) {
+        pathValid = false;
+    }
     if (markChanged) { pathChanged = true; }
     strcpy(strPath, path.c_str());
 }
@@ -64,15 +77,31 @@ bool FileSelect::pathIsValid() {
 }
 
 void FileSelect::worker() {
-    auto file = pfd::open_file("Open File", pathValid ? std::filesystem::path(expandString(path)).parent_path().string() : "", _filter);
+    auto startingPath = pathValid ? std::filesystem::path(expandString(path)).parent_path().string() : "";
+
+    auto file = pfd::open_file("Open File", startingPath, _filter);
+
+    // Wait for dialog to complete
+    while (!file.ready()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
     std::vector<std::string> res = file.result();
 
     if (res.size() > 0) {
         path = res[0];
         strcpy(strPath, path.c_str());
         pathChanged = true;
+        flog::info("FileSelect: Selected file: {0}", path);
     }
 
-    pathValid = std::filesystem::is_regular_file(expandString(path));
+    // Update pathValid based on current path
+    auto expandedPath = expandString(path);
+    try {
+        pathValid = std::filesystem::is_regular_file(expandedPath);
+    } catch (const std::exception& e) {
+        pathValid = false;
+    }
+
     dialogOpen = false;
 }

@@ -16,7 +16,7 @@ public:
     std::string expandString(std::string input);
 
     std::string path = "";
-
+    bool dialogOpen = false;
 
 private:
     void worker();
@@ -25,7 +25,6 @@ private:
     std::string root = "";
 
     bool pathValid = false;
-    bool dialogOpen = false;
     char strPath[2048];
     bool pathChanged = false;
 };
