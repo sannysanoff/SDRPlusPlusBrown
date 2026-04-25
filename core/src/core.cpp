@@ -519,6 +519,8 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["Audio Source"]["enabled"] = true;
     defConfig["moduleInstances"]["BladeRF Source"]["module"] = "bladerf_source";
     defConfig["moduleInstances"]["BladeRF Source"]["enabled"] = true;
+    defConfig["moduleInstances"]["Dragon Labs Source"]["module"] = "dragonlabs_source";
+    defConfig["moduleInstances"]["Dragon Labs Source"]["enabled"] = true;
     defConfig["moduleInstances"]["File Source"]["module"] = "file_source";
     defConfig["moduleInstances"]["File Source"]["enabled"] = true;
     defConfig["moduleInstances"]["FobosSDR Source"]["module"] = "fobossdr_source";

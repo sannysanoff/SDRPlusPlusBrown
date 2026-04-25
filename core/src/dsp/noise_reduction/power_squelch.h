@@ -3,14 +3,14 @@
 
 // TODO: Rewrite better!!!!!
 namespace dsp::noise_reduction {
-    class Squelch : public Processor<complex_t, complex_t> {
+    class PowerSquelch : public Processor<complex_t, complex_t> {
         using base_type = Processor<complex_t, complex_t>;
     public:
-        Squelch() {}
+        PowerSquelch() {}
 
-        Squelch(stream<complex_t>* in, double level) {}
+        PowerSquelch(stream<complex_t>* in, double level) {}
 
-        ~Squelch() {
+        ~PowerSquelch() {
             if (!base_type::_block_init) { return; }
             base_type::stop();
             buffer::free(normBuffer);
@@ -53,8 +53,11 @@ namespace dsp::noise_reduction {
         }
 
         inline int process(int count, const complex_t* in, complex_t* out) {
-            float sum;
+            // Compute the amplitude of each sample
             volk_32fc_magnitude_32f(normBuffer, (lv_32fc_t*)in, count);
+            
+            // Compute the mean amplitude
+            float sum = 0.0f;
             volk_32f_accumulator_s32f(&sum, normBuffer, count);
             sum /= (float)count;
 
@@ -67,8 +70,6 @@ namespace dsp::noise_reduction {
 
             return count;
         }
-
-        //DEFAULT_PROC_RUN();
 
         int run() {
             int count = base_type::_in->read();

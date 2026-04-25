@@ -59,6 +59,8 @@ namespace demod {
         int getDefaultDeemphasisMode() { return DEEMP_MODE_NONE; }
         bool getFMIFNRAllowed() { return false; }
         bool getNBAllowed() { return true; }
+        bool getHighPassAllowed() { return false; }
+        bool getSquelchAllowed() { return false; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &c2s.out; }
 
     private:

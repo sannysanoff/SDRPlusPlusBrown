@@ -4,8 +4,6 @@
 #include <gui/widgets/waterfall.h>
 #include <config.h>
 #include <utils/event.h>
-#include <gui/style.h>
-
 
 enum DeemphasisMode {
     DEEMP_MODE_22US,
@@ -20,6 +18,16 @@ enum IFNRPreset {
     IFNR_PRESET_VOICE,
     IFNR_PRESET_NARROW_BAND,
     IFNR_PRESET_BROADCAST
+};
+
+enum SquelchMode {
+    SQUELCH_MODE_OFF,
+    SQUELCH_MODE_POWER,
+    SQUELCH_MODE_SNR,
+    SQUELCH_MODE_CTCSS_MUTE,
+    SQUELCH_MODE_CTCSS_DECODE,
+    SQUELCH_MODE_DCS_MUTE,
+    SQUELCH_MODE_DCS_DECODE,
 };
 
 namespace demod {
@@ -47,7 +55,8 @@ namespace demod {
         virtual int getDefaultDeemphasisMode() = 0;
         virtual bool getFMIFNRAllowed() = 0;
         virtual bool getNBAllowed() = 0;
-        virtual void setFrozen(bool frozen) {};
+        virtual bool getHighPassAllowed() = 0;
+        virtual bool getSquelchAllowed() = 0;
         virtual dsp::stream<dsp::stereo_t>* getOutput() = 0;
     };
 }

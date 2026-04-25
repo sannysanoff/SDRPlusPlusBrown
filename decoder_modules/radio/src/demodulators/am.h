@@ -40,6 +40,12 @@ namespace demod {
 
         void showMenu() {
             float menuWidth = ImGui::GetContentRegionAvail().x;
+            if (ImGui::Checkbox(("Carrier AGC##_radio_am_carrier_agc_" + name).c_str(), &carrierAgc)) {
+                demod.setAGCMode(carrierAgc ? dsp::demod::AM<dsp::stereo_t>::AGCMode::CARRIER : dsp::demod::AM<dsp::stereo_t>::AGCMode::AUDIO);
+                _config->acquire();
+                _config->conf[name][getName()]["carrierAgc"] = carrierAgc;
+                _config->release(true);
+            }
             ImGui::LeftLabel("AGC Attack");
             ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
             if (ImGui::SliderFloat(("##_radio_am_agc_attack_" + name).c_str(), &agcAttack, 1.0f, 200.0f)) {
@@ -54,12 +60,6 @@ namespace demod {
                 demod.setAGCDecay(agcDecay / getIFSampleRate());
                 _config->acquire();
                 _config->conf[name][getName()]["agcDecay"] = agcDecay;
-                _config->release(true);
-            }
-            if (ImGui::Checkbox(("Carrier AGC##_radio_am_carrier_agc_" + name).c_str(), &carrierAgc)) {
-                demod.setAGCMode(carrierAgc ? dsp::demod::AM<dsp::stereo_t>::AGCMode::CARRIER : dsp::demod::AM<dsp::stereo_t>::AGCMode::AUDIO);
-                _config->acquire();
-                _config->conf[name][getName()]["carrierAgc"] = carrierAgc;
                 _config->release(true);
             }
         }
@@ -87,6 +87,8 @@ namespace demod {
         bool getFMIFNRAllowed() { return false; }
         virtual void setAGCFrozen(bool frozen) { demod.setAGCFrozen(frozen); };
         bool getNBAllowed() { return false; }
+        bool getHighPassAllowed() { return true; }
+        bool getSquelchAllowed() { return true; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &demod.out; }
 
     private:

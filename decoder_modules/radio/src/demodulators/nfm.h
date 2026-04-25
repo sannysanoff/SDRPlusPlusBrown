@@ -22,14 +22,11 @@ namespace demod {
             if (config->conf[name][getName()].contains("lowPass")) {
                 _lowPass = config->conf[name][getName()]["lowPass"];
             }
-            if (config->conf[name][getName()].contains("highPass")) {
-                _highPass = config->conf[name][getName()]["highPass"];
-            }
             _config->release();
 
 
             // Define structure
-            demod.init(input, getIFSampleRate(), bandwidth, _lowPass, _highPass);
+            demod.init(input, getIFSampleRate(), bandwidth, _lowPass);
         }
 
         void start() { demod.start(); }
@@ -41,12 +38,6 @@ namespace demod {
                 demod.setLowPass(_lowPass);
                 _config->acquire();
                 _config->conf[name][getName()]["lowPass"] = _lowPass;
-                _config->release(true);
-            }
-            if (ImGui::Checkbox(("High Pass##_radio_wfm_highpass_" + name).c_str(), &_highPass)) {
-                demod.setHighPass(_highPass);
-                _config->acquire();
-                _config->conf[name][getName()]["highPass"] = _highPass;
                 _config->release(true);
             }
         }
@@ -75,6 +66,8 @@ namespace demod {
         int getDefaultDeemphasisMode() { return DEEMP_MODE_NONE; }
         bool getFMIFNRAllowed() { return true; }
         bool getNBAllowed() { return false; }
+        bool getHighPassAllowed() { return true; }
+        bool getSquelchAllowed() { return true; }
         dsp::stream<dsp::stereo_t>* getOutput() { return &demod.out; }
 
     private:
@@ -83,7 +76,6 @@ namespace demod {
         ConfigManager* _config = NULL;
 
         bool _lowPass = true;
-        bool _highPass = false;
 
         std::string name;
     };
