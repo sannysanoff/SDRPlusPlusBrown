@@ -2,14 +2,12 @@
 """
 SDR++Brown Automated Test Script
 =================================
-1. Creates a pre-configured config directory
-2. Starts SDR++ with HTTP debug server
-3. Selects File source, loads the TETRA WAV file
-4. Selects NullAudioSink
-5. Sets FM demodulator
-6. Presses play
-7. Monitors sample counter for 5 seconds of audio
-8. Stops and reports success/failure
+1. Starts SDR++ with minimal config (just module references)
+3. Uses HTTP debug protocol to configure everything at runtime:
+   - Select File source, load the TETRA WAV file
+   - Select NullAudioSink via generic automation channel
+   - Set FM demodulator via generic automation channel
+   - Start playback, monitor sample counter, stop after 5 seconds
 """
 
 import json
@@ -71,6 +69,22 @@ def http_post(path, data=""):
         return f"ERROR: {e}"
 
 
+def module_command(instance, cmd, args=""):
+    """Send a command to a module via the generic automation channel.
+    Uses POST with JSON body: {"cmd": "...", "args": "..."}
+    URL-encodes the instance name for spaces/special chars."""
+    path = f"/module/{urllib.parse.quote(instance, safe='')}/command"
+    body = json.dumps({"cmd": cmd, "args": args})
+    return http_post(path, body)
+
+
+def module_command_get(instance, cmd, args=""):
+    """Query a module via GET with query params.
+    Some modules also support GET for read-only commands."""
+    path = f"/module/{urllib.parse.quote(instance, safe='')}/command?cmd={urllib.parse.quote(cmd)}&args={urllib.parse.quote(args)}"
+    return http_get(path)
+
+
 def wait_for_ready(timeout=30):
     """Wait for SDR++ HTTP server to be ready."""
     start = time.time()
@@ -80,7 +94,7 @@ def wait_for_ready(timeout=30):
             if "mainLoopStarted" in resp:
                 status = json.loads(resp)
                 if status.get("mainLoopStarted"):
-                    print(f"[OK] SDR++ ready (HTTP server ready={status.get('httpListening')})")
+                    print(f"[OK] SDR++ ready (main loop started)")
                     return True
                 elif status.get("httpListening"):
                     print(f"[INFO] HTTP server up, waiting for main loop...")
@@ -92,82 +106,48 @@ def wait_for_ready(timeout=30):
     return False
 
 
-def create_config():
-    """Create pre-configured config directory."""
+def create_minimal_config():
+    """Create minimal config — no pre-configured source, sink, or demod settings."""
     import shutil
     if os.path.exists(CONFIG_DIR):
         shutil.rmtree(CONFIG_DIR)
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    os.makedirs(os.path.join(CONFIG_DIR, "modules_disabled"), exist_ok=True)
 
-    # Main config.json - use an empty/invalid modulesDirectory to prevent
-    # auto-discovery of ALL .so files (including libsdrpp_core.so)
     config = {
         "modulesDirectory": CONFIG_DIR + "/modules_disabled",
         "resourcesDirectory": os.path.join(REPO_DIR, "root", "res"),
-        "source": "File",
-        "streams": {
-            "Radio": {
-                "muted": False,
-                "sink": "None",  # Will be changed via procfs
-                "volume": 1.0
-            }
-        },
         "modules": [
             os.path.join(BUILD_DIR, "sink_modules/null_audio_sink/null_audio_sink.so"),
             os.path.join(BUILD_DIR, "source_modules/file_source/file_source.so"),
             os.path.join(BUILD_DIR, "decoder_modules/radio/radio.so"),
-            os.path.join(BUILD_DIR, "sink_modules/network_sink/network_sink.so"),
         ],
         "moduleInstances": {
-            "Radio": {
-                "module": "radio",
-                "enabled": True
-            },
-            "NullAudioSink": {
-                "module": "null_audio_sink",
-                "enabled": True
-            },
-            "File Source": {
-                "module": "file_source",
-                "enabled": True
-            }
+            "NullAudioSink": {"module": "null_audio_sink", "enabled": True},
+            "File Source": {"module": "file_source", "enabled": True},
+            "Radio": {"module": "radio", "enabled": True},
         },
-        "frequency": 468811597.0,  # Center frequency from WAV filename
-        "showMenu": True
+        "showMenu": True,
+        "source": "None",
+        "frequency": 468811597.0,
+        "streams": {"Radio": {"muted": False, "sink": "None", "volume": 1.0}},
     }
     with open(os.path.join(CONFIG_DIR, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
 
-    # Radio config - FM demod (DEMOD_NFM = 0)
-    radio_config = {
-        "Radio": {
-            "selectedDemodId": 0  # RADIO_DEMOD_NFM = FM
-        }
-    }
-    with open(os.path.join(CONFIG_DIR, "radio_config.json"), "w") as f:
-        json.dump(radio_config, f, indent=2)
-
-    # File source config
-    file_source_config = {
-        "path": TETRA_WAV,
-        "centerFreq": 468811597.0
-    }
+    # Config files must have their proper defaults
+    for cfg_file in ["radio_config.json", "null_audio_sink_config.json"]:
+        with open(os.path.join(CONFIG_DIR, cfg_file), "w") as f:
+            f.write("{}")
     with open(os.path.join(CONFIG_DIR, "file_source_config.json"), "w") as f:
-        json.dump(file_source_config, f, indent=2)
+        f.write('{"path": ""}')
 
-    # Null audio sink config (empty)
-    null_sink_config = {}
-    with open(os.path.join(CONFIG_DIR, "null_audio_sink_config.json"), "w") as f:
-        json.dump(null_sink_config, f, indent=2)
-
-    print(f"[OK] Config directory created at {CONFIG_DIR}")
-    print(f"     Source: File -> {TETRA_WAV}")
-    print(f"     Radio demod: FM (ID=0)")
-    print(f"     Modules: {BUILD_DIR}")
+    print(f"[OK] Minimal config created at {CONFIG_DIR}")
+    print(f"     No pre-set source, sink, or demod — all via HTTP debug protocol")
 
 
 def run_test():
-    create_config()
+    create_minimal_config()
 
     # Build command
     sdrpp_bin = os.path.join(BUILD_DIR, "sdrpp")
@@ -191,60 +171,60 @@ def run_test():
         if not wait_for_ready():
             return False
 
-        time.sleep(1)  # Let modules initialize
+        time.sleep(1.5)  # Let modules initialize
 
         # Step 2: Select NullAudioSink as the sink for the Radio stream
-        print("\n[STEP] Selecting NullAudioSink sink...")
-        resp = http_post("/proc/null_audio_sink/select", "Radio")
+        print("\n[STEP] Selecting NullAudioSink sink (generic channel)...")
+        resp = module_command("NullAudioSink", "select", "Radio")
         print(f"       Response: {resp}")
         time.sleep(0.5)
 
-        # Step 3: Select File source
+        # Step 3: Select File source via core procfs endpoint
         print("\n[STEP] Selecting File source...")
         resp = http_post("/proc/source/type", "File")
         print(f"       Response: {resp}")
-        time.sleep(1)
+        time.sleep(1.5)  # Allow main loop to process source change
 
-        # Step 4: Set the filename via procfs
-        print(f"\n[STEP] Setting filename to {TETRA_WAV}...")
-        resp = http_post("/proc/source/filename", TETRA_WAV)
+        # Step 4: Set the filename via generic module command
+        print(f"\n[STEP] Setting filename (generic channel)...")
+        resp = module_command("File Source", "set_filename", TETRA_WAV)
         print(f"       Response: {resp}")
         time.sleep(0.5)
 
-        # Step 5: Start SDR playback
+        # Step 5: Select FM demodulator via generic module command
+        print("\n[STEP] Setting FM demodulator (generic channel)...")
+        resp = module_command("Radio", "set_demod", "FM")
+        print(f"       Response: {resp}")
+        # Verify
+        resp = module_command_get("Radio", "get_demod")
+        print(f"       Current demod: {resp}")
+        time.sleep(0.5)
+
+        # Step 6: Start SDR playback
         print("\n[STEP] Starting SDR playback...")
         resp = http_get("/sdr/start")
         print(f"       Response: {resp}")
         time.sleep(1)
 
-        # Step 6: Check initial sample count
-        print("\n[STEP] Monitoring null audio sink...")
+        # Step 7: Monitor null audio sink via generic channel
+        print("\n[STEP] Monitoring null audio sink (generic channel)...")
         initial_samples = 0
         samples_increasing = 0
-        for i in range(DURATION_SECONDS + 5):  # Poll for up to ~10 seconds
+        max_poll_seconds = 15
+        success = False
+        for i in range(max_poll_seconds):
             time.sleep(1)
-            resp = http_get("/proc/null_audio_sink/samples")
+            resp = module_command("NullAudioSink", "get_status")
             try:
-                if resp.strip().startswith('"'):
-                    samples = int(resp.strip().strip('"'))
-                else:
-                    samples = int(resp.strip())
+                status_data = json.loads(resp)
+                samples = int(status_data.get("samples", 0))
+                sr = float(status_data.get("sample_rate", 0))
+                status = status_data.get("status", "unknown")
             except (ValueError, json.JSONDecodeError):
                 samples = 0
-                print(f"       [WARN] Could not parse samples response: {resp}")
-
-            resp_sr = http_get("/proc/null_audio_sink/sample_rate")
-            try:
-                if resp_sr.strip().startswith('"'):
-                    sr = float(resp_sr.strip().strip('"'))
-                else:
-                    sr = float(resp_sr.strip())
-            except (ValueError, json.JSONDecodeError):
                 sr = 0
-
-            # Also check status
-            resp_status = http_get("/proc/null_audio_sink/status")
-            status = resp_status.strip().strip('"')
+                status = "parse_error"
+                print(f"       [WARN] Could not parse: {resp}")
 
             # Check if samples are increasing compared to last poll
             if i > 0 and samples > initial_samples:
@@ -257,25 +237,26 @@ def run_test():
                 print(f"\n[SUCCESS] ✓ Audio flowing for {DURATION_SECONDS}s!")
                 print(f"          Total samples consumed: {samples:,}")
                 print(f"          Sample rate: {sr:.0f} Hz")
+                success = True
                 break
 
-        else:
-            # Check final count after all polling is done
-            resp = http_get("/proc/null_audio_sink/samples")
+        if not success:
+            resp = module_command("NullAudioSink", "get_status")
             try:
-                if resp.strip().startswith('"'):
-                    final_samples = int(resp.strip().strip('"'))
-                else:
-                    final_samples = int(resp.strip())
+                status_data = json.loads(resp)
+                final_samples = int(status_data.get("samples", 0))
             except (ValueError, json.JSONDecodeError):
                 final_samples = 0
-            status_check = "PASS" if final_samples > 0 else "FAIL"
-            print(f"\n[CHECK] Final: {final_samples:,} samples — {'AUDIO FLOWING' if final_samples > 1000 else 'NO AUDIO'}")
+            if final_samples > 1000:
+                print(f"\n[CHECK] Final: {final_samples:,} samples — audio IS flowing (partial test PASS)")
+                success = True
+            else:
+                print(f"\n[FAIL] No audio detected — {final_samples:,} samples")
 
-        return True
+        return success
 
     finally:
-        # Step 7: Stop SDR++
+        # Step 8: Stop SDR++
         print("\n[STEP] Stopping SDR++...")
         try:
             http_get("/stop")

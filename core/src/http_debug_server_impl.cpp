@@ -480,6 +480,65 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         return responseAllocJSON(json.c_str());
     }
 
+    // Generic module command routing via /module/<instance_name>/command
+    if (strncmp(request->path, "/module/", 8) == 0) {
+        std::string reqPath(request->path);
+        size_t cmdPos = reqPath.find("/command", 8);
+        if (cmdPos != std::string::npos) {
+            std::string instanceName = reqPath.substr(8, cmdPos - 8);
+            // URL decode instance name
+            std::string decoded;
+            for (size_t i = 0; i < instanceName.size(); i++) {
+                if (instanceName[i] == '%' && i + 2 < instanceName.size()) {
+                    char hex[3] = { instanceName[i+1], instanceName[i+2], 0 };
+                    decoded += (char)strtol(hex, nullptr, 16);
+                    i += 2;
+                } else if (instanceName[i] == '+') {
+                    decoded += ' ';
+                } else {
+                    decoded += instanceName[i];
+                }
+            }
+            instanceName = decoded;
+
+            auto& instances = core::moduleManager.instances;
+            auto it = instances.find(instanceName);
+            if (it == instances.end()) {
+                return responseAllocJSONWithFormat(
+                    "{\"error\": \"instance '%s' not found\"}",
+                    instanceName.c_str());
+            }
+
+            std::string cmd = "command";
+            std::string args = "";
+
+            if (strlen(request->method) > 0 && (strcmp(request->method, "POST") == 0 || strcmp(request->method, "PUT") == 0)) {
+                // Parse body as JSON: {"cmd": "...", "args": "..."}
+                if (request->body.length > 0 && request->body.contents) {
+                    std::string body(request->body.contents, request->body.length);
+                    try {
+                        json j = json::parse(body);
+                        if (j.contains("cmd")) cmd = j["cmd"];
+                        if (j.contains("args")) args = j["args"];
+                    } catch (...) {
+                        cmd = body; // Fallback: whole body is the command
+                    }
+                }
+            } else {
+                // GET: read query params
+                char* cmdParam = strdupDecodeGETParam("cmd=", request, "command");
+                cmd = cmdParam;
+                free(cmdParam);
+                char* argsParam = strdupDecodeGETParam("args=", request, "");
+                args = argsParam;
+                free(argsParam);
+            }
+
+            std::string result = it->second.instance->handleDebugCommand(cmd, args);
+            return responseAllocJSON(result.c_str());
+        }
+    }
+
     if (strncmp(request->path, "/proc", 5) == 0) {
         std::string fullPath(request->pathDecoded);
         if (fullPath == "/proc") {

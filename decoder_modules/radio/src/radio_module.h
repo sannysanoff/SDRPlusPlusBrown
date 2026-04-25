@@ -146,6 +146,46 @@ public:
         sigpath::txState.bindHandler(&txHandler);
     }
 
+    // Automation channel — invoked by debug HTTP server
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "set_demod" || cmd == "set_demodulator") {
+            // Try matching by name first (accept "FM", "NFM", "WFM", "AM", etc.)
+            std::string modeName = args;
+            for (auto& mode : radioModes) {
+                if (mode.first == modeName) {
+                    flog::info("Radio[{}]: selecting demod '{}' (ID={})", name, mode.first, mode.second);
+                    selectDemodByID((DemodID)mode.second);
+                    return "{\"status\": \"ok\", \"demod\": \"" + mode.first + "\", \"id\": " + std::to_string(mode.second) + "}";
+                }
+            }
+            try {
+                int id = std::stoi(args);
+                flog::info("Radio[{}]: selecting demod by ID={}", name, id);
+                selectDemodByID((DemodID)id);
+                // Get the name back
+                for (auto& mode : radioModes) {
+                    if (mode.second == id) {
+                        return "{\"status\": \"ok\", \"demod\": \"" + mode.first + "\", \"id\": " + args + "}";
+                    }
+                }
+                return "{\"status\": \"ok\", \"id\": " + args + "}";
+            } catch (...) {
+                return "{\"error\": \"unknown demod '" + args + "'\"}";
+            }
+        }
+        if (cmd == "get_demod") {
+            for (auto& mode : radioModes) {
+                if (mode.second == selectedDemodID) {
+                    return "{\"demod\": \"" + mode.first + "\", \"id\": " + std::to_string(selectedDemodID) + "}";
+                }
+            }
+            return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + "}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
+    }
+
+
+
 
 
     void *getInterface(const char *name) override {
