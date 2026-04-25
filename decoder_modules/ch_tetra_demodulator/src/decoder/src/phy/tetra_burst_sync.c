@@ -55,8 +55,25 @@ int tetra_burst_sync_in(struct tetra_rx_state *trs, uint8_t *bits, unsigned int 
 {
 	int rc;
 	unsigned int train_seq_offs;
+	unsigned int max_chunk = sizeof(trs->bitbuf) / 2;
 
 	DEBUGP("burst_sync_in: %u bits, state %u\n", len, trs->state);
+
+	if (len > max_chunk) {
+		unsigned int processed = 0;
+
+		while (processed < len) {
+			unsigned int chunk_len = len - processed;
+			if (chunk_len > max_chunk)
+				chunk_len = max_chunk;
+
+			rc = tetra_burst_sync_in(trs, bits + processed, chunk_len);
+			if (rc < 0)
+				return rc;
+			processed += chunk_len;
+		}
+		return len;
+	}
 
 	/* First: append the data to the bitbuf */
 	make_bitbuf_space(trs, len);

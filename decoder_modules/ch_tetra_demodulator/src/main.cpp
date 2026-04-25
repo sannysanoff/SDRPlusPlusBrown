@@ -67,7 +67,8 @@ public:
             config.conf[name]["sending"] = false;
         }
         decoder_mode = config.conf[name]["mode"];
-        strcpy(hostname, std::string(config.conf[name]["hostname"]).c_str());
+        std::string configuredHostname = config.conf[name]["hostname"];
+        snprintf(hostname, sizeof(hostname), "%s", configuredHostname.c_str());
         port = config.conf[name]["port"];
         bool startNow = config.conf[name]["sending"];
         config.release(true);
@@ -501,7 +502,7 @@ private:
 
     /* 9.4.4.3.4 Synchronization training sequence */
     static const constexpr uint8_t training_seq_y[38] = { 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1 };
-    uint8_t tsfind_buffer[45];
+    uint8_t tsfind_buffer[45] = {};
     bool tsfound = false;
     int symsbeforeexpire = 0;
 

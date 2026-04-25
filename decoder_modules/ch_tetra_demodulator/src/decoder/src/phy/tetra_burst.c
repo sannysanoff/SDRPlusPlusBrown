@@ -273,9 +273,13 @@ int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
 {
 	static uint32_t tsq_bytes[5];
 
-	if (tsq_bytes[0] == 0) {
 #define FILTER_LOOKAHEAD_LEN 22
 #define FILTER_LOOKAHEAD_MASK ((1<<FILTER_LOOKAHEAD_LEN)-1)
+
+	if (end_of_in < FILTER_LOOKAHEAD_LEN)
+		return -1;
+
+	if (tsq_bytes[0] == 0) {
 		for (int i = 0; i < FILTER_LOOKAHEAD_LEN; i++) {
 			tsq_bytes[0] = (tsq_bytes[0] << 1) | y_bits[i];
 			tsq_bytes[1] = (tsq_bytes[1] << 1) | n_bits[i];
@@ -291,8 +295,9 @@ int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
 		filter = (filter << 1) | in[i];
 
 	const uint8_t *cur;
+	const uint8_t *end = in + end_of_in - FILTER_LOOKAHEAD_LEN + 1;
 
-	for (cur = in; cur < in + end_of_in; cur++) {
+	for (cur = in; cur < end; cur++) {
 		filter = ((filter << 1) | cur[FILTER_LOOKAHEAD_LEN-1]) & FILTER_LOOKAHEAD_MASK;
 
 		int match = 0;

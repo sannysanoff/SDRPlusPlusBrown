@@ -16,6 +16,15 @@ namespace dsp {
     class BitUnpacker : public Processor<uint8_t, uint8_t> {
         using base_type = Processor<uint8_t, uint8_t>;
     public:
+        BitUnpacker() {}
+
+        BitUnpacker(stream<uint8_t>* in) { init(in); }
+
+        void init(stream<uint8_t>* in) {
+            base_type::init(in);
+            base_type::out.setBufferSize(STREAM_BUFFER_SIZE * 2);
+        }
+
         int run() {
             int count = base_type::_in->read();
             if (count < 0) { return -1; }
