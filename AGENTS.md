@@ -37,7 +37,8 @@ sudo apt install -y \
     autoconf \
     libtool \
     xxd \
-    libspdlog-dev
+    libspdlog-dev \
+    liborc-0.4-dev
 ```
 
 **2. Install SDRPlay API:**
