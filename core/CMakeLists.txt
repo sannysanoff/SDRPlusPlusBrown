@@ -50,6 +50,7 @@ endif ()
 
 # Add code to dyn lib
 add_library(sdrpp_core SHARED ${SRC} ${BACKEND_SRC})
+set_target_properties(sdrpp_core PROPERTIES OUTPUT_NAME sdrpp_brown_core)
 
 if(APPLE)
     target_link_libraries(sdrpp_core PUBLIC "-framework CoreFoundation")

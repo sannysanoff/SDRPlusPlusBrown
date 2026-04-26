@@ -227,8 +227,8 @@ make install DESTDIR="$APPDIR"
 # 12. Copy icon to AppDir root (linuxdeploy requirement)
 # ---------------------------------------------------------------------------
 echo "=== Step 12: Copy icon to AppDir root ==="
-if [ -f "$APPDIR/usr/share/sdrpp/icons/sdrpp.png" ]; then
-    cp "$APPDIR/usr/share/sdrpp/icons/sdrpp.png" "$APPDIR/sdrpp.png"
+if [ -f "$APPDIR/usr/share/sdrpp_brown/icons/sdrpp.png" ]; then
+    cp "$APPDIR/usr/share/sdrpp_brown/icons/sdrpp.png" "$APPDIR/sdrpp.png"
 fi
 
 # ---------------------------------------------------------------------------

@@ -5,5 +5,5 @@ Type=Application
 Terminal=false
 Exec=@CMAKE_INSTALL_PREFIX@/bin/@SDRPP_EXECUTABLE_NAME@
 Name=@SDRPP_DESKTOP_NAME@
-Icon=@CMAKE_INSTALL_PREFIX@/share/sdrpp/icons/sdrpp.png
+Icon=@CMAKE_INSTALL_PREFIX@/share/sdrpp_brown/icons/sdrpp.png
 Categories=HamRadio

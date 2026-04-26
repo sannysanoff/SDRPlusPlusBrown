@@ -5,7 +5,7 @@ BUILD_DIR="/Users/san/Fun/SDRPlusPlus/cmake-build-debug"
 CONFIG_DIR="`pwd`/root_dev"
 
 start() {
-    if pgrep -f "sdrpp" > /dev/null 2>&1; then
+    if pgrep -f "sdrpp_brown" > /dev/null 2>&1; then
         echo "Already running"
         exit 1
     fi
@@ -13,7 +13,7 @@ start() {
     mkdir -p "$CONFIG_DIR"
     LOG_FILE="$CONFIG_DIR/sdrpp.log"
     cd "$BUILD_DIR"
-    nohup ./sdrpp -r "$CONFIG_DIR" --http 8080 > "$LOG_FILE" 2>&1 &
+    nohup ./sdrpp_brown -r "$CONFIG_DIR" --http 8080 > "$LOG_FILE" 2>&1 &
     SPD=$!
 
     for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -25,12 +25,12 @@ start() {
     done
 
     echo "Start error"
-    pkill -f "sdrpp"
+    pkill -f "sdrpp_brown"
     exit 1
 }
 
 status() {
-    if pgrep -f "sdrpp" > /dev/null 2>&1; then
+    if pgrep -f "sdrpp_brown" > /dev/null 2>&1; then
         echo "up"
     else
         echo "down"
@@ -38,8 +38,8 @@ status() {
 }
 
 stop() {
-    if pgrep -f "sdrpp" > /dev/null 2>&1; then
-        pkill -f "sdrpp"
+    if pgrep -f "sdrpp_brown" > /dev/null 2>&1; then
+        pkill -f "sdrpp_brown"
         echo "Stopped"
     else
         echo "Was not running"
@@ -78,7 +78,7 @@ build() {
 }
 
 list-all() {
-    if ! pgrep -f "sdrpp" > /dev/null 2>&1; then
+    if ! pgrep -f "sdrpp_brown" > /dev/null 2>&1; then
         echo "SDR++ is not running. Start with: $0 start"
         exit 1
     fi
@@ -99,7 +99,7 @@ set_value() {
         exit 1
     fi
     
-    if ! pgrep -f "sdrpp" > /dev/null 2>&1; then
+    if ! pgrep -f "sdrpp_brown" > /dev/null 2>&1; then
         echo "SDR++ is not running. Start with: $0 start"
         exit 1
     fi

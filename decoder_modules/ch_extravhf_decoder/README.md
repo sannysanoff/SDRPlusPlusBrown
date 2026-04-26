@@ -14,7 +14,7 @@ Includes:
 
 Binary installing:
 
-Visit the Actions page, find latest commit build artifacts, download vhfvoiceradio.so and put it to /usr/lib/sdrpp/plugins/, skipping to the step 3. Don't forget to install ITPP!
+Visit the Actions page, find latest commit build artifacts, download vhfvoiceradio.so and put it to /usr/lib/sdrpp_brown/plugins/, skipping to the step 3. Don't forget to install ITPP!
 
 Building:
 

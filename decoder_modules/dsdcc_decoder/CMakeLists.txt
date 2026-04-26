@@ -90,4 +90,4 @@ target_link_directories(dsdcc_decoder PRIVATE ${CMAKE_INSTALL_PREFIX}/lib)
 
 
 # Install directives
-install(TARGETS dsdcc_decoder DESTINATION lib/sdrpp/plugins)
+install(TARGETS dsdcc_decoder DESTINATION lib/sdrpp_brown/plugins)

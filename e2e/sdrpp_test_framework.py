@@ -261,7 +261,7 @@ def create_lsb_radio_config(
         "vfoOffsets": {
             radio_name: 0.0
         },
-        "modulesDirectory": "/Users/san/Fun/SDRPlusPlus/root_dev/inst/lib/sdrpp/plugins",
+        "modulesDirectory": "/Users/san/Fun/SDRPlusPlus/root_dev/inst/lib/sdrpp_brown/plugins",
         "resourcesDirectory": "/Users/san/Fun/SDRPlusPlus/root_dev/res",
     }
     

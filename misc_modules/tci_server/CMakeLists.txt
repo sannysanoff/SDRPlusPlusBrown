@@ -21,4 +21,4 @@ else ()
 endif ()
 
 # Install directives
-install(TARGETS tci_server DESTINATION lib/sdrpp/plugins)
+install(TARGETS tci_server DESTINATION lib/sdrpp_brown/plugins)

@@ -41,5 +41,5 @@ make -j$(nproc)
 echo ""
 echo "=== Build complete ==="
 echo "Binary: $(pwd)/sdrpp"
-echo "Core:   $(pwd)/core/libsdrpp_core.so"
+echo "Core:   $(pwd)/core/libsdrpp_brown_core.so"
 echo "Modules: $(find . -name '*.so' -not -path './core/*' | wc -l) .so files"

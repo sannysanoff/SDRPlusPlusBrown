@@ -41,4 +41,4 @@ else (MSVC)
 endif ()
 
 # Install directives
-install(TARGETS hl2_source DESTINATION lib/sdrpp/plugins)
+install(TARGETS hl2_source DESTINATION lib/sdrpp_brown/plugins)

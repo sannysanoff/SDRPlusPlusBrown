@@ -142,7 +142,7 @@ make VERBOSE=1 -j$(nproc)
 
 **5. Output:**
 
-The compiled application `sdrpp` and various module `.so` files will be located in the `build/` directory (specifically, `build/sdrpp` and `build/core/` for `libsdrpp_core.so`, with other modules in their respective subdirectories under `build/`).
+The compiled application `sdrpp_brown` and various module `.so` files will be located in the `build/` directory (specifically, `build/sdrpp_brown` and `build/core/` for `libsdrpp_brown_core.so`, with other modules in their respective subdirectories under `build/`).
 
 ## Building Locally (macOS / ARM64)
 

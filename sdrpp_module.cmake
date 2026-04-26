@@ -25,4 +25,4 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
 # Install directives
-install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp/plugins)
+install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp_brown/plugins)

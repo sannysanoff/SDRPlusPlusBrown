@@ -171,7 +171,7 @@ Tests can be run in CI by:
 ### "Module not found"
 
 - Ensure `modulesDirectory` in config points to correct plugins path
-- Verify modules are installed: `ls root_dev/inst/lib/sdrpp/plugins/`
+- Verify modules are installed: `ls root_dev/inst/lib/sdrpp_brown/plugins/`
 
 ## Current Tests
 

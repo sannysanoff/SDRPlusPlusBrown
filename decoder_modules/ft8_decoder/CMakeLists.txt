@@ -24,7 +24,7 @@ else ()
 endif ()
 
 # Install directives
-install(TARGETS ft8_decoder DESTINATION lib/sdrpp/plugins)
+install(TARGETS ft8_decoder DESTINATION lib/sdrpp_brown/plugins)
 
 if (NEVER)
 

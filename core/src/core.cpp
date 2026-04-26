@@ -652,8 +652,8 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["modulesDirectory"] = root + "/modules";
     defConfig["resourcesDirectory"] = root + "/res";
 #else
-    defConfig["modulesDirectory"] = INSTALL_PREFIX "/lib/sdrpp/plugins";
-    defConfig["resourcesDirectory"] = INSTALL_PREFIX "/share/sdrpp";
+    defConfig["modulesDirectory"] = INSTALL_PREFIX "/lib/sdrpp_brown/plugins";
+    defConfig["resourcesDirectory"] = INSTALL_PREFIX "/share/sdrpp_brown";
 #endif
 
     // Load config
