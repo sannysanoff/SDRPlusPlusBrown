@@ -261,10 +261,34 @@ cd "$APPDIR"
 # Ensure linuxdeploy can find inter-plugin dependencies
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:$LD_LIBRARY_PATH"
 
+# Exclude GPU/graphics libraries that should come from host (for NVIDIA/AMD/Intel compatibility)
+# These are ABI-dependent and must match the host's GPU drivers
 linuxdeploy \
     --appdir "$APPDIR" \
     --desktop-file "$APPDIR/sdrpp.desktop" \
-    --icon-file "$APPDIR/sdrpp.png" 2>&1 || echo "WARNING: linuxdeploy failed (non-critical). AppDir is partially populated."
+    --icon-file "$APPDIR/sdrpp.png" \
+    --exclude-library "*libGL.so*" \
+    --exclude-library "*libGLX.so*" \
+    --exclude-library "*libEGL.so*" \
+    --exclude-library "*libGLdispatch.so*" \
+    --exclude-library "*libOpenGL.so*" \
+    --exclude-library "*libdrm.so*" \
+    --exclude-library "*libd3dadapter9.so*" \
+    --exclude-library "*libvulkan.so*" \
+    --exclude-library "*libxcb*" \
+    --exclude-library "*libX11*" \
+    --exclude-library "*libXext*" \
+    --exclude-library "*libXrender*" \
+    --exclude-library "*libnvidia*" \
+    --exclude-library "*libvdpau*" \
+    --exclude-library "*libLLVM*" \
+    --exclude-library "*swrast*" \
+    --exclude-library "*iris*" \
+    --exclude-library "*radeonsi*" \
+    --exclude-library "*nouveau*" \
+    --exclude-library "*vmwgfx*" \
+    --exclude-library "*libc.so*" \
+    2>&1 || echo "WARNING: linuxdeploy failed (non-critical). AppDir is partially populated."
 
 # Now install appimagetool and create the AppImage
 echo "=== Step 15b: Create AppImage with appimagetool ==="

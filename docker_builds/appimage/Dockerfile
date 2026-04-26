@@ -13,4 +13,5 @@ RUN apt update && apt install -y \
 # The source code is mounted at /root/SDRPlusPlus at runtime
 # make_appimage.sh is baked in for convenience
 COPY make_appimage.sh /root/make_appimage.sh
-RUN chmod +x /root/make_appimage.sh
+COPY make_appimage_aarch64.sh /root/make_appimage_aarch64.sh
+RUN chmod +x /root/make_appimage.sh /root/make_appimage_aarch64.sh
