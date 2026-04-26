@@ -542,7 +542,7 @@ jobs:
 
         - name: Fetch container
           working-directory: ${{runner.workspace}}
-          run: git clone https://github.com/AlexandreRouma/android-sdr-kit
+          run: git clone https://github.com/sannysanoff/android-sdr-kit
         
         - name: Build container
           working-directory: ${{runner.workspace}}/android-sdr-kit
