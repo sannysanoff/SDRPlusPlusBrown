@@ -955,6 +955,18 @@ public:
                 call.empty() ? "?" : call.c_str(),
                 loc.empty() ? "?" : loc.c_str(),
                 sigpath::sourceManager.getSelectedName().c_str());
+            // status line: sent / last / seen
+            if (_this->pskReportsSent > 0) {
+                long long now = currentTimeMillis();
+                long long ago = (now - _this->pskLastSendTime) / 1000;
+                char lastStr[32];
+                if (ago < 120) snprintf(lastStr, sizeof lastStr, "%llds ago", ago);
+                else snprintf(lastStr, sizeof lastStr, "%lldm %02llds ago", ago/60, ago%60);
+                ImGui::TextColored(ImVec4(0.7f,0.7f,0.7f,1), "sent:%d last:%s seen:%d",
+                    _this->pskReportsSent, lastStr, (int)_this->pskSeenCount.load());
+            } else {
+                ImGui::TextDisabled("sent:0");
+            }
         }
         ImGui::LeftLabel("ALL.TXT log");
         if (ImGui::Checkbox(CONCAT("##_enable_alltxt_", _this->name), &_this->enableAllTXT)) {
@@ -984,6 +996,9 @@ public:
     char myGrid[10];
     char myCallsign[13];
     bool enablePSKReporter = true;
+    int pskReportsSent = 0;
+    long long pskLastSendTime = 0;
+    std::atomic<int> pskSeenCount{0};
     bool enableAllTXT = false;
     char allTxtPath[1024];
     std::string allTxtPathError;
@@ -1145,6 +1160,8 @@ public:
         }
         sendto(fd, pkt.data(), pkt.size(), 0, (struct sockaddr *)&addr, sizeof(addr));
         close(fd);
+        pskReportsSent++;
+        pskLastSendTime = currentTimeMillis();
         flog::info("PSKReporter: sent report for {} on {} Hz ({})", senderCall, freqHz, mode);
     }
 
@@ -1437,6 +1454,7 @@ void SingleDecoder::startBlockProcessing(const std::shared_ptr<std::vector<dsp::
                 DecodedResult decodedResult(getModeDM(), (long long)(blockNumber * getBlockDuration() * 1000 + getBlockDuration()), frequencyInBand, callsign, message);
                 decodedResult.distance = (int)distance;
                 decodedResult.sourceType = sigpath::sourceManager.getSelectedName();
+                pskSeenCount++;
                 if (enablePSKReporter && getPSKReporterStatus() == "active") {
                     // Skip if it's our own callsign
                     if (callsign != sigpath::iqFrontEnd.operatorCallsign) {
