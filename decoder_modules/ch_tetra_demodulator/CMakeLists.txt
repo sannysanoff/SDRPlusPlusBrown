@@ -100,7 +100,7 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
         endif ()
         message(STATUS "[CH_TETRA_DEMODULATOR] Extracting ${ETSI_CODEC_ZIP} to ${ETSI_CODEC_DIR} with verbose output...")
         execute_process(
-            COMMAND "${ETSI_UNZIP_PROGRAM}" -v -L "${ETSI_CODEC_ZIP}"
+            COMMAND "${ETSI_UNZIP_PROGRAM}" -q -L "${ETSI_CODEC_ZIP}"
             WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
             RESULT_VARIABLE ETSI_UNZIP_RESULT
             OUTPUT_VARIABLE ETSI_UNZIP_OUTPUT

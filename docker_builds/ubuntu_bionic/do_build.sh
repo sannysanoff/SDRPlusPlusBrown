@@ -12,7 +12,7 @@ apt update
 # Install dependencies and tools
 apt install -y build-essential cmake git libfftw3-dev libglfw3-dev libvolk1-dev libzstd-dev libairspy-dev \
             libiio-dev libad9361-dev librtaudio-dev libhackrf-dev librtlsdr-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
-            libcodec2-dev libudev-dev autoconf libtool xxd libspdlog-dev
+            libcodec2-dev libudev-dev autoconf libtool xxd libspdlog-dev unzip
 
 # Install SDRPlay libraries
 SDRPLAY_ARCH=$(dpkg --print-architecture)

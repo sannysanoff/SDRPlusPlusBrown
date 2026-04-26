@@ -95,7 +95,7 @@ public:
         ifSplitter.bindStream(&ifChainInputStream);
         ifSplitter.setHook([this](dsp::complex_t* data, int count) {
             std::lock_guard<std::mutex> lock(spectrumMtx);
-            int toCopy = std::min(count, SPECTRUM_BUF_SIZE);
+            int toCopy = (std::min)(count, SPECTRUM_BUF_SIZE);
             if (spectrumBufPos + toCopy > SPECTRUM_BUF_SIZE) {
                 int first = SPECTRUM_BUF_SIZE - spectrumBufPos;
                 memcpy(&spectrumBuf[spectrumBufPos], data, first * sizeof(dsp::complex_t));
