@@ -10,6 +10,8 @@ cp -Recurse $root_dir/* sdrpp_windows_x64/
 cp $build_dir/Release/* sdrpp_windows_x64/
 cp 'C:/Program Files/PothosSDR/bin/volk.dll' sdrpp_windows_x64/
 
+cp C:/vcpkg/installed/x64-windows/bin/itpp.dll sdrpp_windows_x64/
+
 # Copy source modules
 cp $build_dir/source_modules/airspy_source/Release/airspy_source.dll sdrpp_windows_x64/modules/
 cp 'C:/Program Files/PothosSDR/bin/airspy.dll' sdrpp_windows_x64/
@@ -23,6 +25,7 @@ cp $build_dir/source_modules/bladerf_source/Release/bladerf_source.dll sdrpp_win
 cp 'C:/Program Files/PothosSDR/bin/bladeRF.dll' sdrpp_windows_x64/
 
 cp $build_dir/source_modules/file_source/Release/file_source.dll sdrpp_windows_x64/modules/
+cp $build_dir/source_modules/hl2_source/Release/hl2_source.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/source_modules/fobossdr_source/Release/fobossdr_source.dll sdrpp_windows_x64/modules/
 cp 'C:/Program Files/RigExpert/Fobos/bin/fobos.dll' sdrpp_windows_x64/
@@ -64,13 +67,17 @@ cp 'C:/Program Files/SDRplay/API/x64/sdrplay_api.dll' sdrpp_windows_x64/ -ErrorA
 
 cp $build_dir/source_modules/sdrpp_server_source/Release/sdrpp_server_source.dll sdrpp_windows_x64/modules/
 
+cp $build_dir/source_modules/soapy_source/Release/soapy_source.dll sdrpp_windows_x64/modules/
+
 cp $build_dir/source_modules/spyserver_source/Release/spyserver_source.dll sdrpp_windows_x64/modules/
+cp $build_dir/source_modules/kiwisdr_source/Release/kiwisdr_source.dll sdrpp_windows_x64/modules/
 
 # cp $build_dir/source_modules/usrp_source/Release/usrp_source.dll sdrpp_windows_x64/modules/
 
 
 # Copy sink modules
 cp $build_dir/sink_modules/audio_sink/Release/audio_sink.dll sdrpp_windows_x64/modules/
+cp $build_dir/sink_modules/brown_audio_sink/Release/brown_audio_sink.dll sdrpp_windows_x64/modules/
 cp "C:/Program Files (x86)/RtAudio/bin/rtaudio.dll" sdrpp_windows_x64/
 
 cp $build_dir/sink_modules/network_sink/Release/network_sink.dll sdrpp_windows_x64/modules/
@@ -80,6 +87,8 @@ cp $build_dir/sink_modules/network_sink/Release/network_sink.dll sdrpp_windows_x
 cp $build_dir/decoder_modules/atv_decoder/Release/atv_decoder.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/decoder_modules/m17_decoder/Release/m17_decoder.dll sdrpp_windows_x64/modules/
+cp $build_dir/decoder_modules/ft8_decoder/Release/ft8_decoder.dll sdrpp_windows_x64/modules/
+cp $build_dir/decoder_modules/ch_extravhf_decoder/Release/ch_extravhf_decoder.dll sdrpp_windows_x64/modules/
 cp "C:/Program Files/codec2/lib/libcodec2.dll" sdrpp_windows_x64/
 
 cp $build_dir/decoder_modules/meteor_demodulator/Release/meteor_demodulator.dll sdrpp_windows_x64/modules/
@@ -89,8 +98,11 @@ cp $build_dir/decoder_modules/radio/Release/radio.dll sdrpp_windows_x64/modules/
 
 # Copy misc modules
 cp $build_dir/misc_modules/discord_integration/Release/discord_integration.dll sdrpp_windows_x64/modules/
+cp $build_dir/misc_modules/noise_reduction_logmmse/Release/noise_reduction_logmmse.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/misc_modules/frequency_manager/Release/frequency_manager.dll sdrpp_windows_x64/modules/
+cp $build_dir/misc_modules/websdr_view/Release/websdr_view.dll sdrpp_windows_x64/modules/
+cp $build_dir/misc_modules/reports_monitor/Release/reports_monitor.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/misc_modules/iq_exporter/Release/iq_exporter.dll sdrpp_windows_x64/modules/
 
