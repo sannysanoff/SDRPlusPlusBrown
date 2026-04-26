@@ -18,6 +18,14 @@
 #include <future>
 #include <unordered_map>
 #include <unordered_set>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <map>
+#include <cmath>
+#include <ctm.h>
 #include "ft8_decoder.h"
 #include "../../radio/src/demodulators/usb.h"
 #include <utils/kmeans.h>
@@ -186,6 +194,7 @@ struct DecodedResult {
     double intensity = 0;
     double distance = 0;
     std::string qth = "";
+    std::string sourceType = ""; // "File", "KiwiSDR", "SDR++ Server", or real hardware
     long long addedTime = 0;
 
     // this is to save between drawables re-creation
@@ -918,27 +927,34 @@ public:
             ImGui::Text("Error: %s", _this->ft4decoder.decodeError);
             ImGui::PopStyleColor();
         }
-        if (false) {
+        if (true) {
             //
-            // PSK Reporter not completed yet
+            // PSK Reporter
             //
             ImGui::LeftLabel("PSKReporter");
-            ImGui::BeginDisabled();
+            auto pskStatus = _this->getPSKReporterStatus();
+            if (pskStatus == "active") {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0, 1.0f, 0, 1.0f));
+            } else if (pskStatus == "badsrc") {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0, 1.0f));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
+            }
             if (ImGui::Checkbox(CONCAT("##_enable_psk_reporter_", _this->name), &_this->enablePSKReporter)) {
                 config.acquire();
                 config.conf[_this->name]["enablePSKReporter"] = _this->enablePSKReporter;
                 config.release(true);
             }
-            ImGui::EndDisabled();
+            ImGui::PopStyleColor();
             ImGui::SameLine();
-            ImGui::Text("using callsign:");
+            ImGui::Text("[%s]", pskStatus.c_str());
             ImGui::SameLine();
-            ImGui::FillWidth();
-            if (sigpath::iqFrontEnd.operatorCallsign == "") {
-                ImGui::Text("[set up in source menu]");
-            } else {
-                ImGui::Text("%s", sigpath::iqFrontEnd.operatorCallsign.c_str());
-            }
+            auto &call = sigpath::iqFrontEnd.operatorCallsign;
+            auto &loc = sigpath::iqFrontEnd.operatorLocation;
+            ImGui::Text("call:%s loc:%s src:%s",
+                call.empty() ? "?" : call.c_str(),
+                loc.empty() ? "?" : loc.c_str(),
+                sigpath::sourceManager.getSelectedName().c_str());
         }
         ImGui::LeftLabel("ALL.TXT log");
         if (ImGui::Checkbox(CONCAT("##_enable_alltxt_", _this->name), &_this->enableAllTXT)) {
@@ -983,6 +999,153 @@ public:
             _myPos = utils::gridToLatLng(lastLocation);
         }
         return _myPos;
+    }
+
+    std::string getPSKReporterStatus() {
+        if (sigpath::iqFrontEnd.operatorCallsign.empty()) {
+            return "badcall";
+        }
+        if (sigpath::iqFrontEnd.operatorLocation.empty()) {
+            return "badloc";
+        }
+        auto &src = sigpath::sourceManager.getSelectedName();
+        if (src == "File" || src == "KiwiSDR" || src == "SDR++ Server") {
+            return "badsrc";
+        }
+        return "active";
+    }
+
+    void sendPSKReporterReport(const std::string &senderCall, long long freqHz,
+                                const std::string &mode, int snr, long long timeUnix) {
+        // Build and send IPFIX UDP packet matching WSJT-X format
+        // Port 4739, host report.pskreporter.info
+
+        // Only send if enabled and status is active
+        if (!enablePSKReporter) return;
+        if (getPSKReporterStatus() != "active") return;
+
+        auto now = (uint32_t)time(nullptr);
+        static uint32_t pskSeq = 0;
+        static uint32_t pskObsId = (uint32_t)(random() ^ (uintptr_t)this);
+        pskSeq++;
+
+        auto &rxCall = sigpath::iqFrontEnd.operatorCallsign;
+        auto &rxGrid = sigpath::iqFrontEnd.operatorLocation;
+
+        // Helper: write length-prefixed string
+        auto putStr = [](std::vector<uint8_t> &buf, const std::string &s) {
+            auto utf = s.substr(0, 254);
+            buf.push_back((uint8_t)utf.size());
+            buf.insert(buf.end(), utf.begin(), utf.end());
+        };
+
+        std::vector<uint8_t> pkt;
+
+        // === HEADER (16 bytes) ===
+        auto put16 = [&](uint16_t v) { pkt.push_back((v>>8)&0xFF); pkt.push_back(v&0xFF); };
+        auto put32 = [&](uint32_t v) { put16(v>>16); put16(v&0xFFFF); };
+        auto put64 = [&](uint64_t v) { put32(v>>32); put32(v&0xFFFFFFFF); };
+
+        put16(0x000A); // version
+        put16(0);      // length placeholder
+        put32(now);    // export time
+        put32(pskSeq); // sequence number
+        put32(pskObsId); // observation domain ID
+
+        // === SENDER TEMPLATE (Set ID=2, TID=0x50E3, 7 fields) ===
+        uint8_t txTpl[] = {
+            0x00, 0x02, 0x00, 0x3C, 0x50, 0xE3, 0x00, 0x07,
+            0x80, 0x01, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // senderCallsign
+            0x80, 0x05, 0x00, 0x05, 0x00, 0x00, 0x76, 0x8F, // freq (5B)
+            0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x76, 0x8F, // sNR (1B)
+            0x80, 0x0A, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // mode
+            0x80, 0x03, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // senderLocator
+            0x80, 0x0B, 0x00, 0x01, 0x00, 0x00, 0x76, 0x8F, // infoSource
+            0x00, 0x96, 0x00, 0x04,                         // flowStartSeconds
+        };
+        pkt.insert(pkt.end(), txTpl, txTpl + sizeof(txTpl));
+
+        // === RECEIVER TEMPLATE (Set ID=3, TID=0x50E2, 5 fields) ===
+        uint8_t rxTpl[] = {
+            0x00, 0x03, 0x00, 0x32, 0x50, 0xE2, 0x00, 0x05, 0x00, 0x00,
+            0x80, 0x02, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // receiverCallsign
+            0x80, 0x04, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // receiverLocator
+            0x80, 0x08, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // decoderSoftware
+            0x80, 0x09, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // antennaInformation
+            0x80, 0x0D, 0xFF, 0xFF, 0x00, 0x00, 0x76, 0x8F, // rigInformation
+        };
+        pkt.insert(pkt.end(), rxTpl, rxTpl + sizeof(rxTpl));
+
+        // === RECEIVER DATA ===
+        size_t rxOff = pkt.size();
+        put16(0x50E2); // template ID
+        put16(0);      // length placeholder
+        putStr(pkt, rxCall);
+        putStr(pkt, rxGrid);
+        putStr(pkt, "SDR++Brown v1.3.0");
+        putStr(pkt, ""); // antenna
+        putStr(pkt, ""); // rig info
+        // pad
+        size_t rxLen = pkt.size() - rxOff;
+        size_t rxPad = (4 - rxLen % 4) % 4;
+        for (size_t i = 0; i < rxPad; i++) pkt.push_back(0);
+        // fix length
+        rxLen = pkt.size() - rxOff;
+        pkt[rxOff+2] = (rxLen >> 8) & 0xFF;
+        pkt[rxOff+3] = rxLen & 0xFF;
+
+        // === SENDER DATA ===
+        size_t txOff = pkt.size();
+        put16(0x50E3); // template ID
+        put16(0);      // length placeholder
+        putStr(pkt, senderCall);
+        // frequency: 5 bytes big-endian
+        pkt.push_back((freqHz >> 32) & 0xFF);
+        pkt.push_back((freqHz >> 24) & 0xFF);
+        pkt.push_back((freqHz >> 16) & 0xFF);
+        pkt.push_back((freqHz >> 8) & 0xFF);
+        pkt.push_back(freqHz & 0xFF);
+        // sNR: 1 byte signed
+        pkt.push_back((uint8_t)(int8_t)snr);
+        // mode
+        putStr(pkt, mode);
+        // senderLocator: unknown
+        pkt.push_back(0);
+        // informationSource = 1 (auto)
+        pkt.push_back(1);
+        // flowStartSeconds
+        put32((uint32_t)timeUnix);
+        // pad
+        size_t txLen0 = pkt.size() - txOff;
+        size_t txPad = (4 - txLen0 % 4) % 4;
+        for (size_t i = 0; i < txPad; i++) pkt.push_back(0);
+        // fix length
+        size_t txLen = pkt.size() - txOff;
+        pkt[txOff+2] = (txLen >> 8) & 0xFF;
+        pkt[txOff+3] = txLen & 0xFF;
+
+        // === Fix header length ===
+        size_t totalLen = pkt.size();
+        pkt[2] = (totalLen >> 8) & 0xFF;
+        pkt[3] = totalLen & 0xFF;
+
+        // === Send UDP ===
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd < 0) return;
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(4739);
+        // Try to resolve report.pskreporter.info, fallback to IP
+        struct hostent *he = gethostbyname("report.pskreporter.info");
+        if (he) {
+            memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
+        } else {
+            inet_pton(AF_INET, "74.116.41.13", &addr.sin_addr);
+        }
+        sendto(fd, pkt.data(), pkt.size(), 0, (struct sockaddr *)&addr, sizeof(addr));
+        close(fd);
+        flog::info("PSKReporter: sent report for {} on {} Hz ({})", senderCall, freqHz, mode);
     }
 
 
@@ -1075,6 +1238,8 @@ void FT8DrawableDecodedResult::draw(const ImVec2& _origin, ImGuiWindow* window) 
         ImGui::Text("Strength: %0.0f dB", result->strengthRaw);
         ImGui::Separator();
         ImGui::Text("QTH: %s", result->qth.c_str());
+        ImGui::Separator();
+        ImGui::Text("Source: %s", result->sourceType.c_str());
         ImGui::Separator();
         ImGui::Text("Message: %s", result->detailedString.c_str());
 
@@ -1271,6 +1436,25 @@ void SingleDecoder::startBlockProcessing(const std::shared_ptr<std::vector<dsp::
                 }
                 DecodedResult decodedResult(getModeDM(), (long long)(blockNumber * getBlockDuration() * 1000 + getBlockDuration()), frequencyInBand, callsign, message);
                 decodedResult.distance = (int)distance;
+                decodedResult.sourceType = sigpath::sourceManager.getSelectedName();
+                if (enablePSKReporter && getPSKReporterStatus() == "active") {
+                    // Skip if it's our own callsign
+                    if (callsign != sigpath::iqFrontEnd.operatorCallsign) {
+                        // Check for duplicates: report same callsign no more than once per 5 min
+                        static std::map<std::string, long long> lastReported;
+                        auto it = lastReported.find(callsign);
+                        long long nowMs = currentTimeMillis();
+                        if (it == lastReported.end() || (nowMs - it->second) > 300000) {
+                            lastReported[callsign] = nowMs;
+                            int snrVal = (int)round(atof(result[1].c_str()));
+                            sendPSKReporterReport(callsign,
+                                previousCenterOffset - USB_BANDWIDTH + frequencyInBand,
+                                getModeString() == "ft8" ? "FT8" : getModeString() == "ft4" ? "FT4" : getModeString(),
+                                snrVal,
+                                (long long)(blockNumber * getBlockDuration()));
+                        }
+                    }
+                }
                 auto strength = atof(result[1].c_str());
                 strength = (strength + 24) / (24 + 24);
                 if (strength < 0.0) strength = 0.0;
