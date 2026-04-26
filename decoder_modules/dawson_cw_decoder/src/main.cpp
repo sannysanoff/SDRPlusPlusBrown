@@ -460,137 +460,83 @@ void DawsonCWDecoderModule::drawOverlay(const ImGui::WaterFall::WaterfallDrawArg
     float wf_width = args.wfMax.x - args.wfMin.x;
     float wf_height = args.wfMax.y - args.wfMin.y;
     
-    // Center frequency and bandwidth
+    // Center frequency
     double center_freq = gui::waterfall.getCenterFrequency();
-    double bandwidth = gui::waterfall.getViewBandwidth();
-    double low_freq = center_freq - bandwidth / 2.0;
-    double high_freq = center_freq + bandwidth / 2.0;
-    double freq_to_pixel = wf_width / bandwidth;
     
-    // Current time for animation
-    float time = ImGui::GetTime();
+    // Create a sorted list of channels by frequency
+    std::vector<const dawson_cw::IQChannelState*> sorted_channels;
+    for (const auto& channel : channels) {
+        if (channel->is_active) {
+            sorted_channels.push_back(channel.get());
+        }
+    }
+    std::sort(sorted_channels.begin(), sorted_channels.end(),
+              [](const dawson_cw::IQChannelState* a, const dawson_cw::IQChannelState* b) {
+                  return a->center_freq_hz < b->center_freq_hz;
+              });
+    
+    // Draw channel list on the left side of waterfall
+    float list_x = args.wfMin.x + 10;
+    float list_y = args.wfMin.y + 10;
+    float line_height = 14;
+    int max_lines = static_cast<int>((wf_height - 20) / line_height);
+    int display_count = std::min(static_cast<int>(sorted_channels.size()), max_lines);
     
     ImGui::PushFont(style::baseFont);
     
-    // Draw each channel
-    for (const auto& channel : channels) {
-        if (!channel->is_active) continue;
+    // Draw background panel
+    float panel_width = 280;
+    float panel_height = display_count * line_height + 20;
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddRectFilled(
+        ImVec2(list_x - 5, list_y - 5),
+        ImVec2(list_x + panel_width, list_y + panel_height),
+        IM_COL32(0, 0, 0, 180)
+    );
+    
+    // Draw header
+    char header[64];
+    snprintf(header, sizeof(header), "CW Channels: %zu", sorted_channels.size());
+    draw_list->AddText(ImVec2(list_x, list_y), IM_COL32(255, 255, 255, 255), header);
+    list_y += line_height + 2;
+    
+    // Draw each channel in sorted order
+    for (int i = 0; i < display_count; i++) {
+        const auto* channel = sorted_channels[i];
         
         // Get channel data
-        float freq = channel->center_freq_hz + center_freq;  // Add VFO offset
+        float freq_abs = channel->center_freq_hz + center_freq;
         float snr = channel->snr;
-        float wpm = channel->wpm;
         
-        // Get text (thread-safe)
+        // Get text (thread-safe) - use const_cast for mutex
         std::string text;
         {
-            std::lock_guard<std::mutex> lock(channel->text_mutex);
+            std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(channel->text_mutex));
             text = channel->decoded_text;
         }
         
-        if (text.empty() && !iq_config.show_partial) continue;
-        
-        // Calculate X position on waterfall
-        double freq_offset = freq - low_freq;
-        float x_pos = static_cast<float>(freq_offset * freq_to_pixel);
-        
-        // Clamp to visible area
-        if (x_pos < 0 || x_pos > wf_width) continue;
-        
-        // Format display: "14032.33 [text]"
-        char display[128];
-        char freq_str[16];
-        snprintf(freq_str, sizeof(freq_str), "%.2f", freq / 1000.0);
-        
-        // Truncate or scroll text
-        std::string display_text = text;
-        const size_t max_display = 40;
-        
-        if (display_text.length() > max_display) {
-            // Scrolling animation
-            int scroll_pos = static_cast<int>(time * 2) % (static_cast<int>(display_text.length()) - max_display + 10);
-            if (scroll_pos > static_cast<int>(display_text.length()) - max_display) {
-                scroll_pos = 0;
-            }
-            display_text = display_text.substr(scroll_pos, max_display);
+        // Truncate text to fit
+        if (text.length() > 25) {
+            text = text.substr(0, 22) + "...";
         }
+        if (text.empty()) text = "...";
         
-        snprintf(display, sizeof(display), "%s %s", freq_str, display_text.c_str());
+        // Color based on SNR (green = strong, yellow = medium, red = weak)
+        ImU32 color;
+        if (snr > 20) color = IM_COL32(100, 255, 100, 255);
+        else if (snr > 12) color = IM_COL32(255, 255, 100, 255);
+        else color = IM_COL32(255, 150, 100, 255);
         
-        // Calculate text size
-        ImVec2 text_size = ImGui::CalcTextSize(display);
+        // Format: "14032.33 18dB [decoded text]"
+        char line[128];
+        snprintf(line, sizeof(line), "%.2f %4.0fdB %s", 
+                 freq_abs / 1000.0, snr, text.c_str());
         
-        // Y position - stack channels vertically, newer at bottom
-        // Use channel ID to determine vertical offset
-        float y_offset = 20.0f + (channel->id % 10) * (text_size.y + 2.0f);
-        float y_pos = args.wfMin.y + y_offset;
-        
-        // Clamp Y to visible area
-        if (y_pos + text_size.y > args.wfMax.y) {
-            y_pos = args.wfMax.y - text_size.y - 5.0f;
-        }
-        
-        ImVec2 pos = ImVec2(args.wfMin.x + x_pos - text_size.x / 2.0f, y_pos);
-        
-        // Ensure text stays within waterfall bounds horizontally
-        if (pos.x < args.wfMin.x) pos.x = args.wfMin.x + 2;
-        if (pos.x + text_size.x > args.wfMax.x) pos.x = args.wfMax.x - text_size.x - 2;
-        
-        // Colors based on SNR
-        ImU32 text_color;
-        if (snr > 20.0f) {
-            text_color = IM_COL32(0, 255, 0, 255);  // Green (strong)
-        } else if (snr > 15.0f) {
-            text_color = IM_COL32(255, 255, 0, 255);  // Yellow (medium)
-        } else {
-            text_color = IM_COL32(255, 100, 100, 255);  // Red (weak)
-        }
-        
-        ImU32 black = IM_COL32(0, 0, 0, 255);
-        ImU32 bg_color = IM_COL32(0, 0, 0, 160);
-        
-        // Background
-        args.window->DrawList->AddRectFilled(
-            pos - ImVec2(2, 1),
-            pos + text_size + ImVec2(2, 1),
-            bg_color
-        );
-        
-        // Text outline
-        args.window->DrawList->AddText(pos + ImVec2(-1, -1), black, display);
-        args.window->DrawList->AddText(pos + ImVec2(-1, 1), black, display);
-        args.window->DrawList->AddText(pos + ImVec2(1, -1), black, display);
-        args.window->DrawList->AddText(pos + ImVec2(1, 1), black, display);
-        
-        // Main text
-        args.window->DrawList->AddText(pos, text_color, display);
-        
-        // SNR bar (small indicator below text)
-        float bar_width = text_size.x;
-        float bar_height = 3.0f;
-        float snr_ratio = std::min(snr / 30.0f, 1.0f);
-        
-        ImVec2 bar_pos = pos + ImVec2(0, text_size.y + 1);
-        args.window->DrawList->AddRectFilled(
-            bar_pos,
-            bar_pos + ImVec2(bar_width, bar_height),
-            IM_COL32(50, 50, 50, 200)
-        );
-        args.window->DrawList->AddRectFilled(
-            bar_pos,
-            bar_pos + ImVec2(bar_width * snr_ratio, bar_height),
-            text_color
-        );
+        draw_list->AddText(ImVec2(list_x, list_y), color, line);
+        list_y += line_height;
     }
     
     ImGui::PopFont();
-    
-    // Update status text periodically
-    static int frame_count = 0;
-    if (++frame_count % 60 == 0) {
-        snprintf(status_text, sizeof(status_text), "Active - %zu channels",
-                 iq_dsp_engine.get_active_channel_count());
-    }
 }
 
 // Module entry points
