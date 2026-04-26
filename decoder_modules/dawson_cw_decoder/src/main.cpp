@@ -19,7 +19,7 @@
 #include <atomic>
 #include <cmath>
 
-#include "cw_dsp_engine.h"
+#include "cw_iq_dsp_engine.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -83,37 +83,26 @@ public:
     void enable() override;
     void disable() override;
     bool isEnabled() override;
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override;
     
 private:
     static void menuHandler(void* ctx);
     static void waterfallDrawHandler(ImGui::WaterFall::WaterfallDrawArgs args, void* ctx);
-    static void sampleRateChangeHandler(float sampleRate, void* ctx);
-    static void audioHandler(dsp::stereo_t* data, int count, void* ctx);
     
     void drawMenu();
     void drawOverlay(const ImGui::WaterFall::WaterfallDrawArgs& args);
-    void processAudio();
     void updateFrequencyLock();
+    void updateBindings();
     
     std::string name;
     bool enabled = false;
     
-    // DSP Engine
-    std::unique_ptr<dawson_cw::CWDSPEngine> dsp_engine;
+    // IQ DSP Engine - acts as a preprocessor (pass-through with monitoring)
+    dawson_cw::IQCWDSPEngine iq_dsp_engine;
+    dawson_cw::IQConfig iq_config;
     
-    // Audio chain
-    dsp::stream<dsp::stereo_t> audio_stream;
-    dsp::sink::Handler<dsp::stereo_t> audio_handler;
-    dawson_cw::Config decoder_config;
-    
-    // VFO for audio extraction
-    VFOManager::VFO* vfo = nullptr;
-    dsp::channel::RxVFO* rx_vfo = nullptr;
-    dsp::chain<dsp::complex_t> if_chain;
-    
-    // Sample rate handling
-    double audio_sample_rate = 48000.0;
-    EventHandler<float> sr_change_handler;
+    // Sample rate
+    double sample_rate = 48000.0;
     
     // UI State
     bool auto_enable_in_cw_band = true;
@@ -125,12 +114,13 @@ private:
     // Frequency tracking
     double current_center_freq = 0;
     bool on_cw_frequency = false;
+    
+    // Spectrum buffer for waterfall overlay
+    float spectrum_buffer[dawson_cw::IQ_FFT_SIZE];
 };
 
-DawsonCWDecoderModule::DawsonCWDecoderModule(std::string name) 
+DawsonCWDecoderModule::DawsonCWDecoderModule(std::string name)
     : name(name) {
-    
-    dsp_engine = std::make_unique<dawson_cw::CWDSPEngine>();
     
     // Load config
     config.acquire();
@@ -139,21 +129,18 @@ DawsonCWDecoderModule::DawsonCWDecoderModule(std::string name)
     }
     
     auto& cfg = config.conf[name];
-    decoder_config.max_channels = cfg.value("maxChannels", 20);
-    decoder_config.threshold_mult = cfg.value("thresholdMult", 9.0f);
-    decoder_config.min_snr_db = cfg.value("minSNR", 12.0f);
-    decoder_config.min_wpm = cfg.value("minWPM", 10);
-    decoder_config.max_wpm = cfg.value("maxWPM", 40);
-    decoder_config.timeout_seconds = cfg.value("timeout", 30);
-    decoder_config.show_partial = cfg.value("showPartial", true);
-    auto_enable_in_cw_band = cfg.value("autoEnable", true);
+    iq_config.max_channels = cfg.value("maxChannels", 100);
+    iq_config.threshold_mult = cfg.value("thresholdMult", 9.0f);
+    iq_config.min_snr_db = cfg.value("minSnrDb", 12.0f);
+    iq_config.timeout_seconds = cfg.value("timeoutSeconds", 30);
+    iq_config.show_partial = cfg.value("showPartial", true);
+    iq_config.sample_rate = static_cast<float>(sample_rate);
     
-    config.release(true);
+    iq_dsp_engine.set_config(iq_config);
+    config.release();
     
-    dsp_engine->set_config(decoder_config);
-    
-    // Initialize audio handler
-    audio_handler.init(&audio_stream, audioHandler, this);
+    // Note: Preprocessor is added in updateBindings(), NOT here in constructor
+    // This follows the noise_reduction_logmmse pattern
     
     // Register menu
     gui::menu.registerEntry(name, menuHandler, this, static_cast<ModuleManager::Instance*>(this));
@@ -180,53 +167,151 @@ void DawsonCWDecoderModule::postInit() {
 void DawsonCWDecoderModule::enable() {
     if (enabled) return;
     
-    double bw = gui::waterfall.getBandwidth();
+    flog::info("Dawson CW Decoder: enabling...");
     
-    // Create VFO for audio extraction
-    vfo = sigpath::vfoManager.createVFO(
-        name, 
-        ImGui::WaterfallVFO::REF_CENTER, 
-        0, 
-        12000,  // 12kHz bandwidth
-        48000,  // Sample rate
-        12000, 
-        12000, 
-        true
-    );
+    // Get current sample rate from front-end (with fallback)
+    try {
+        sample_rate = sigpath::iqFrontEnd.getSampleRate();
+    } catch (...) {
+        sample_rate = 0;
+    }
     
-    // Setup audio chain
-    audio_stream.setBufferSize(48000);  // 1 second buffer
+    if (sample_rate <= 0 || sample_rate > 10000000) {  // Sanity check
+        sample_rate = 48000.0;
+    }
     
-    // Start audio handler
-    audio_handler.start();
+    // Update config with actual sample rate
+    iq_config.sample_rate = static_cast<float>(sample_rate);
+    iq_dsp_engine.set_config(iq_config);
+    
+    // Set initial center frequency
+    try {
+        current_center_freq = gui::waterfall.getCenterFrequency();
+    } catch (...) {
+        current_center_freq = 0;
+    }
+    iq_dsp_engine.set_center_frequency(current_center_freq);
     
     enabled = true;
-    snprintf(status_text, sizeof(status_text), "Active - %d channels", 
-             static_cast<int>(dsp_engine->get_active_channel_count()));
-    
+    printf("[CWDBG] Calling updateBindings...\n"); fflush(stdout);
+    updateBindings();
+    printf("[CWDBG] updateBindings done\n"); fflush(stdout);
     flog::info("Dawson CW Decoder enabled");
+    
+    printf("[CWDBG] About to get channel count...\n"); fflush(stdout);
+    auto ch_count = iq_dsp_engine.get_active_channel_count();
+    printf("[CWDBG] Got channel count: %zu\n", ch_count); fflush(stdout);
+    snprintf(status_text, sizeof(status_text), "Active - %zu channels", ch_count);
+    printf("[CWDBG] enable() complete\n"); fflush(stdout);
 }
 
 void DawsonCWDecoderModule::disable() {
     if (!enabled) return;
     
-    audio_handler.stop();
-    
-    if (vfo) {
-        sigpath::vfoManager.deleteVFO(vfo);
-        vfo = nullptr;
-    }
-    
-    dsp_engine->clear_all_channels();
-    
+    flog::info("Dawson CW Decoder: disabling...");
     enabled = false;
-    snprintf(status_text, sizeof(status_text), "Disabled");
+    updateBindings();
+    iq_dsp_engine.clear_all_channels();
     
+    snprintf(status_text, sizeof(status_text), "Disabled");
     flog::info("Dawson CW Decoder disabled");
+}
+
+void DawsonCWDecoderModule::updateBindings() {
+    if (enabled && !iq_dsp_engine.is_enabled()) {
+        flog::info("Dawson CW Decoder: adding preprocessor...");
+        printf("[CWDBG] Adding preprocessor\n"); fflush(stdout);
+        sigpath::iqFrontEnd.addPreprocessor(&iq_dsp_engine, false);
+        printf("[CWDBG] Preprocessor added, enabling...\n"); fflush(stdout);
+        iq_dsp_engine.set_enabled(true);
+        sigpath::iqFrontEnd.togglePreprocessor(&iq_dsp_engine, true);
+        printf("[CWDBG] Preprocessor enabled\n"); fflush(stdout);
+        flog::info("Dawson CW Decoder: preprocessor added and enabled");
+    }
+    else if (iq_dsp_engine.is_enabled()) {
+        flog::info("Dawson CW Decoder: removing preprocessor...");
+        printf("[CWDBG] Removing preprocessor\n");
+        iq_dsp_engine.set_enabled(false);
+        sigpath::iqFrontEnd.togglePreprocessor(&iq_dsp_engine, false);
+        sigpath::iqFrontEnd.removePreprocessor(&iq_dsp_engine);
+        printf("[CWDBG] Preprocessor removed\n");
+        flog::info("Dawson CW Decoder: preprocessor removed");
+    }
 }
 
 bool DawsonCWDecoderModule::isEnabled() {
     return enabled;
+}
+
+std::string DawsonCWDecoderModule::handleDebugCommand(const std::string& cmd, const std::string& args) {
+    flog::info("Dawson CW Decoder: handleDebugCommand called - cmd='{}', args='{}'", cmd, args);
+    
+    json response;
+    
+    if (cmd == "get_status") {
+        response["enabled"] = enabled;
+        response["active_channels"] = (int)iq_dsp_engine.get_active_channel_count();
+        response["on_cw_frequency"] = on_cw_frequency;
+        response["status_text"] = status_text;
+        
+        // Skip channel details to avoid thread safety issues
+        response["channels"] = json::array();
+        
+    } else if (cmd == "set_max_channels") {
+        if (!args.empty()) {
+            iq_config.max_channels = std::stoi(args);
+            iq_dsp_engine.set_config(iq_config);
+            response["status"] = "ok";
+            response["max_channels"] = iq_config.max_channels;
+        } else {
+            response["status"] = "error";
+            response["error"] = "missing argument";
+        }
+        
+    } else if (cmd == "set_threshold") {
+        if (!args.empty()) {
+            iq_config.threshold_mult = std::stof(args);
+            iq_dsp_engine.set_config(iq_config);
+            response["status"] = "ok";
+            response["threshold"] = iq_config.threshold_mult;
+        } else {
+            response["status"] = "error";
+            response["error"] = "missing argument";
+        }
+        
+    } else if (cmd == "enable") {
+        if (!enabled) enable();
+        response["status"] = "ok";
+        response["enabled"] = enabled;
+        
+    } else if (cmd == "disable") {
+        if (enabled) disable();
+        response["status"] = "ok";
+        response["enabled"] = enabled;
+        
+    } else if (cmd == "reset") {
+        iq_dsp_engine.reset();
+        response["status"] = "ok";
+        
+    } else if (cmd == "get_config") {
+        response["max_channels"] = iq_config.max_channels;
+        response["threshold_mult"] = iq_config.threshold_mult;
+        response["min_snr_db"] = iq_config.min_snr_db;
+        response["timeout_seconds"] = iq_config.timeout_seconds;
+        response["show_partial"] = iq_config.show_partial;
+        
+    } else if (cmd == "get_samples") {
+        uint64_t samples = iq_dsp_engine.get_total_samples_processed();
+        printf("[CWDBG] get_samples: total_samples=%llu\n", (unsigned long long)samples);
+        response["total_samples"] = samples;
+        response["status"] = "ok";
+        
+    } else {
+        response["status"] = "error";
+        response["error"] = "unknown command";
+    }
+    
+    return response.dump();
 }
 
 void DawsonCWDecoderModule::updateFrequencyLock() {
@@ -293,21 +378,21 @@ void DawsonCWDecoderModule::drawMenu() {
     // Max channels
     ImGui::LeftLabel("Max Channels");
     ImGui::FillWidth();
-    if (ImGui::SliderInt(CONCAT("##max_channels_", name), &decoder_config.max_channels, 1, 100)) {
+    if (ImGui::SliderInt(CONCAT("##max_channels_", name), &iq_config.max_channels, 1, 100)) {
         config_changed = true;
     }
     
     // Threshold
     ImGui::LeftLabel("Threshold");
     ImGui::FillWidth();
-    if (ImGui::SliderFloat(CONCAT("##threshold_", name), &decoder_config.threshold_mult, 1.0f, 20.0f, "%.1f")) {
+    if (ImGui::SliderFloat(CONCAT("##threshold_", name), &iq_config.threshold_mult, 1.0f, 20.0f, "%.1f")) {
         config_changed = true;
     }
     
     // Min SNR
     ImGui::LeftLabel("Min SNR (dB)");
     ImGui::FillWidth();
-    if (ImGui::SliderFloat(CONCAT("##min_snr_", name), &decoder_config.min_snr_db, 6.0f, 20.0f, "%.0f")) {
+    if (ImGui::SliderFloat(CONCAT("##min_snr_", name), &iq_config.min_snr_db, 6.0f, 20.0f, "%.0f")) {
         config_changed = true;
     }
     
@@ -315,7 +400,7 @@ void DawsonCWDecoderModule::drawMenu() {
     ImGui::LeftLabel("WPM Range");
     ImGui::FillWidth();
     if (ImGui::DragIntRange2(CONCAT("##wpm_range_", name), 
-                              &decoder_config.min_wpm, &decoder_config.max_wpm, 
+                              &iq_config.min_wpm, &iq_config.max_wpm, 
                               1, 5, 60, "Min: %d", "Max: %d")) {
         config_changed = true;
     }
@@ -323,33 +408,34 @@ void DawsonCWDecoderModule::drawMenu() {
     // Timeout
     ImGui::LeftLabel("Timeout (sec)");
     ImGui::FillWidth();
-    if (ImGui::SliderInt(CONCAT("##timeout_", name), &decoder_config.timeout_seconds, 5, 60)) {
+    if (ImGui::SliderInt(CONCAT("##timeout_", name), &iq_config.timeout_seconds, 5, 60)) {
         config_changed = true;
     }
     
     // Show partial
-    if (ImGui::Checkbox(CONCAT("Show partial decodes##", name), &decoder_config.show_partial)) {
+    if (ImGui::Checkbox(CONCAT("Show partial decodes##", name), &iq_config.show_partial)) {
         config_changed = true;
     }
     
     if (config_changed) {
-        dsp_engine->set_config(decoder_config);
+        iq_dsp_engine.set_config(iq_config);
         
         config.acquire();
-        config.conf[name]["maxChannels"] = decoder_config.max_channels;
-        config.conf[name]["thresholdMult"] = decoder_config.threshold_mult;
-        config.conf[name]["minSNR"] = decoder_config.min_snr_db;
-        config.conf[name]["minWPM"] = decoder_config.min_wpm;
-        config.conf[name]["maxWPM"] = decoder_config.max_wpm;
-        config.conf[name]["timeout"] = decoder_config.timeout_seconds;
-        config.conf[name]["showPartial"] = decoder_config.show_partial;
+        config.conf[name]["maxChannels"] = iq_config.max_channels;
+        config.conf[name]["thresholdMult"] = iq_config.threshold_mult;
+        config.conf[name]["minSNR"] = iq_config.min_snr_db;
+        config.conf[name]["minWPM"] = iq_config.min_wpm;
+        config.conf[name]["maxWPM"] = iq_config.max_wpm;
+        config.conf[name]["timeout"] = iq_config.timeout_seconds;
+        config.conf[name]["showPartial"] = iq_config.show_partial;
         config.release(true);
     }
     
     ImGui::Separator();
     
     // Active channels info
-    ImGui::Text("Active channels: %zu", dsp_engine->get_active_channel_count());
+    ImGui::Text("Active channels: %zu", iq_dsp_engine.get_active_channel_count());
+    ImGui::Text("Samples processed: %llu", (unsigned long long)iq_dsp_engine.get_total_samples_processed());
     
     if (!enabled) {
         style::endDisabled();
@@ -357,31 +443,17 @@ void DawsonCWDecoderModule::drawMenu() {
     
     // Reset button
     if (ImGui::Button(CONCAT("Reset##reset_", name), ImVec2(menuWidth, 0))) {
-        dsp_engine->reset();
+        iq_dsp_engine.reset();
     }
 }
 
-void DawsonCWDecoderModule::audioHandler(dsp::stereo_t* data, int count, void* ctx) {
-    auto* module = (DawsonCWDecoderModule*)ctx;
-    
-    // Convert stereo to mono int16 for the DSP engine
-    // Take left channel and convert to 16-bit
-    for (int i = 0; i < count; i++) {
-        int16_t sample = static_cast<int16_t>(data[i].l * 32767.0f);
-        module->dsp_engine->process_audio_sample(sample);
-    }
-}
-
-void DawsonCWDecoderModule::sampleRateChangeHandler(float sampleRate, void* ctx) {
-    auto* module = (DawsonCWDecoderModule*)ctx;
-    module->audio_sample_rate = sampleRate;
-}
+// IQ processing is now handled by the preprocessor's run() method
 
 void DawsonCWDecoderModule::drawOverlay(const ImGui::WaterFall::WaterfallDrawArgs& args) {
     if (!enabled) return;
     
-    // Get active channels
-    const auto& channels = dsp_engine->get_channels();
+    // Get active channels from IQ engine
+    const auto& channels = iq_dsp_engine.get_channels();
     if (channels.empty()) return;
     
     // Get waterfall dimensions
@@ -416,7 +488,7 @@ void DawsonCWDecoderModule::drawOverlay(const ImGui::WaterFall::WaterfallDrawArg
             text = channel->decoded_text;
         }
         
-        if (text.empty() && !decoder_config.show_partial) continue;
+        if (text.empty() && !iq_config.show_partial) continue;
         
         // Calculate X position on waterfall
         double freq_offset = freq - low_freq;
@@ -517,7 +589,7 @@ void DawsonCWDecoderModule::drawOverlay(const ImGui::WaterFall::WaterfallDrawArg
     static int frame_count = 0;
     if (++frame_count % 60 == 0) {
         snprintf(status_text, sizeof(status_text), "Active - %zu channels",
-                 dsp_engine->get_active_channel_count());
+                 iq_dsp_engine.get_active_channel_count());
     }
 }
 

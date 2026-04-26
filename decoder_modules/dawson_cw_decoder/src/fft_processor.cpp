@@ -10,8 +10,8 @@
 #include "fft_processor.h"
 
 FFTProcessor::FFTProcessor() : initialized(false) {
-    // Initialize twiddle factors
-    uint16_t n_over_2 = 1 << (MAX_M - 1);
+    // Initialize twiddle factors for max size (1024)
+    uint16_t n_over_2 = 1 << (MAX_M - 1);  // 512 for n=1024
     for (int i = 0; i < n_over_2; ++i) {
         fixed_cos_table[i] = cosf((float)i * M_PI / n_over_2);
         fixed_sin_table[i] = sinf((float)i * M_PI / n_over_2);
@@ -50,7 +50,8 @@ void FFTProcessor::process(float* reals, float* imaginaries, uint16_t m) {
     for (uint16_t stage = 0; stage < m; ++stage) {
         uint16_t subdft_size = 2 << stage;
         uint16_t span = subdft_size >> 1;
-        uint16_t shift = (MAX_M - stage - 1);
+        // Scale twiddle factor index based on current FFT size vs max size
+        uint16_t twiddle_scale = MAX_M - m;
         uint16_t quarter_turn = 1 << (stage - 1);
         
         for (uint16_t j = 0; j < span; ++j) {
@@ -86,9 +87,10 @@ void FFTProcessor::process(float* reals, float* imaginaries, uint16_t m) {
                     imaginaries[i] = (top_imag + temp_imag) * 0.5f;
                 }
             } else {
-                // Full complex multiply
-                float real_twiddle = fixed_cos_table[j << shift];
-                float imag_twiddle = -fixed_sin_table[j << shift];
+                // Full complex multiply - scale twiddle index for variable FFT size
+                uint16_t twiddle_idx = j << (MAX_M - m - stage);
+                float real_twiddle = fixed_cos_table[twiddle_idx];
+                float imag_twiddle = -fixed_sin_table[twiddle_idx];
                 
                 for (uint16_t i = j; i < n; i += subdft_size) {
                     uint16_t ip = i + span;

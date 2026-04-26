@@ -46,79 +46,102 @@ Bandwidth: {'vfo_bandwidth': 2700.0, ...}
 *** PASS: Correct LSB bandwidth (~2.7kHz) ***
 ```
 
-## Test Framework Library
+## Creating New Tests
 
-`sdrpp_test_framework.py` provides reusable utilities for creating E2E tests:
-
-### SDRPPTestInstance
-
-Manages a test instance of SDR++:
-
-```python
-from sdrpp_test_framework import SDRPPTestInstance, create_lsb_radio_config
-
-# Create config
-main_config, radio_config = create_lsb_radio_config(
-    radio_name="Radio",
-    frequency=7100000,  # 40m band
-    bandwidth=2700,     # LSB bandwidth
-    sample_rate=48000
-)
-
-# Launch SDR++
-with SDRPPTestInstance(
-    config=main_config,
-    radio_config=radio_config,
-    binary_path="./cmake-build-debug/sdrpp",
-    debug_port=8080,
-    headless=True
-) as sdrpp:
-    # Query via debug API
-    response = sdrpp.debug_cmd("Radio", "get_vfo_bandwidth")
-    print(f"VFO bandwidth: {response['vfo_bandwidth']}")
-```
-
-### Creating New Tests
+**Important:** E2E tests must use only Python standard library (no external dependencies like `requests`). Use `urllib.request` for HTTP communication.
 
 1. Create a new Python file in `e2e/`
 2. Import `urllib.request` and `json` (standard library only)
 3. Use HTTP POST to `/module/<instance>/command` endpoint
 4. Parse JSON responses and verify expected values
 
-Example pattern:
+#### Standard Library HTTP Helper Pattern
+
+```python
+import json
+import urllib.request
+
+def http_post(base_url, path, json_data=None):
+    """Make HTTP POST request using only standard library"""
+    url = f"{base_url}{path}"
+    try:
+        data = json.dumps(json_data).encode() if json_data else b''
+        req = urllib.request.Request(
+            url, 
+            data=data, 
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        return {"error": str(e)}
+
+def module_cmd(base_url, instance_name, cmd, args=""):
+    """Send command to SDR++ module instance"""
+    return http_post(
+        base_url,
+        f"/module/{instance_name.replace(' ', '%20')}/command",
+        json_data={"cmd": cmd, "args": args}
+    )
+
+# Usage
+response = module_cmd("http://localhost:8080", "Radio", "get_vfo_bandwidth")
+print(f"Bandwidth: {response.get('vfo_bandwidth')}")
+```
+
+#### Complete Test Pattern
+
 ```python
 import json
 import urllib.request
 import tempfile
 import subprocess
 import os
+import time
+import shutil
 
 def test_my_feature():
+    # Configuration
+    port = 8080
+    base_url = f"http://localhost:{port}"
+    build_dir = "/path/to/cmake-build-debug"
+    
     # Create temp config
     temp_dir = tempfile.mkdtemp()
-    # ... write config files ...
+    # ... write config.json ...
     
     # Launch SDR++
-    proc = subprocess.Popen([...], cwd=build_dir)
+    env = os.environ.copy()
+    env['QT_QPA_PLATFORM'] = 'offscreen'  # Headless mode
+    
+    proc = subprocess.Popen(
+        ["./sdrpp", '-r', temp_dir, '--http', str(port)],
+        cwd=build_dir,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
     
     # Wait for HTTP server
-    # ... polling loop ...
+    for _ in range(150):  # 15 seconds timeout
+        try:
+            urllib.request.urlopen(f"{base_url}/", timeout=0.5)
+            break
+        except:
+            time.sleep(0.1)
+    else:
+        proc.kill()
+        raise RuntimeError("SDR++ failed to start")
     
     # Query and verify
-    url = f"http://localhost:{port}/module/Radio/command"
-    req = urllib.request.Request(url, data=json.dumps({
-        "cmd": "my_command", "args": ""
-    }).encode(), headers={'Content-Type': 'application/json'})
-    
-    with urllib.request.urlopen(req, timeout=5.0) as resp:
-        data = json.loads(resp.read().decode())
-        # Verify expected values
-        assert data['some_field'] == expected_value
-    
-    # Cleanup
-    proc.terminate()
-    proc.wait()
-    shutil.rmtree(temp_dir)
+    try:
+        response = module_cmd(base_url, "Radio", "my_command")
+        assert response.get('some_field') == expected_value
+    finally:
+        # Cleanup
+        proc.terminate()
+        proc.wait()
+        shutil.rmtree(temp_dir)
 ```
 
 ## Debug Protocol Reference

@@ -19,13 +19,13 @@
 // Fixed-point FFT implementation (same as HamFist)
 class FFTProcessor {
 public:
-    static const uint16_t FRAME_SIZE = 64;
-    static const uint16_t MAX_M = 6;  // log2(64)
+    static const uint16_t MAX_FRAME_SIZE = 1024;
+    static const uint16_t MAX_M = 10;  // log2(1024)
     
     FFTProcessor();
     
-    // Process 64-point FFT
-    void process(float* input_real, float* input_imag, uint16_t m = 6);
+    // Process N-point FFT where N = 2^m (m <= 10 for up to 1024 points)
+    void process(float* input_real, float* input_imag, uint16_t m = 10);
     
     // Calculate magnitude from FFT output
     static void calculate_magnitude(float* real, float* imag, float* magnitude, uint16_t n);
@@ -36,8 +36,8 @@ public:
 private:
     void bit_reverse(float* reals, float* imaginaries, uint16_t n);
     
-    float fixed_cos_table[32];  // n/2 for n=64
-    float fixed_sin_table[32];
+    float fixed_cos_table[512];  // n/2 for n=1024
+    float fixed_sin_table[512];
     bool initialized;
 };
 
