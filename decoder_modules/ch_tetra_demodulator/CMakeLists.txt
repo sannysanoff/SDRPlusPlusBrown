@@ -16,7 +16,39 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     file(MAKE_DIRECTORY "${ETSI_CODEC_DIR}")
     if (NOT EXISTS "${ETSI_CODEC_ZIP}")
         message("Downloading ETSI TETRA codec")
-        file(DOWNLOAD "${ETSI_CODEC_URL}" "${ETSI_CODEC_ZIP}" EXPECTED_MD5 "${ETSI_CODEC_MD5}")
+        # Try wget first (more reliable with ETSI server)
+        find_program(ETSI_WGET_PROGRAM wget)
+        if (ETSI_WGET_PROGRAM)
+            message("Using wget to download ETSI TETRA codec")
+            execute_process(
+                COMMAND "${ETSI_WGET_PROGRAM}" -q -O "${ETSI_CODEC_ZIP}" "${ETSI_CODEC_URL}"
+                RESULT_VARIABLE ETSI_DOWNLOAD_RESULT
+            )
+            if (NOT ETSI_DOWNLOAD_RESULT EQUAL 0)
+                file(REMOVE "${ETSI_CODEC_ZIP}")
+                message(WARNING "wget download failed, trying curl...")
+            endif()
+        endif()
+        # Try curl if wget not available or failed
+        if (NOT EXISTS "${ETSI_CODEC_ZIP}")
+            find_program(ETSI_CURL_PROGRAM curl)
+            if (ETSI_CURL_PROGRAM)
+                message("Using curl to download ETSI TETRA codec")
+                execute_process(
+                    COMMAND "${ETSI_CURL_PROGRAM}" -sL -o "${ETSI_CODEC_ZIP}" "${ETSI_CODEC_URL}"
+                    RESULT_VARIABLE ETSI_DOWNLOAD_RESULT
+                )
+                if (NOT ETSI_DOWNLOAD_RESULT EQUAL 0)
+                    file(REMOVE "${ETSI_CODEC_ZIP}")
+                    message(WARNING "curl download failed, falling back to CMake file(DOWNLOAD)...")
+                endif()
+            endif()
+        endif()
+        # Fall back to CMake file(DOWNLOAD) if neither wget nor curl worked
+        if (NOT EXISTS "${ETSI_CODEC_ZIP}")
+            message("Using CMake file(DOWNLOAD) to download ETSI TETRA codec")
+            file(DOWNLOAD "${ETSI_CODEC_URL}" "${ETSI_CODEC_ZIP}" EXPECTED_MD5 "${ETSI_CODEC_MD5}")
+        endif()
     else ()
         message("Not downloading ETSI TETRA codec.")
     endif ()
