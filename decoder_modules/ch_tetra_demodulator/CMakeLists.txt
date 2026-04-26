@@ -3,45 +3,8 @@ project(ch_tetra_demodulator)
 
 message(STATUS "[CH_TETRA_DEMODULATOR] ===== Configuring ch_tetra_demodulator module =====")
 
-# Sample wget/curl test with full verbose output for diagnostic purposes
-find_program(TEST_WGET_PROGRAM wget)
-find_program(TEST_CURL_PROGRAM curl)
-
-if(TEST_WGET_PROGRAM)
-    message(STATUS "[CH_TETRA_DEMODULATOR] === SAMPLE WGET TEST (full verbose output) ===")
-    execute_process(
-        COMMAND "${TEST_WGET_PROGRAM}" -v --timeout=10 -O /dev/null https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
-        RESULT_VARIABLE TEST_WGET_RESULT
-        OUTPUT_VARIABLE TEST_WGET_OUTPUT
-        ERROR_VARIABLE TEST_WGET_ERROR
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_STRIP_TRAILING_WHITESPACE
-    )
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample wget stdout: ${TEST_WGET_OUTPUT}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample wget stderr: ${TEST_WGET_ERROR}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample wget exit code: ${TEST_WGET_RESULT}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] === END SAMPLE WGET TEST ===")
-else()
-    message(STATUS "[CH_TETRA_DEMODULATOR] wget not found for sample test")
-endif()
-
-if(TEST_CURL_PROGRAM)
-    message(STATUS "[CH_TETRA_DEMODULATOR] === SAMPLE CURL TEST (full verbose output) ===")
-    execute_process(
-        COMMAND "${TEST_CURL_PROGRAM}" -vL --max-time 10 -o /dev/null https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
-        RESULT_VARIABLE TEST_CURL_RESULT
-        OUTPUT_VARIABLE TEST_CURL_OUTPUT
-        ERROR_VARIABLE TEST_CURL_ERROR
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_STRIP_TRAILING_WHITESPACE
-    )
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample curl stdout: ${TEST_CURL_OUTPUT}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample curl stderr: ${TEST_CURL_ERROR}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] Sample curl exit code: ${TEST_CURL_RESULT}")
-    message(STATUS "[CH_TETRA_DEMODULATOR] === END SAMPLE CURL TEST ===")
-else()
-    message(STATUS "[CH_TETRA_DEMODULATOR] curl not found for sample test")
-endif()
+# User agent for downloads
+set(DOWNLOAD_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 set(CMAKE_INSTALL_PREFIX "/usr/")
 include(GNUInstallDirs)
@@ -58,55 +21,18 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     file(MAKE_DIRECTORY "${ETSI_CODEC_DIR}")
     if (NOT EXISTS "${ETSI_CODEC_ZIP}")
         message(STATUS "[CH_TETRA_DEMODULATOR] Downloading ETSI TETRA codec from ${ETSI_CODEC_URL}")
-        set(ETSI_DOWNLOAD_SUCCESS FALSE)
-        # Try wget first (more reliable with ETSI server)
-        find_program(ETSI_WGET_PROGRAM wget)
-        if (ETSI_WGET_PROGRAM)
-            message(STATUS "[CH_TETRA_DEMODULATOR] Using wget with verbose output...")
-            execute_process(
-                COMMAND "${ETSI_WGET_PROGRAM}" -v -O "${ETSI_CODEC_ZIP}" "${ETSI_CODEC_URL}"
-                RESULT_VARIABLE ETSI_DOWNLOAD_RESULT
-                OUTPUT_VARIABLE ETSI_WGET_OUTPUT
-                ERROR_VARIABLE ETSI_WGET_ERROR
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-                ERROR_STRIP_TRAILING_WHITESPACE
-            )
-            message(STATUS "[CH_TETRA_DEMODULATOR] wget stdout: ${ETSI_WGET_OUTPUT}")
-            message(STATUS "[CH_TETRA_DEMODULATOR] wget stderr: ${ETSI_WGET_ERROR}")
-            if (ETSI_DOWNLOAD_RESULT EQUAL 0)
-                set(ETSI_DOWNLOAD_SUCCESS TRUE)
-                message(STATUS "[CH_TETRA_DEMODULATOR] wget download succeeded")
-            else()
-                file(REMOVE "${ETSI_CODEC_ZIP}")
-                message(WARNING "[CH_TETRA_DEMODULATOR] wget download failed (exit: ${ETSI_DOWNLOAD_RESULT}), trying curl...")
-            endif()
-        endif()
-        # Try curl if wget not available or failed
-        if (NOT ETSI_DOWNLOAD_SUCCESS AND NOT EXISTS "${ETSI_CODEC_ZIP}")
-            find_program(ETSI_CURL_PROGRAM curl)
-            if (ETSI_CURL_PROGRAM)
-                message(STATUS "[CH_TETRA_DEMODULATOR] Using curl with verbose output...")
-                execute_process(
-                    COMMAND "${ETSI_CURL_PROGRAM}" -vL -o "${ETSI_CODEC_ZIP}" "${ETSI_CODEC_URL}"
-                    RESULT_VARIABLE ETSI_DOWNLOAD_RESULT
-                    OUTPUT_VARIABLE ETSI_CURL_OUTPUT
-                    ERROR_VARIABLE ETSI_CURL_ERROR
-                    OUTPUT_STRIP_TRAILING_WHITESPACE
-                    ERROR_STRIP_TRAILING_WHITESPACE
-                )
-                message(STATUS "[CH_TETRA_DEMODULATOR] curl stdout: ${ETSI_CURL_OUTPUT}")
-                message(STATUS "[CH_TETRA_DEMODULATOR] curl stderr: ${ETSI_CURL_ERROR}")
-                if (ETSI_DOWNLOAD_RESULT EQUAL 0)
-                    set(ETSI_DOWNLOAD_SUCCESS TRUE)
-                    message(STATUS "[CH_TETRA_DEMODULATOR] curl download succeeded")
-                else()
-                    file(REMOVE "${ETSI_CODEC_ZIP}")
-                    message(WARNING "[CH_TETRA_DEMODULATOR] curl download failed (exit: ${ETSI_DOWNLOAD_RESULT})")
-                endif()
-            endif()
-        endif()
-        if (NOT ETSI_DOWNLOAD_SUCCESS)
-            message(FATAL_ERROR "[CH_TETRA_DEMODULATOR] Failed to download ETSI TETRA codec using both wget and curl")
+        file(DOWNLOAD "${ETSI_CODEC_URL}" "${ETSI_CODEC_ZIP}"
+            HTTPHEADER "User-Agent: ${DOWNLOAD_USER_AGENT}"
+            TIMEOUT 60
+            STATUS DOWNLOAD_STATUS
+        )
+        list(GET DOWNLOAD_STATUS 0 DOWNLOAD_RESULT)
+        if (NOT DOWNLOAD_RESULT EQUAL 0)
+            file(REMOVE "${ETSI_CODEC_ZIP}")
+            list(GET DOWNLOAD_STATUS 1 DOWNLOAD_ERROR)
+            message(FATAL_ERROR "[CH_TETRA_DEMODULATOR] Failed to download ETSI TETRA codec: ${DOWNLOAD_ERROR}")
+        else()
+            message(STATUS "[CH_TETRA_DEMODULATOR] Download succeeded")
         endif()
     else ()
         message(STATUS "[CH_TETRA_DEMODULATOR] ETSI codec zip already exists, skipping download")
