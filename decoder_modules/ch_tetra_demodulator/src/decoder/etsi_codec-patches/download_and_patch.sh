@@ -1,6 +1,6 @@
 #!/bin/sh
 
-URL=http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
+URL=https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
 MD5_EXP=a8115fe68ef8f8cc466f4192572a1e3e
 LOCAL_FILE=etsi_tetra_codec.zip
 

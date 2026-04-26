@@ -10,7 +10,7 @@ find_program(TEST_CURL_PROGRAM curl)
 if(TEST_WGET_PROGRAM)
     message(STATUS "[CH_TETRA_DEMODULATOR] === SAMPLE WGET TEST (full verbose output) ===")
     execute_process(
-        COMMAND "${TEST_WGET_PROGRAM}" -v --timeout=10 -O /dev/null https://www.example.com/
+        COMMAND "${TEST_WGET_PROGRAM}" -v --timeout=10 -O /dev/null https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
         RESULT_VARIABLE TEST_WGET_RESULT
         OUTPUT_VARIABLE TEST_WGET_OUTPUT
         ERROR_VARIABLE TEST_WGET_ERROR
@@ -28,7 +28,7 @@ endif()
 if(TEST_CURL_PROGRAM)
     message(STATUS "[CH_TETRA_DEMODULATOR] === SAMPLE CURL TEST (full verbose output) ===")
     execute_process(
-        COMMAND "${TEST_CURL_PROGRAM}" -vL --max-time 10 -o /dev/null https://www.example.com/
+        COMMAND "${TEST_CURL_PROGRAM}" -vL --max-time 10 -o /dev/null https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
         RESULT_VARIABLE TEST_CURL_RESULT
         OUTPUT_VARIABLE TEST_CURL_OUTPUT
         ERROR_VARIABLE TEST_CURL_ERROR
