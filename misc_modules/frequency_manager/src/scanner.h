@@ -25,6 +25,12 @@ public:
     void render();
     void update(float deltaTime);
 
+    // Public accessors for debug commands
+    bool isScanning() const { return scanning; }
+    std::string getCurrentStation() const { return currentStation; }
+    void startScanner() { start(); }
+    void stopScanner() { stop(); }
+
 private:
     FrequencyManagerModule* module;
     bool scanning = false;

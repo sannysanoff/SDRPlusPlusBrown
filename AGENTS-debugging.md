@@ -1,5 +1,7 @@
 # Debugging Guide for SDR++
 
+> **See also:** [docs/debug_protocol.md](docs/debug_protocol.md) for complete HTTP API endpoint reference.
+
 This document provides debugging and remote control capabilities for SDR++.
 
 ## HTTP Debug Server
@@ -190,3 +192,36 @@ The typical debugging workflow:
    ```
 
 The loop is: start → check status/logs → reproduce bug → stop → fix → rebuild → repeat.
+
+## E2E Testing
+
+The `e2e/` directory contains end-to-end tests that verify debug protocol functionality:
+
+| Test File | Description |
+|-----------|-------------|
+| `e2e/test_lsb_startup.py` | Tests Radio module VFO bandwidth at startup |
+| `e2e/test_frequency_manager.py` | Tests Frequency Manager debug commands (bookmarks, lists, scanner) |
+
+Run tests with: `python3 e2e/test_frequency_manager.py`
+
+### Adding Debug Commands to Modules
+
+To add debug commands to a module:
+
+1. Override `handleDebugCommand` in your module class
+2. Return JSON string responses
+3. Create an E2E test to verify functionality
+
+Example from frequency_manager:
+```cpp
+std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+    if (cmd == "get_bookmarks") {
+        json bms = json::array();
+        for (const auto& [name, bm] : bookmarks) {
+            bms.push_back({{"name", name}, {"frequency", bm.frequency}});
+        }
+        return json{{"bookmarks", bms}}.dump();
+    }
+    return json{{"error", "unknown command"}}.dump();
+}
+```

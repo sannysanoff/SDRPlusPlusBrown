@@ -1,5 +1,7 @@
 # SDR++Brown HTTP Debug Protocol
 
+> **See also:** [AGENTS-debugging.md](../AGENTS-debugging.md) for development/debugging workflow and CLI tool usage.
+
 The HTTP debug server is started with `--http <port>` and provides a REST API for controlling SDR++ remotely. All endpoints return JSON responses unless marked otherwise.
 
 ---
@@ -223,6 +225,21 @@ GET /module/File%20Source/command?cmd=set_filename&args=/path/to/file.wav
 |---------|------|-------------|
 | `get_status` | *(none)* | Returns decoder state, sync status, signal quality, MCC/MNC, hyperframe timing, voice service flag |
 | `set_mode` | `0` or `1` | Switch decoder mode (0 = osmo-tetra, 1 = network symbols) |
+
+**Frequency Manager module** (instance name: `"Frequency Manager"`):
+
+| Command | Args | Description |
+|---------|------|-------------|
+| `get_lists` | *(none)* | Returns array of all bookmark list names |
+| `get_current_list` | *(none)* | Returns the currently selected list name |
+| `set_current_list` | list name | Switch to a different bookmark list |
+| `get_bookmarks` | *(none)* | Returns all bookmarks in current list with frequency, bandwidth, mode |
+| `add_bookmark` | `name\|freq\|bw\|mode` | Add bookmark. Args format: `name\|frequency\|bandwidth\|mode` (mode can be name like "FM" or index) |
+| `remove_bookmark` | bookmark name | Remove bookmark by name from current list |
+| `apply_bookmark` | bookmark name | Tune to bookmark frequency/bandwidth/mode |
+| `get_scanner_status` | *(none)* | Returns scanning state, current station, bookmark count |
+| `start_scanner` | *(none)* | Start scanning bookmarks (fails if no bookmarks) |
+| `stop_scanner` | *(none)* | Stop scanner |
 
 ---
 

@@ -102,6 +102,157 @@ public:
         return enabled;
     }
 
+    // Debug command handler for automation
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "get_lists") {
+            json lists = json::array();
+            for (const auto& listName : listNames) {
+                lists.push_back(listName);
+            }
+            return json{{"lists", lists}}.dump();
+        }
+        if (cmd == "get_current_list") {
+            return json{{"current_list", selectedListName}}.dump();
+        }
+        if (cmd == "set_current_list") {
+            if (std::find(listNames.begin(), listNames.end(), args) != listNames.end()) {
+                loadByName(args);
+                config.acquire();
+                config.conf["selectedList"] = selectedListName;
+                config.release(true);
+                return json{{"status", "ok"}, {"current_list", selectedListName}}.dump();
+            }
+            return json{{"error", "list not found: " + args}}.dump();
+        }
+        if (cmd == "get_bookmarks") {
+            json bms = json::array();
+            auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+            for (const auto& [name, bm] : bookmarks) {
+                json bookmark;
+                bookmark["name"] = name;
+                bookmark["frequency"] = bm.frequency;
+                bookmark["bandwidth"] = bm.bandwidth;
+                // Validate modeIndex before using it
+                if (bm.modeIndex < 0) {
+                    bookmark["mode"] = "Unspecified";
+                } else if (radio) {
+                    DemodID demodId = radio->getDemodByIndex(bm.modeIndex);
+                    bookmark["mode"] = demodModeList.count(demodId) ?
+                        demodModeList[demodId] : "Unknown";
+                } else {
+                    bookmark["mode"] = "Unknown";
+                }
+                bookmark["mode_index"] = bm.modeIndex;
+                bms.push_back(bookmark);
+            }
+            return json{{"bookmarks", bms}, {"list", selectedListName}}.dump();
+        }
+        if (cmd == "add_bookmark") {
+            // Args format: name|frequency|bandwidth|mode
+            // Mode can be name (e.g., "FM", "LSB") or numeric index
+            size_t pos1 = args.find('|');
+            if (pos1 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            size_t pos2 = args.find('|', pos1 + 1);
+            if (pos2 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            size_t pos3 = args.find('|', pos2 + 1);
+            if (pos3 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            
+            std::string bmName = args.substr(0, pos1);
+            std::string freqStr = args.substr(pos1 + 1, pos2 - pos1 - 1);
+            std::string bwStr = args.substr(pos2 + 1, pos3 - pos2 - 1);
+            std::string modeStr = args.substr(pos3 + 1);
+            
+            if (bmName.empty()) {
+                return json{{"error", "bookmark name cannot be empty"}}.dump();
+            }
+            
+            if (bookmarks.find(bmName) != bookmarks.end()) {
+                return json{{"error", "bookmark already exists: " + bmName}}.dump();
+            }
+            
+            try {
+                double frequency = std::stod(freqStr);
+                double bandwidth = std::stod(bwStr);
+                int modeIndex = 0;
+                
+                auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+                if (radio) {
+                    updateModeList(radio);
+                }
+                
+                // Try to parse mode as number first, then as name
+                try {
+                    modeIndex = std::stoi(modeStr);
+                } catch (...) {
+                    // Try to find mode by name
+                    if (demodModeListRev.find(modeStr) != demodModeListRev.end()) {
+                        modeIndex = demodModeListRev[modeStr];
+                    } else {
+                        return json{{"error", "unknown mode: " + modeStr}}.dump();
+                    }
+                }
+                
+                FrequencyBookmark fbm;
+                fbm.frequency = frequency;
+                fbm.bandwidth = bandwidth;
+                fbm.modeIndex = modeIndex;
+                fbm.selected = false;
+                bookmarks[bmName] = fbm;
+                saveByName(selectedListName);
+                
+                return json{{"status", "ok"}, {"name", bmName}, {"frequency", frequency}, {"bandwidth", bandwidth}, {"mode_index", modeIndex}}.dump();
+            } catch (const std::exception& e) {
+                return json{{"error", std::string("parse error: ") + e.what()}}.dump();
+            }
+        }
+        if (cmd == "remove_bookmark") {
+            if (args.empty()) {
+                return json{{"error", "bookmark name required"}}.dump();
+            }
+            auto it = bookmarks.find(args);
+            if (it == bookmarks.end()) {
+                return json{{"error", "bookmark not found: " + args}}.dump();
+            }
+            bookmarks.erase(it);
+            saveByName(selectedListName);
+            return json{{"status", "ok"}, {"removed", args}}.dump();
+        }
+        if (cmd == "apply_bookmark") {
+            if (args.empty()) {
+                return json{{"error", "bookmark name required"}}.dump();
+            }
+            auto it = bookmarks.find(args);
+            if (it == bookmarks.end()) {
+                return json{{"error", "bookmark not found: " + args}}.dump();
+            }
+            FrequencyBookmark& bm = it->second;
+            applyBookmark(bm, gui::waterfall.selectedVFO);
+            bm.selected = false;
+            return json{{"status", "ok"}, {"applied", args}, {"frequency", bm.frequency}, {"bandwidth", bm.bandwidth}, {"vfo", gui::waterfall.selectedVFO.empty() ? "center" : gui::waterfall.selectedVFO}}.dump();
+        }
+        if (cmd == "get_scanner_status") {
+            return json{{"scanning", scanner.isScanning()}, {"current_station", scanner.getCurrentStation()}, {"bookmark_count", bookmarks.size()}}.dump();
+        }
+        if (cmd == "start_scanner") {
+            if (bookmarks.empty()) {
+                return json{{"error", "no bookmarks to scan"}}.dump();
+            }
+            scanner.startScanner();
+            return json{{"status", "ok"}, {"scanning", true}}.dump();
+        }
+        if (cmd == "stop_scanner") {
+            scanner.stopScanner();
+            return json{{"status", "ok"}, {"scanning", false}}.dump();
+        }
+        return json{{"error", "unknown command: " + cmd}}.dump();
+    }
+
 private:
     bool bookmarkEditDialog() {
         bool open = true;
@@ -277,7 +428,12 @@ private:
                 wbm.bookmark.frequency = config.conf["lists"][listName]["bookmarks"][bookmarkName]["frequency"];
                 wbm.bookmark.bandwidth = config.conf["lists"][listName]["bookmarks"][bookmarkName]["bandwidth"];
                 int mode = config.conf["lists"][listName]["bookmarks"][bookmarkName]["mode"];
-                wbm.bookmark.modeIndex = radio->getDemodIndex(mode);
+                // Guard against null radio
+                if (radio) {
+                    wbm.bookmark.modeIndex = radio->getDemodIndex(mode);
+                } else {
+                    wbm.bookmark.modeIndex = -1;
+                }
                 wbm.bookmark.selected = false;
                 wbm.notValidAfter = 0;
                 wbm.extraInfo = "";
@@ -319,7 +475,12 @@ private:
             FrequencyBookmark fbm;
             fbm.frequency = bm["frequency"];
             fbm.bandwidth = bm["bandwidth"];
-            fbm.modeIndex = radio->getDemodIndex(bm["mode"]);
+            // Guard against null radio - set modeIndex to -1 (unspecified) if no radio available
+            if (radio) {
+                fbm.modeIndex = radio->getDemodIndex(bm["mode"]);
+            } else {
+                fbm.modeIndex = -1; // Unspecified mode when no radio available
+            }
             fbm.selected = false;
             bookmarks[bmName] = fbm;
         }
@@ -449,9 +610,9 @@ private:
         if (ImGui::Button(("Add##_freq_mgr_add_" + _this->name).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
             // If there's no VFO selected, just save the center freq
 
-
-            _this->updateModeList(radio);
-
+            if (radio) {
+                _this->updateModeList(radio);
+            }
 
             if (gui::waterfall.selectedVFO == "") {
                 _this->editedBookmark.frequency = gui::waterfall.getCenterFrequency();
@@ -461,7 +622,12 @@ private:
                 _this->editedBookmark.frequency = gui::waterfall.getCenterFrequency() + sigpath::vfoManager.getOffset(gui::waterfall.selectedVFO);
                 _this->editedBookmark.bandwidth = sigpath::vfoManager.getBandwidth(gui::waterfall.selectedVFO);
             }
-            _this->editedBookmark.modeIndex = radio->getDemodIndex(radio->getSelectedDemodId());
+            // Guard: if no radio, set mode to unspecified (-1)
+            if (radio) {
+                _this->editedBookmark.modeIndex = radio->getDemodIndex(radio->getSelectedDemodId());
+            } else {
+                _this->editedBookmark.modeIndex = -1;
+            }
             _this->editedBookmark.selected = false;
 
 
@@ -491,7 +657,9 @@ private:
         if (selectedNames.size() != 1 && _this->selectedListName != "") { style::beginDisabled(); }
         if (ImGui::Button(("Edit##_freq_mgr_edt_" + _this->name).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
             auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
-            _this->updateModeList(radio);
+            if (radio) {
+                _this->updateModeList(radio);
+            }
             _this->editOpen = true;
             _this->editedBookmark = _this->bookmarks[selectedNames[0]];
             _this->editedBookmarkName = selectedNames[0];
@@ -535,7 +703,17 @@ private:
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str());
+                // Safely get mode name with null radio guard and invalid modeIndex guard
+                std::string modeName = "Unknown";
+                if (radio && bm.modeIndex >= 0) {
+                    DemodID demodId = radio->getDemodByIndex(bm.modeIndex);
+                    if (demodModeList.count(demodId)) {
+                        modeName = demodModeList[demodId];
+                    }
+                } else if (bm.modeIndex < 0) {
+                    modeName = "Unspecified";
+                }
+                ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), modeName.c_str());
                 ImVec2 max = ImGui::GetCursorPos();
             }
             ImGui::EndTable();
@@ -751,7 +929,17 @@ again:
         ImGui::Text("List: %s", hoveredBookmark.listName.c_str());
         ImGui::Text("Frequency: %s", utils::formatFreq(hoveredBookmark.bookmark.frequency).c_str());
         ImGui::Text("Bandwidth: %s", utils::formatFreq(hoveredBookmark.bookmark.bandwidth).c_str());
-        ImGui::Text("Mode: %s", demodModeList[radio->getDemodByIndex(hoveredBookmark.bookmark.modeIndex)].c_str());
+        // Safely get mode name for tooltip
+        std::string tooltipModeName = "Unknown";
+        if (radio && hoveredBookmark.bookmark.modeIndex >= 0) {
+            DemodID demodId = radio->getDemodByIndex(hoveredBookmark.bookmark.modeIndex);
+            if (demodModeList.count(demodId)) {
+                tooltipModeName = demodModeList[demodId];
+            }
+        } else if (hoveredBookmark.bookmark.modeIndex < 0) {
+            tooltipModeName = "Unspecified";
+        }
+        ImGui::Text("Mode: %s", tooltipModeName.c_str());
         ImGui::EndTooltip();
     }
 
