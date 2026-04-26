@@ -102,7 +102,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
 
     build_macos_intel:
         runs-on: macos-15-intel
@@ -169,7 +169,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
 
     build_macos_arm:
         runs-on: macos-15
@@ -236,7 +236,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
 
     build_debian_bullseye_amd64:
         runs-on: ubuntu-latest
@@ -262,7 +262,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_bullseye_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -288,7 +288,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_bookworm_amd64:
         runs-on: ubuntu-latest
@@ -314,7 +314,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_bookworm_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -340,7 +340,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_amd64:
         runs-on: ubuntu-latest
@@ -366,7 +366,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -392,7 +392,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_amd64:
         runs-on: ubuntu-latest
@@ -418,7 +418,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -444,7 +444,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_amd64:
         runs-on: ubuntu-latest
@@ -470,7 +470,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -496,7 +496,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_amd64:
         runs-on: ubuntu-latest
@@ -522,7 +522,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -548,7 +548,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble_amd64:
         runs-on: ubuntu-latest
@@ -574,7 +574,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -600,7 +600,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_amd64.deb -R ${{github.repository}} --clobber
 
     build_android:
         runs-on: ubuntu-latest
@@ -631,7 +631,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/sdrpp.apk -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp.apk -R ${{github.repository}} --clobber
 
     build_appimage_amd64:
         runs-on: ubuntu-latest
@@ -657,7 +657,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/SDRPlusPlusBrown-x86_64.AppImage -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/SDRPlusPlusBrown-x86_64.AppImage -R ${{github.repository}} --clobber
 
     build_appimage_aarch64:
         runs-on: ubuntu-24.04-arm
@@ -683,7 +683,7 @@ jobs:
 
         - name: Upload to Nightly
           if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          run: gh release upload nightly ${{runner.workspace}}/SDRPlusPlusBrown-aarch64.AppImage -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/SDRPlusPlusBrown-aarch64.AppImage -R ${{github.repository}} --clobber
 
     check_spelling:
         runs-on: ubuntu-latest

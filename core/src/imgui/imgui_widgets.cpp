@@ -2807,6 +2807,9 @@ bool ImGui::SliderBehaviorT(const ImRect& bb, ImGuiID id, ImGuiDataType data_typ
                     *v = std::max(v_min, v_max);
                 value_changed = true;
             }
+            if (value_changed && g.ActiveId != id) {
+                SetActiveID(id, g.CurrentWindow);
+            }
         }
     }
     if (g.ActiveId == id)
