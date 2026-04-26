@@ -264,22 +264,34 @@ void c_morse_timing_classifier::update_off_model(const float* d, size_t n) {
         }
     }
     
-    // Cluster gaps
+    // Cluster gaps - when only 2 peaks, peak2 is word gap (gap7), not char gap (gap3)
     gap1_mu = histogram_mean(smoothed_histogram, 0, valley1_bin, BIN_WIDTH);
     gap1_sigma = histogram_stddev(gap1_mu, smoothed_histogram, 0, valley1_bin, BIN_WIDTH);
     gap1_sigma = std::max(0.1f * gap1_mu, gap1_sigma);
     DEBUG_PRINTF("gap1 mu %f\n", gap1_mu);
     DEBUG_PRINTF("gap1 sigma %f\n", gap1_sigma);
     
-    int end = std::min(peak2 * 2, BIN_MAX / BIN_WIDTH - 1);
-    gap3_mu = histogram_mean(smoothed_histogram, valley1_bin, end, BIN_WIDTH);
-    gap3_sigma = histogram_stddev(gap3_mu, smoothed_histogram, valley1_bin, end, BIN_WIDTH);
-    gap3_sigma = std::min(std::max(0.1f * gap3_mu, gap3_sigma), 2 * gap1_sigma);
+    if (true_peaks.size() == 2) {
+        // Only 2 peaks: gap1 = smallest, gap7 = largest, gap3 = interpolated
+        int end = std::min(peak2 * 2, BIN_MAX / BIN_WIDTH - 1);
+        gap7_mu = histogram_mean(smoothed_histogram, valley1_bin, end, BIN_WIDTH);
+        gap7_sigma = histogram_stddev(gap7_mu, smoothed_histogram, valley1_bin, end, BIN_WIDTH);
+        gap7_sigma = std::min(std::max(0.1f * gap7_mu, gap7_sigma), 2 * gap1_sigma);
+        gap3_mu = 3 * gap1_mu;
+        gap3_sigma = gap1_sigma;
+    } else {
+        // 3+ peaks: standard assignment
+        int end = std::min(peak2 * 2, BIN_MAX / BIN_WIDTH - 1);
+        gap3_mu = histogram_mean(smoothed_histogram, valley1_bin, end, BIN_WIDTH);
+        gap3_sigma = histogram_stddev(gap3_mu, smoothed_histogram, valley1_bin, end, BIN_WIDTH);
+        gap3_sigma = std::min(std::max(0.1f * gap3_mu, gap3_sigma), 2 * gap1_sigma);
+        DEBUG_PRINTF("gap3 mu %f\n", gap3_mu);
+        DEBUG_PRINTF("gap3 sigma %f\n", gap3_sigma);
+        gap7_mu = 7 * gap1_mu;
+        gap7_sigma = gap1_sigma;
+    }
     DEBUG_PRINTF("gap3 mu %f\n", gap3_mu);
     DEBUG_PRINTF("gap3 sigma %f\n", gap3_sigma);
-    
-    gap7_mu = 7 * gap1_mu;
-    gap7_sigma = gap1_sigma;
     DEBUG_PRINTF("gap7 mu %f\n", gap7_mu);
     DEBUG_PRINTF("gap7 sigma %f\n", gap7_sigma);
 }

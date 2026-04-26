@@ -440,6 +440,19 @@ void IQCWDSPEngine::process_channel(IQChannelState& channel, float magnitude) {
     // Detect keying: is the magnitude above threshold?
     bool key_down = magnitude > threshold;
     
+    // Debug keying for first few channels
+    if (channel.id <= 3 && channel.frame_count < 100) {
+        printf("[CWDBG_CH%u] frame=%u thresh=%.2f mag=%.2f nf=%.2f key=%d cks=%d\n",
+               channel.id, channel.frame_count, threshold, magnitude,
+               noise_floor[channel.bin_index], key_down, channel.current_key_state);
+    }
+    // Debug keying transitions for first 3 channels
+    if (channel.id <= 3 && key_down != channel.current_key_state) {
+        printf("[CWDBG_CH%u] transition: key=%d->%d dur_frames=%u obs_count=%zu\n",
+               channel.id, channel.current_key_state, key_down,
+               channel.current_duration_frames, channel.observations.size());
+    }
+    
     // Update SNR
     if (key_down) {
         channel.snr = 20.0f * std::log10(magnitude / noise_floor[channel.bin_index]);
@@ -492,7 +505,8 @@ void IQCWDSPEngine::process_channel(IQChannelState& channel, float magnitude) {
             decode_channel_observations(channel);
         }
         channel.observations.clear();
-        channel.current_duration_frames = 0;
+        // Don't reset current_duration_frames mid-element!
+        // Only reset inter-frame counter (we keep the ongoing element's count)
     }
 }
 
@@ -502,11 +516,17 @@ void IQCWDSPEngine::decode_channel_observations(IQChannelState& channel) {
     // Copy observations to array for decoder
     std::vector<s_observation> obs_copy = channel.observations;
     
+    printf("[CWDBG_DECODE] ch%u: decoding %zu obs, snr=%.1f\n", channel.id, obs_copy.size(), channel.snr);
+    fflush(stdout);
+    
     // Decode using HamFist
     channel.decoder->decode(obs_copy.data(), static_cast<int>(obs_copy.size()));
     
     // Get decoded text
     std::string new_text = channel.decoder->get_text();
+    printf("[CWDBG_DECODE] ch%u: got_text='%s' (len=%zu)\n", channel.id, new_text.c_str(), new_text.length());
+    fflush(stdout);
+    
     if (!new_text.empty()) {
         std::lock_guard<std::mutex> lock(channel.text_mutex);
         

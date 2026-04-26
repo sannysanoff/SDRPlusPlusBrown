@@ -37,56 +37,65 @@ static float log_gaussian(float x, float mu, float sigma) {
 
 // Check if pattern is start of valid Morse code
 static bool is_start_of_code(std::string& pattern) {
-    int span = 128;
-    int morse_index = 0;
-    
-    for (int i = 0; i < 7; i++) {
-        span >>= 1;
-        if (i >= (int)pattern.length()) {
-            return MORSE[morse_index] != '~';
-        } else if (pattern[i] == '.') {
-            morse_index++;
-        } else if (pattern[i] == '-') {
-            morse_index += span;
-        }
+    static const char* prefixes[] = {
+        ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....",
+        "..", ".---", "-.-", ".-..", "--", "-.", "---", ".--.",
+        "--.-", ".-.", "...", "-", "..-", "...-", ".--", "-..-",
+        "-.--", "--..", ".----", "..---", "...--", "....-", ".....",
+        "-....", "--...", "---..", "----.", "-----",
+        ".-.-.-", "--..--", "..--..", ".----.", "-.-.--", "-..-.",
+        "-.--.", "-.--.-", ".-...", "---...", "-.-.-.", "-...-",
+        ".-.-.", "-....-", "..--.-", ".-..-.", "...-..-", ".--.-.",
+        nullptr
+    };
+    for(int i=0; prefixes[i]; i++){
+        std::string s(prefixes[i]);
+        if(s.find(pattern) == 0) return true;
     }
     return false;
 }
 
-// Check if pattern is complete valid Morse code
 static bool is_code(std::string& pattern) {
-    int span = 128;
-    int morse_index = 0;
-    
-    for (int i = 0; i < 7; ++i) {
-        span >>= 1;
-        if (i >= (int)pattern.length()) {
-            return MORSE[morse_index] != '#' && MORSE[morse_index] != '~';
-        } else if (pattern[i] == '.') {
-            morse_index++;
-        } else if (pattern[i] == '-') {
-            morse_index += span;
-        }
+    static const char* codes[] = {
+        ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....",
+        "..", ".---", "-.-", ".-..", "--", "-.", "---", ".--.",
+        "--.-", ".-.", "...", "-", "..-", "...-", ".--", "-..-",
+        "-.--", "--..", ".----", "..---", "...--", "....-", ".....",
+        "-....", "--...", "---..", "----.", "-----",
+        ".-.-.-", "--..--", "..--..", ".----.", "-.-.--", "-..-.",
+        "-.--.", "-.--.-", ".-...", "---...", "-.-.-.", "-...-",
+        ".-.-.", "-....-", "..--.-", ".-..-.", "...-..-", ".--.-.",
+        nullptr
+    };
+    for(int i=0; codes[i]; i++){
+        if(pattern == codes[i]) return true;
     }
     return false;
 }
 
-// Get letter from Morse pattern
 static char get_letter_from_code(std::string& pattern) {
-    int span = 128;
-    int morse_index = 0;
-    
-    for (int i = 0; i < 7; i++) {
-        span >>= 1;
-        if (i >= (int)pattern.length()) {
-            return MORSE[morse_index];
-        } else if (pattern[i] == '.') {
-            morse_index++;
-        } else if (pattern[i] == '-') {
-            morse_index += span;
-        }
+    struct { const char* code; char letter; } table[] = {
+        {".-", 'A'}, {"-...", 'B'}, {"-.-.", 'C'}, {"-..", 'D'},
+        {".", 'E'}, {"..-.", 'F'}, {"--.", 'G'}, {"....", 'H'},
+        {"..", 'I'}, {".---", 'J'}, {"-.-", 'K'}, {".-..", 'L'},
+        {"--", 'M'}, {"-.", 'N'}, {"---", 'O'}, {".--.", 'P'},
+        {"--.-", 'Q'}, {".-.", 'R'}, {"...", 'S'}, {"-", 'T'},
+        {"..-", 'U'}, {"...-", 'V'}, {".--", 'W'}, {"-..-", 'X'},
+        {"-.--", 'Y'}, {"--..", 'Z'},
+        {".----", '1'}, {"..---", '2'}, {"...--", '3'}, {"....-", '4'},
+        {".....", '5'}, {"-....", '6'}, {"--...", '7'}, {"---..", '8'},
+        {"----.", '9'}, {"-----", '0'},
+        {".-.-.-", '.'}, {"--..--", ','}, {"..--..", '?'}, {".----.", '\''},
+        {"-.-.--", '!'}, {"-..-.", '/'}, {"-.--.", '('}, {"-.--.-", ')'},
+        {".-...", '&'}, {"---...", ':'}, {"-.-.-.", ';'}, {"-...-", '='},
+        {".-.-.", '+'}, {"-....-", '-'}, {"..--.-", '_'}, {".-..-.", '"'},
+        {"...-..-", '$'}, {".--.-.", '@'},
+        {nullptr, 0}
+    };
+    for(int i=0; table[i].code; i++){
+        if(pattern == table[i].code) return table[i].letter;
     }
-    return '#';
+    return '~';
 }
 
 // Get log probability of word prefix

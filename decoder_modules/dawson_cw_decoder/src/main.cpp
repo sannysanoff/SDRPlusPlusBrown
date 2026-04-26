@@ -231,13 +231,8 @@ void DawsonCWDecoderModule::enable() {
     iq_config.sample_rate = static_cast<float>(sample_rate);
     iq_dsp_engine.set_config(iq_config);
     
-    // Set initial center frequency
-    try {
-        current_center_freq = gui::waterfall.getCenterFrequency();
-    } catch (...) {
-        current_center_freq = 0;
-    }
-    iq_dsp_engine.set_center_frequency(current_center_freq);
+    // Update frequency tracking and CW band limits BEFORE enabling the DSP
+    updateFrequencyLock();
     
     enabled = true;
     printf("[CWDBG] Calling updateBindings...\n"); fflush(stdout);
@@ -311,8 +306,24 @@ std::string DawsonCWDecoderModule::handleDebugCommand(const std::string& cmd, co
         response["on_cw_frequency"] = on_cw_frequency;
         response["status_text"] = status_text;
         
-        // Skip channel details to avoid thread safety issues
+        // Return channel details
         response["channels"] = json::array();
+        const auto& chs = iq_dsp_engine.get_channels();
+        for (const auto& ch : chs) {
+            if (ch->is_active) {
+                json ch_json;
+                ch_json["id"] = ch->id;
+                ch_json["frequency"] = ch->center_freq_hz + current_center_freq;
+                ch_json["snr"] = ch->snr;
+                ch_json["wpm"] = ch->wpm;
+                ch_json["has_signal"] = ch->has_signal;
+                {
+                    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(ch->text_mutex));
+                    ch_json["text"] = ch->decoded_text;
+                }
+                response["channels"].push_back(ch_json);
+            }
+        }
         
     } else if (cmd == "set_max_channels") {
         if (!args.empty()) {

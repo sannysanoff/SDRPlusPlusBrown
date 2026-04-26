@@ -20,13 +20,13 @@
 // Binary tree encoding of Morse code
 // ~ = invalid path, # = invalid code
 // A = .-, B = -..., etc.
-const char MORSE[] = "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!~~~~~\"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#~~$~~~%~~~&~~~~~~~~~~~~~~~~~~~~~~~~'~~(~~)~~*~~+~~,~~-~~.~~/~~0~~1~~2~~3~~4~~5~~6~~7~~8~~9~~:~~;~~<~~=~~>~~?~~@~~A~~B~~C~~D~~E~~F~~G~~H~~I~~J~~K~~L~~M~~N~~O~~P~~Q~~R~~S~~T~~U~~V~~W~~X~~Y~~Z~~[~~]~~^~~_~~`~~a~~b~~c~~d~~e~~f~~g~~h~~i~~j~~k~~l~~m~~n~~o~~p~~q~~r~~s~~t~~u~~v~~w~~x~~y~~z~~{~~|~~}~~}~~\177";
+extern const char MORSE[] = "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!~~~~~\"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#~~$~~~%~~~&~~~~~~~~~~~~~~~~~~~~~~~~'~~(~~)~~*~~+~~,~~-~~.~~/~~0~~1~~2~~3~~4~~5~~6~~7~~8~~9~~:~~;~~<~~=~~>~~?~~@~~A~~B~~C~~D~~E~~F~~G~~H~~I~~J~~K~~L~~M~~N~~O~~P~~Q~~R~~S~~T~~U~~V~~W~~X~~Y~~Z~~[~~]~~^~~_~~`~~a~~b~~c~~d~~e~~f~~g~~h~~i~~j~~k~~l~~m~~n~~o~~p~~q~~r~~s~~t~~u~~v~~w~~x~~y~~z~~{~~|~~}~~}~~\177";
 const int NUM_MORSE_LETTERS = 46;
 
 const int NUM_PROSIGNS = 6;
 const char* PROSIGNS[] = {"<AA>", "<AR>", "<AS>", "<BK>", "<BT>", "<SK>"};
 
-const int NUM_AUTOCORRECT_WORDS = 9787;
+const int NUM_AUTOCORRECT_WORDS = 258;
 
 // Word frequency rankings (lower = more common)
 const uint16_t RANKINGS[] = {
