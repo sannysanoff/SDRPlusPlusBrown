@@ -92,6 +92,7 @@ option(OPT_BUILD_NOISE_REDUCTION_LOGMMSE "Build LOGMMSE noise reduction" ON)
 option(USE_INTERNAL_LIBCORRECT "Use an internal version of libcorrect" ON)
 option(USE_BUNDLE_DEFAULTS "Set the default resource and module directories to the right ones for a MacOS .app" OFF)
 option(COPY_MSVC_REDISTRIBUTABLES "Copy over the Visual C++ Redistributable" OFF)
+option(OPT_BUILD_APPIMAGE "Build for AppImage distribution (isolated config and renamed executable)" OFF)
 
 # Module cmake path
 set(SDRPP_MODULE_CMAKE "${CMAKE_SOURCE_DIR}/sdrpp_module.cmake")
@@ -120,6 +121,16 @@ else()
     endif ()
 endif()
 set(SDRPP_MODULE_COMPILER_FLAGS ${SDRPP_COMPILER_FLAGS})
+
+# AppImage build configuration
+if (OPT_BUILD_APPIMAGE)
+    add_definitions(-DIS_APPIMAGE)
+    set(SDRPP_EXECUTABLE_NAME "sdrpp_brown_appimage")
+    set(SDRPP_DESKTOP_NAME "SDR++Brown AppImage")
+else()
+    set(SDRPP_EXECUTABLE_NAME "sdrpp_brown")
+    set(SDRPP_DESKTOP_NAME "SDR++Brown")
+endif()
 
 # Set a default install prefix
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -445,7 +456,7 @@ if(APPLE)
     list(APPEND SDRPP_SOURCES "src/macos_init.m")
 endif()
 
-add_executable(sdrpp ${SDRPP_SOURCES})
+add_executable(${SDRPP_EXECUTABLE_NAME} ${SDRPP_SOURCES})
 
 set(SDRPP_LIBS "sdrpp_core")
 
@@ -456,15 +467,15 @@ if(APPLE)
     set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
 endif()
 
-target_link_libraries(sdrpp PRIVATE ${SDRPP_LIBS})
+target_link_libraries(${SDRPP_EXECUTABLE_NAME} PRIVATE ${SDRPP_LIBS})
 
 # Compiler arguments
-target_compile_options(sdrpp PRIVATE ${SDRPP_COMPILER_FLAGS})
+target_compile_options(${SDRPP_EXECUTABLE_NAME} PRIVATE ${SDRPP_COMPILER_FLAGS})
 
 # Copy dynamic libs over
 if (MSVC)
-    add_custom_target(do_always ALL xcopy /s \"$<TARGET_FILE_DIR:sdrpp_core>\\*.dll\" \"$<TARGET_FILE_DIR:sdrpp>\" /Y)
-    add_custom_target(do_always_volk ALL xcopy /s \"C:/Program Files/PothosSDR/bin\\volk.dll\" \"$<TARGET_FILE_DIR:sdrpp>\" /Y)
+    add_custom_target(do_always_msvc ALL xcopy /s \"$<TARGET_FILE_DIR:sdrpp_core>\\*.dll\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\" /Y)
+    add_custom_target(do_always_volk ALL xcopy /s \"C:/Program Files/PothosSDR/bin\\volk.dll\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\" /Y)
 
     if (COPY_MSVC_REDISTRIBUTABLES)
         # Get the list of Visual C++ runtime DLLs
@@ -474,7 +485,7 @@ if (MSVC)
         # Create a space sperated list
         set(REDIST_DLLS_STR "")
         foreach(DLL IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
-            set(REDIST_DLLS_STR COMMAND xcopy /F \"${DLL}\" \"$<TARGET_FILE_DIR:sdrpp>\" /Y ${REDIST_DLLS_STR})
+            set(REDIST_DLLS_STR COMMAND xcopy /F \"${DLL}\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\" /Y ${REDIST_DLLS_STR})
         endforeach()
 
         # Create target
@@ -484,20 +495,20 @@ endif ()
 
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
-    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:sdrpp>\")
+    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\")
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-    target_link_libraries(sdrpp PUBLIC pthread)
-    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:sdrpp>\")
+    target_link_libraries(${SDRPP_EXECUTABLE_NAME} PUBLIC pthread)
+    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\")
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:sdrpp>\")
+    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.so\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\")
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.dylib\" \"$<TARGET_FILE_DIR:sdrpp>\")
+    add_custom_target(do_always ALL cp \"$<TARGET_FILE_DIR:sdrpp_core>/libsdrpp_core.dylib\" \"$<TARGET_FILE_DIR:${SDRPP_EXECUTABLE_NAME}>\")
 endif ()
 
 # cmake .. "-DCMAKE_TOOLCHAIN_FILE=C:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_SCANNER=ON -DOPT_BUILD_SCHEDULER=ON -DOPT_BUILD_USRP_SOURCE=ON -DOPT_BUILD_PAGER_DECODER=ON
@@ -506,7 +517,7 @@ endif ()
 configure_file(${CMAKE_SOURCE_DIR}/sdrpp_module.cmake ${CMAKE_CURRENT_BINARY_DIR}/sdrpp_module.cmake @ONLY)
 
 # Install directives
-install(TARGETS sdrpp DESTINATION bin)
+install(TARGETS ${SDRPP_EXECUTABLE_NAME} DESTINATION bin)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/root/res/bandplans DESTINATION share/sdrpp)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/root/res/colormaps DESTINATION share/sdrpp)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/root/res/fonts DESTINATION share/sdrpp)

@@ -179,6 +179,7 @@ CMAKE_OPTS=(
     -DOPT_BUILD_LIMESDR_SOURCE=ON
     -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON
     -DOPT_BUILD_M17_DECODER=ON
+    -DOPT_BUILD_APPIMAGE=ON
 )
 
 # Conditionally enable sources based on what we installed
@@ -202,14 +203,15 @@ cmake "$SRC_DIR" "${CMAKE_OPTS[@]}" 2>&1 || {
         -DOPT_BUILD_SDRPLAY_SOURCE=OFF \
         -DOPT_BUILD_PERSEUS_SOURCE=OFF \
         -DOPT_BUILD_RFNM_SOURCE=OFF \
-        -DOPT_BUILD_FOBOSSDR_SOURCE=OFF 2>&1
+        -DOPT_BUILD_FOBOSSDR_SOURCE=OFF \
+        -DOPT_BUILD_APPIMAGE=ON 2>&1
 }
 
 echo "=== Building (this may take a while) ==="
 make -j$(nproc) 2>&1
 
 echo "=== Build complete ==="
-ls -la "$SRC_DIR/build/sdrpp"
+ls -la "$SRC_DIR/build/sdrpp_brown_appimage"
 
 # ---------------------------------------------------------------------------
 # 11. Install to AppDir
@@ -233,8 +235,9 @@ echo "=== Step 13: Fix .desktop file for AppImage ==="
 DESKTOP_FILE="$APPDIR/usr/share/applications/sdrpp.desktop"
 if [ -f "$DESKTOP_FILE" ]; then
     # Fix paths for AppImage (Exec should be just the binary name, no path)
+    # CMake now generates the correct executable name (sdrpp_brown_appimage for AppImage)
     sed -i \
-        -e 's|Exec=/usr/bin/sdrpp|Exec=sdrpp|' \
+        -e 's|Exec=/usr/bin/sdrpp_brown_appimage|Exec=sdrpp_brown_appimage|' \
         -e 's|Icon=/.*|Icon=sdrpp|' \
         "$DESKTOP_FILE"
     # Copy to AppDir root (linuxdeploy requirement)
@@ -260,7 +263,8 @@ export LD_LIBRARY_PATH="$APPDIR/usr/lib:$LD_LIBRARY_PATH"
 linuxdeploy \
     --appdir "$APPDIR" \
     --desktop-file "$APPDIR/sdrpp.desktop" \
-    --icon-file "$APPDIR/sdrpp.png" 2>&1 || echo "WARNING: linuxdeploy failed (non-critical). AppDir is partially populated."
+    --icon-file "$APPDIR/sdrpp.png" \
+    --exclude-library="*libglfw*" 2>&1 || echo "WARNING: linuxdeploy failed (non-critical). AppDir is partially populated."
 
 # Now install appimagetool and create the AppImage
 echo "=== Step 15b: Create AppImage with appimagetool ==="
@@ -280,6 +284,7 @@ else
         --appdir "$APPDIR" \
         --desktop-file "$APPDIR/sdrpp.desktop" \
         --icon-file "$APPDIR/sdrpp.png" \
+        --exclude-library="*libglfw*" \
         --output appimage 2>&1 || true
 fi
 

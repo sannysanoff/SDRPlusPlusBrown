@@ -6,6 +6,8 @@ void CommandArgsParser::defineAll() {
     flog::info("Inside defineAll");
     std::string root = ".";
     define('c', "con", "Show console on Windows");
+#elif defined(IS_APPIMAGE)
+    std::string root = (std::string)getenv("HOME") + "/.config/sdrpp-brown-appimage";
 #elif defined(IS_MACOS_BUNDLE)
     std::string root = (std::string)getenv("HOME") + "/Library/Application Support/sdrpp-brown";
 #elif defined(__ANDROID__)
