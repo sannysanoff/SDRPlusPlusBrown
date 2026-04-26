@@ -18,24 +18,65 @@
 
 namespace dawson_cw {
 
+// Compute optimal FFT size for target resolution (next power of 2)
+uint16_t IQCWDSPEngine::compute_fft_size(float sample_rate, float target_resolution) {
+    float bins_needed = sample_rate / target_resolution;
+    uint16_t fft_size = 1;
+    while (fft_size < bins_needed) {
+        fft_size <<= 1;  // Next power of 2
+    }
+    // Clamp to reasonable limits
+    if (fft_size < 512) fft_size = 512;
+    if (fft_size > 16384) fft_size = 16384;
+    return fft_size;
+}
+
+// Initialize FFT with correct size for current sample rate
+void IQCWDSPEngine::init_fft() {
+    // Compute optimal FFT size
+    fft_size = compute_fft_size(config.sample_rate, TARGET_RESOLUTION_HZ);
+    bin_width_hz = config.sample_rate / fft_size;
+    
+    printf("[CWDBG] FFT init: sample_rate=%.0f Hz, fft_size=%d, bin_width=%.1f Hz\n",
+           config.sample_rate, fft_size, bin_width_hz);
+    fflush(stdout);
+    
+    // Resize buffers
+    fft_window.resize(fft_size);
+    window_coeffs.resize(fft_size);
+    magnitude_spectrum.resize(fft_size);
+    noise_floor.resize(fft_size);
+    smoothed_magnitude.resize(fft_size);
+    gate_count.resize(fft_size);
+    
+    // Initialize arrays
+    std::fill(magnitude_spectrum.begin(), magnitude_spectrum.end(), 0.0f);
+    std::fill(noise_floor.begin(), noise_floor.end(), 0.0f);
+    std::fill(smoothed_magnitude.begin(), smoothed_magnitude.end(), 0.0f);
+    std::fill(gate_count.begin(), gate_count.end(), 0);
+    
+    // Calculate Hann window coefficients
+    for (uint16_t i = 0; i < fft_size; i++) {
+        window_coeffs[i] = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / (fft_size - 1)));
+        fft_window[i] = window_coeffs[i];
+    }
+    
+    // Allocate FFT plan
+    fft_plan = dsp::arrays::allocateFFTWPlan(false, fft_size);
+    fft_input = dsp::arrays::npzeros_c(fft_size);
+}
+
 IQCWDSPEngine::IQCWDSPEngine()
     : running(false),
+      fft_size(1024),
+      bin_width_hz(46.875f),
       next_channel_id(1),
-      frame_count(0),
-      window_initialized(false) {
+      frame_count(0) {
     
     // Initialize base class - must call init() to set _block_init = true
     init(nullptr);
     printf("[CWDBG] Constructor: _block_init=%d\n", (int)_block_init);
     fflush(stdout);
-    
-    // Initialize buffers
-    std::memset(magnitude_spectrum, 0, sizeof(magnitude_spectrum));
-    std::memset(noise_floor, 0, sizeof(noise_floor));
-    std::memset(smoothed_magnitude, 0, sizeof(smoothed_magnitude));
-    std::memset(gate_count, 0, sizeof(gate_count));
-    std::memset(window_coeffs, 0, sizeof(window_coeffs));
-    std::memset(fft_window, 0, sizeof(fft_window));
     
     running = true;
 }
@@ -47,7 +88,16 @@ IQCWDSPEngine::~IQCWDSPEngine() {
 
 void IQCWDSPEngine::set_config(const IQConfig& cfg) {
     std::lock_guard<std::mutex> lock(channels_mutex);
+    
+    // Check if sample rate changed
+    bool rate_changed = (config.sample_rate != cfg.sample_rate);
+    
     config = cfg;
+    
+    // Reinitialize FFT if sample rate changed
+    if (rate_changed) {
+        init_fft();
+    }
 }
 
 IQConfig IQCWDSPEngine::get_config() const {
@@ -63,6 +113,12 @@ void IQCWDSPEngine::init(dsp::stream<dsp::complex_t>* in) {
     printf("[CWDBG] init() in=%p\n", (void*)in);
     fflush(stdout);
     base_type::init(in);
+    
+    // Initialize FFT on first init
+    if (fft_plan == nullptr) {
+        init_fft();
+    }
+    
     printf("[CWDBG] init() complete _in=%p\n", (void*)_in);
     fflush(stdout);
 }
@@ -162,34 +218,24 @@ void IQCWDSPEngine::process_iq_sample(const dsp::complex_t& sample) {
     iq_buffer.push_back(sample);
     
     // Process when we have a full frame
-    if (iq_buffer.size() >= FRAME_SIZE) {
+    if (iq_buffer.size() >= fft_size) {
         process_frame();
         // Remove processed samples, keep overlap for continuity
-        size_t overlap = FRAME_SIZE / 4;  // 75% overlap for smooth detection
-        iq_buffer.erase(iq_buffer.begin(), iq_buffer.begin() + (FRAME_SIZE - overlap));
+        size_t overlap = fft_size / 4;  // 75% overlap for smooth detection
+        iq_buffer.erase(iq_buffer.begin(), iq_buffer.begin() + (fft_size - overlap));
     }
 }
 
 void IQCWDSPEngine::apply_window() {
-    if (!window_initialized) {
-        // Calculate Hann window coefficients once
-        for (uint16_t i = 0; i < FRAME_SIZE; i++) {
-            window_coeffs[i] = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / (FRAME_SIZE - 1)));
-            fft_window[i] = window_coeffs[i];
-        }
-        window_initialized = true;
-        
-        // Initialize FFT plan
-        fft_plan = dsp::arrays::allocateFFTWPlan(false, FRAME_SIZE);
-        fft_input = dsp::arrays::npzeros_c(FRAME_SIZE);
-    }
+    // Window is now precomputed in init_fft()
+    // This function is kept for compatibility but does nothing
 }
 
 void IQCWDSPEngine::perform_fft() {
     if (!fft_plan) return;
     
     // Apply window and copy to FFT input
-    for (uint16_t i = 0; i < FRAME_SIZE; i++) {
+    for (uint16_t i = 0; i < fft_size; i++) {
         (*fft_input)[i].re = iq_buffer[i].re * fft_window[i];
         (*fft_input)[i].im = iq_buffer[i].im * fft_window[i];
     }
@@ -207,8 +253,10 @@ void IQCWDSPEngine::perform_fft() {
 void IQCWDSPEngine::process_frame() {
     frame_count++;
     
-    // Initialize on first frame
-    apply_window();
+    // Ensure FFT is initialized
+    if (!fft_plan) {
+        init_fft();
+    }
     if (!fft_plan) return;
     
     // Perform complex FFT
@@ -216,11 +264,10 @@ void IQCWDSPEngine::process_frame() {
     if (!fft_output) return;
     
     // Calculate magnitude spectrum for all bins
-    float bin_width = config.sample_rate / FRAME_SIZE;
     float max_mag = 0;
     uint16_t max_bin = 0;
     
-    for (uint16_t i = 0; i < FRAME_SIZE; i++) {
+    for (uint16_t i = 0; i < fft_size; i++) {
         float re = (*fft_output)[i].re;
         float im = (*fft_output)[i].im;
         float mag = std::sqrt(re * re + im * im);
@@ -233,7 +280,7 @@ void IQCWDSPEngine::process_frame() {
     
     // Debug first few frames
     if (frame_count <= 5) {
-        float freq = (max_bin < FRAME_SIZE/2) ? max_bin * bin_width : (max_bin - FRAME_SIZE) * bin_width;
+        float freq = (max_bin < fft_size/2) ? max_bin * bin_width_hz : (max_bin - fft_size) * bin_width_hz;
         printf("[CWDBG] frame#%d max_mag=%.2f @ bin%d (%.0f Hz)\n", 
                frame_count, max_mag, max_bin, freq);
         fflush(stdout);
@@ -241,8 +288,8 @@ void IQCWDSPEngine::process_frame() {
     
     // Use reusable spectrum utilities for noise floor and peak detection
     // Convert magnitude spectrum to FloatArray
-    auto mag_array = dsp::arrays::npzeros(FRAME_SIZE);
-    for (uint16_t i = 0; i < FRAME_SIZE; i++) {
+    auto mag_array = dsp::arrays::npzeros(fft_size);
+    for (uint16_t i = 0; i < fft_size; i++) {
         (*mag_array)[i] = magnitude_spectrum[i];
     }
     
@@ -250,14 +297,14 @@ void IQCWDSPEngine::process_frame() {
     auto noise_array = dsp::arrays::estimateNoiseFloor(mag_array, 16, 0.15f);
     
     // Copy noise floor back to array
-    for (uint16_t i = 0; i < FRAME_SIZE; i++) {
+    for (uint16_t i = 0; i < fft_size; i++) {
         noise_floor[i] = (*noise_array)[i];
     }
     
     // Detect peaks using reusable function
     // Calculate min spacing in bins: spacing_hz / bin_width
-    int min_spacing_bins = static_cast<int>(config.min_channel_spacing / bin_width);
-    min_spacing_bins = std::max(2, min_spacing_bins);  // At least 2 bins
+    int min_spacing_bins = static_cast<int>(config.min_channel_spacing / bin_width_hz);
+    min_spacing_bins = std::max(1, min_spacing_bins);  // At least 1 bin
     
     auto detected_peaks = dsp::arrays::detectSpectrumPeaks(
         mag_array, noise_array, 
@@ -274,7 +321,7 @@ void IQCWDSPEngine::process_frame() {
         float snr = std::get<2>(peak);
         
         // Calculate relative frequency from FFT bin
-        float freq_relative = (bin < FRAME_SIZE / 2) ? bin * bin_width : (bin - FRAME_SIZE) * bin_width;
+        float freq_relative = (bin < fft_size / 2) ? bin * bin_width_hz : (bin - fft_size) * bin_width_hz;
         
         // Calculate absolute frequency
         float freq_absolute = rf_center_frequency + freq_relative;
@@ -329,8 +376,6 @@ void IQCWDSPEngine::process_frame() {
 }
 
 // Legacy functions - now implemented via spectrum_utils.h
-// These are called from process_frame() which uses dsp::arrays::estimateNoiseFloor() 
-// and dsp::arrays::detectSpectrumPeaks() instead
 void IQCWDSPEngine::update_noise_floor() {
     // Stub - real implementation is in process_frame()
 }
@@ -397,8 +442,8 @@ void IQCWDSPEngine::process_channel(IQChannelState& channel, float magnitude) {
     }
     
     // Build observations for HamFist decoder
-    // Each FFT frame represents ~21ms at 48kHz/1024 samples
-    float frame_duration_ms = 1000.0f * FRAME_SIZE / config.sample_rate;
+    // Each FFT frame represents ~10.7ms at 768kHz/8192 samples
+    float frame_duration_ms = 1000.0f * fft_size / config.sample_rate;
     
     channel.frame_count++;
     if (key_down != channel.current_key_state) {
@@ -585,13 +630,16 @@ std::vector<float> IQCWDSPEngine::get_absolute_frequencies() const {
 }
 
 void IQCWDSPEngine::get_spectrum_magnitude(float* out_buffer, uint16_t num_bins) const {
-    if (!out_buffer || num_bins == 0) return;
+    if (!out_buffer || num_bins == 0 || magnitude_spectrum.empty()) return;
     
     std::lock_guard<std::mutex> lock(channels_mutex);
     
     // Return downsampled magnitude spectrum
-    uint16_t step = FRAME_SIZE / num_bins;
-    for (uint16_t i = 0; i < num_bins && i * step < FRAME_SIZE; i++) {
+    uint16_t fft_bins = static_cast<uint16_t>(magnitude_spectrum.size());
+    uint16_t step = fft_bins / num_bins;
+    if (step < 1) step = 1;
+    
+    for (uint16_t i = 0; i < num_bins && i * step < fft_bins; i++) {
         // Convert to dB for display
         float mag = magnitude_spectrum[i * step];
         float db = 20.0f * std::log10(mag + 1e-10f);

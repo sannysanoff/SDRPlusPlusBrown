@@ -194,9 +194,7 @@ public:
         return "{\"error\": \"unknown command: " + cmd + "\"}";
     }
 
-#ifndef BUILD_TESTS
 private:
-#endif
     static void menuSelected(void* ctx) {
         FileSourceModule* _this = (FileSourceModule*)ctx;
         core::setInputSampleRate(_this->sampleRate);

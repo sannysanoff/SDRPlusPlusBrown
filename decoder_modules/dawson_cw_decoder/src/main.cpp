@@ -115,8 +115,9 @@ private:
     double current_center_freq = 0;
     bool on_cw_frequency = false;
     
-    // Spectrum buffer for waterfall overlay
-    float spectrum_buffer[dawson_cw::IQ_FFT_SIZE];
+    // Spectrum buffer for waterfall overlay (max FFT size)
+    static constexpr int MAX_SPECTRUM_BINS = 16384;
+    float spectrum_buffer[MAX_SPECTRUM_BINS];
 };
 
 DawsonCWDecoderModule::DawsonCWDecoderModule(std::string name)

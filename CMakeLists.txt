@@ -144,12 +144,6 @@ endif (ANDROID)
 # Core of SDR++
 add_subdirectory("core")
 
-# Tests are added conditionally
-if(BUILD_TESTS)
-    enable_testing()
-    include(CTest)
-endif()
-
 # Source modules
 if (OPT_BUILD_AIRSPY_SOURCE)
 add_subdirectory("source_modules/airspy_source")
@@ -536,7 +530,5 @@ add_custom_target(uninstall ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmak
 
 # Create headers target
 
-# Test options
-option(BUILD_TESTS "Build test suite" OFF)
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 

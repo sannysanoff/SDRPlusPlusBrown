@@ -33,10 +33,6 @@ void CommandArgsParser::defineAll() {
     define('\0', "http", "HTTP debug server port (0 to disable)", 8080);
     define('\0', "debug-wait", "File to wait for before continuing (for debugging)", std::string(""));
 
-    // Test-related command line arguments. Will not fail in runtime, will be just ignored.
-    define('t', "test", "Run a specific test", std::string(""));
-    define('e', "enable_plugins", "Whitelist of plugins to enable (comma-separated)", std::string(""));
-    define('\0', "test_root", "Root directory for test files", std::string(""));
 }
 
 int CommandArgsParser::parse(int argc, char* argv[]) {

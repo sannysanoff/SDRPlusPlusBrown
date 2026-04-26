@@ -48,9 +48,7 @@ public:
     Event<double> onRetune;
     int secondsAdjustment;
 
-#ifndef BUILD_TESTS
 private:
-#endif
 
     std::map<std::string, SourceHandler*> sources;
     std::string selectedName;

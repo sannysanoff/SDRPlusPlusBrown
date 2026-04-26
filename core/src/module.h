@@ -141,12 +141,6 @@ public:
     std::map<std::string, ModuleManager::Module_t> modules;
     std::map<std::string, ModuleManager::Instance_t> instances;
 
-#ifdef BUILD_TESTS
-    // Plugin whitelist for test mode
-    std::vector<std::string> pluginWhitelist;
-    bool useWhitelist = false;
-#endif
-
 };
 
 #define SDRPP_MOD_INFO MOD_EXPORT const ModuleManager::ModuleInfo_t _INFO_

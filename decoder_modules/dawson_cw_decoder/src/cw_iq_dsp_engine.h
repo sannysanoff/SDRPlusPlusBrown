@@ -25,9 +25,9 @@
 
 namespace dawson_cw {
 
-// FFT size for spectrum analysis - affects frequency resolution
-// 1024 points at 48kHz = ~47Hz/bin, good for CW detection
-static constexpr uint16_t IQ_FFT_SIZE = 1024;
+// Target frequency resolution for CW detection (Hz)
+// CW contest stations can be ~50-100 Hz apart
+static constexpr float TARGET_RESOLUTION_HZ = 150.0f;
 
 // Peak detection result
 struct IQPeakInfo {
@@ -82,8 +82,8 @@ struct IQChannelState {
 // Configuration for IQ mode
 struct IQConfig {
     int max_channels = 100;
-    float threshold_mult = 5.0f;      // Lower = more sensitive detection (was 9.0)
-    float min_snr_db = 8.0f;          // Lower = more sensitive (was 12.0)
+    float threshold_mult = 3.0f;      // Multiplier above noise floor
+    float min_snr_db = 6.0f;          // Minimum SNR in dB
     int min_wpm = 10;
     int max_wpm = 40;
     int timeout_seconds = 30;
@@ -94,7 +94,7 @@ struct IQConfig {
     // CW-specific: frequency ranges for detection
     // Full bandwidth is used for FFT, but only peaks within absolute
     // CW band (14.000-14.070 MHz) are kept
-    float min_cw_freq = -400000.0f;     // Full bandwidth lower bound (will use sample_rate/2)
+    float min_cw_freq = -400000.0f;     // Full bandwidth lower bound
     float max_cw_freq = 400000.0f;      // Full bandwidth upper bound
     
     // Absolute CW band limits for filtering detected peaks
@@ -103,7 +103,7 @@ struct IQConfig {
     
     // Channel spacing: minimum separation between CW stations (Hz)
     // CW contest stations can be ~50-100Hz apart
-    float min_channel_spacing = 100.0f;  // Was 150.0, now tighter for contests
+    float min_channel_spacing = 150.0f;  // Hz
 };
 
 // IQ DSP Engine - processes wideband IQ directly as a preprocessor
@@ -162,6 +162,12 @@ public:
     void update_timeouts();
     
 private:
+    // Compute optimal FFT size for target resolution
+    uint16_t compute_fft_size(float sample_rate, float target_resolution);
+    
+    // Initialize/resize FFT for current sample rate
+    void init_fft();
+    
     // FFT processing
     void process_frame();
     void update_noise_floor();
@@ -185,8 +191,6 @@ private:
     void perform_fft();
     
     // Timing constants
-    static constexpr uint16_t FRAME_SIZE = IQ_FFT_SIZE;
-    static constexpr float BIN_WIDTH_HZ(float sr) { return sr / FRAME_SIZE; }
     static constexpr uint16_t OBSERVATION_BUFFER_SIZE = 50;
     static constexpr uint16_t OBSERVATION_BURST_SIZE = 10;
     static constexpr uint16_t TIMEOUT_FRAMES = 500;  // At ~23ms/frame @ 48kHz
@@ -196,20 +200,25 @@ private:
     std::atomic<bool> running;
     double rf_center_frequency = 0.0;  // For absolute freq calculation
     
+    // FFT configuration (dynamic based on sample rate)
+    uint16_t fft_size = 1024;  // Will be computed based on sample rate
+    float bin_width_hz = 46.875f;  // Will be computed: sample_rate / fft_size
+    
     // Sample buffering
     std::vector<dsp::complex_t> iq_buffer;
     
-    // FFT using SDR++ arrays
+    // FFT using SDR++ arrays (dynamically sized)
     dsp::arrays::Arg<dsp::arrays::FFTPlan> fft_plan;
     dsp::arrays::ComplexArray fft_input;
     dsp::arrays::ComplexArray fft_output;
-    float fft_window[FRAME_SIZE];
+    std::vector<float> fft_window;  // Dynamic size
+    std::vector<float> window_coeffs;  // Precomputed window coefficients
     
-    // Spectrum analysis
-    float magnitude_spectrum[FRAME_SIZE];  // Full spectrum including negative freqs
-    float noise_floor[FRAME_SIZE];
-    float smoothed_magnitude[FRAME_SIZE];
-    uint32_t gate_count[FRAME_SIZE];
+    // Spectrum analysis (dynamically sized)
+    std::vector<float> magnitude_spectrum;
+    std::vector<float> noise_floor;
+    std::vector<float> smoothed_magnitude;
+    std::vector<uint32_t> gate_count;
     
     // Channels
     std::vector<std::unique_ptr<IQChannelState>> channels;
@@ -221,10 +230,6 @@ private:
     
     // Sample counting (for testing/verification)
     std::atomic<uint64_t> total_samples{0};
-    
-    // Window coefficients
-    float window_coeffs[FRAME_SIZE];
-    bool window_initialized;
     
     // Enable flag
     std::atomic<bool> _enabled{false};
