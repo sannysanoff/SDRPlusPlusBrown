@@ -8,7 +8,7 @@
 
 Please see [upstream project page](https://github.com/AlexandreRouma/SDRPlusPlus) for the basic list of its features.
 
-Last merge: 2025-06-11
+Last merge: 2026-04-26
 
 Please see [brown fork page](https://sdrpp-brown.san.systems) for list of fork features.
 
@@ -25,7 +25,7 @@ Thanks and due respect to:
 * imgui-notify author for his great [work](https://github.com/patrickcjk/imgui-notify)
 * implot author for his great [work](https://github.com/epezent/implot/)
 * alexander-sholohov (github) for his work on soapy_sdr module.
-* Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes.
+* Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes, and tetra module.
 * monolifed for his [pbkdf2 header-only implementation](https://github.com/monolifed/pbkdf2-hmac-sha256)  
 
 ## Feedback
