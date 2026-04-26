@@ -18,6 +18,7 @@
 #include <thread>
 #include <atomic>
 #include <cmath>
+#include <limits>
 
 #include "cw_iq_dsp_engine.h"
 
@@ -52,25 +53,63 @@ static const std::vector<CWBandSegment> CW_BANDS = {
     {50000000, 50100000, "6m CW"},
 };
 
-static bool isInCWBand(double center_freq, double bandwidth) {
+// Find the best CW band visible within the given frequency range.
+// Prefers bands fully inside the view, closest to center.
+// Falls back to partially visible bands if none are fully visible.
+static const CWBandSegment* findBestCWBand(double center_freq, double bandwidth) {
     double view_low = center_freq - bandwidth / 2.0;
     double view_high = center_freq + bandwidth / 2.0;
     
+    const CWBandSegment* best = nullptr;
+    double best_dist = std::numeric_limits<double>::max();
+    bool best_fully_visible = false;
+    
     for (const auto& band : CW_BANDS) {
-        if (view_high >= band.start_hz && view_low <= band.end_hz) {
-            return true;
+        // Check if band overlaps view
+        if (band.start_hz >= view_high || band.end_hz <= view_low) continue;
+        
+        bool fully = band.start_hz >= view_low && band.end_hz <= view_high;
+        double band_center = (band.start_hz + band.end_hz) / 2.0;
+        double dist = std::abs(band_center - center_freq);
+        
+        // Prefer: fully visible > partially visible, then closest to center
+        bool better = false;
+        if (!best) {
+            better = true;
+        } else if (fully && !best_fully_visible) {
+            better = true;
+        } else if (!fully && best_fully_visible) {
+            better = false;
+        } else if (dist < best_dist) {
+            better = true;
+        }
+        
+        if (better) {
+            best = &band;
+            best_dist = dist;
+            best_fully_visible = fully;
         }
     }
-    return false;
+    return best;
 }
 
-static const char* getCurrentCWBandName(double center_freq) {
-    for (const auto& band : CW_BANDS) {
-        if (center_freq >= band.start_hz && center_freq <= band.end_hz) {
-            return band.name;
-        }
+static bool isInCWBand(double center_freq, double bandwidth) {
+    return findBestCWBand(center_freq, bandwidth) != nullptr;
+}
+
+static const char* getCurrentCWBandName(double center_freq, double bandwidth) {
+    auto* band = findBestCWBand(center_freq, bandwidth);
+    return band ? band->name : nullptr;
+}
+
+static bool getCWBandRange(double center_freq, double bandwidth, double& start_hz, double& end_hz) {
+    auto* band = findBestCWBand(center_freq, bandwidth);
+    if (band) {
+        start_hz = band->start_hz;
+        end_hz = band->end_hz;
+        return true;
     }
-    return nullptr;
+    return false;
 }
 
 // Module class
@@ -136,6 +175,8 @@ DawsonCWDecoderModule::DawsonCWDecoderModule(std::string name)
     iq_config.timeout_seconds = cfg.value("timeoutSeconds", 30);
     iq_config.show_partial = cfg.value("showPartial", true);
     iq_config.sample_rate = static_cast<float>(sample_rate);
+    auto_enable_in_cw_band = cfg.value("autoEnable", true);
+    enabled = cfg.value("enabled", false);
     
     iq_dsp_engine.set_config(iq_config);
     config.release();
@@ -161,8 +202,13 @@ DawsonCWDecoderModule::~DawsonCWDecoderModule() {
 }
 
 void DawsonCWDecoderModule::postInit() {
-    // Check if we're on a CW frequency
+    // Update frequency tracking and CW band limits
     updateFrequencyLock();
+    
+    // If auto-enable is off but we were previously enabled, restore state
+    if (enabled && !auto_enable_in_cw_band) {
+        enable();
+    }
 }
 
 void DawsonCWDecoderModule::enable() {
@@ -203,6 +249,11 @@ void DawsonCWDecoderModule::enable() {
     auto ch_count = iq_dsp_engine.get_active_channel_count();
     printf("[CWDBG] Got channel count: %zu\n", ch_count); fflush(stdout);
     snprintf(status_text, sizeof(status_text), "Active - %zu channels", ch_count);
+    
+    // Save enabled state
+    config.acquire();
+    config.conf[name]["enabled"] = enabled;
+    config.release(true);
     printf("[CWDBG] enable() complete\n"); fflush(stdout);
 }
 
@@ -216,6 +267,11 @@ void DawsonCWDecoderModule::disable() {
     
     snprintf(status_text, sizeof(status_text), "Disabled");
     flog::info("Dawson CW Decoder disabled");
+    
+    // Save enabled state
+    config.acquire();
+    config.conf[name]["enabled"] = enabled;
+    config.release(true);
 }
 
 void DawsonCWDecoderModule::updateBindings() {
@@ -322,8 +378,23 @@ void DawsonCWDecoderModule::updateFrequencyLock() {
     current_center_freq = center;
     on_cw_frequency = isInCWBand(center, bw);
     
+    // Set CW band limits for peak filtering
+    double band_start = 0, band_end = 0;
+    if (getCWBandRange(center, bw, band_start, band_end)) {
+        iq_dsp_engine.set_cw_band(static_cast<float>(band_start), static_cast<float>(band_end));
+    } else {
+        // Not in a known CW band - use the whole viewable range
+        iq_dsp_engine.set_cw_band(
+            static_cast<float>(center - bw / 2.0),
+            static_cast<float>(center + bw / 2.0)
+        );
+    }
+    
+    // Update center frequency for absolute freq calculation
+    iq_dsp_engine.set_center_frequency(center);
+    
     if (on_cw_frequency) {
-        auto band_name = getCurrentCWBandName(center);
+        auto band_name = getCurrentCWBandName(center, bw);
         if (band_name && auto_enable_in_cw_band && !enabled) {
             enable();
         }
@@ -341,7 +412,9 @@ void DawsonCWDecoderModule::drawMenu() {
     ImGui::Text("Status: %s", status_text);
     
     if (on_cw_frequency) {
-        auto band_name = getCurrentCWBandName(current_center_freq);
+        double bw = 0;
+        try { bw = gui::waterfall.getBandwidth(); } catch (...) { bw = 0; }
+        auto band_name = getCurrentCWBandName(current_center_freq, bw);
         if (band_name) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "[%s]", band_name);

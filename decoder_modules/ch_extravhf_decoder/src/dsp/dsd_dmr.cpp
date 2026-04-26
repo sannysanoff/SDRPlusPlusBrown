@@ -443,29 +443,29 @@ namespace dsp {
         dibit_p++;
 
         if (strcmp (bursttype, "0000") == 0) {
-            sprintf(fsubtype, " PI Header    ");
+            snprintf(fsubtype, sizeof(fsubtype), " PI Header    ");
         } else if (strcmp (bursttype, "0001") == 0) {
-            sprintf(fsubtype, " VOICE Header ");
+            snprintf(fsubtype, sizeof(fsubtype), " VOICE Header ");
         } else if (strcmp (bursttype, "0010") == 0) {
-            sprintf(fsubtype, " TLC          ");
+            snprintf(fsubtype, sizeof(fsubtype), " TLC          ");
         } else if (strcmp (bursttype, "0011") == 0) {
-            sprintf(fsubtype, " CSBK         ");
+            snprintf(fsubtype, sizeof(fsubtype), " CSBK         ");
         } else if (strcmp (bursttype, "0100") == 0) {
-            sprintf(fsubtype, " MBC Header   ");
+            snprintf(fsubtype, sizeof(fsubtype), " MBC Header   ");
         } else if (strcmp (bursttype, "0101") == 0) {
-            sprintf(fsubtype, " MBC          ");
+            snprintf(fsubtype, sizeof(fsubtype), " MBC          ");
         } else if (strcmp (bursttype, "0110") == 0) {
-            sprintf(fsubtype, " DATA Header  ");
+            snprintf(fsubtype, sizeof(fsubtype), " DATA Header  ");
         } else if (strcmp (bursttype, "0111") == 0) {
-            sprintf(fsubtype, " RATE 1/2 DATA");
+            snprintf(fsubtype, sizeof(fsubtype), " RATE 1/2 DATA");
         } else if (strcmp (bursttype, "1000") == 0) {
-            sprintf(fsubtype, " RATE 3/4 DATA");
+            snprintf(fsubtype, sizeof(fsubtype), " RATE 3/4 DATA");
         } else if (strcmp (bursttype, "1001") == 0) {
-            sprintf(fsubtype, " Slot idle    ");
+            snprintf(fsubtype, sizeof(fsubtype), " Slot idle    ");
         } else if (strcmp (bursttype, "1010") == 0) {
-            sprintf(fsubtype, " Rate 1 DATA  ");
+            snprintf(fsubtype, sizeof(fsubtype), " Rate 1 DATA  ");
         } else {
-            sprintf(fsubtype, "              ");
+            snprintf(fsubtype, sizeof(fsubtype), "              ");
         }
 
         // signaling data or sync
@@ -483,9 +483,9 @@ namespace dsp {
 
         if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
             if (currentslot == 0) {
-                sprintf(slot0light, "[slot0]");
+                snprintf(slot0light, sizeof(slot0light), "[slot0]");
             } else {
-                sprintf(slot1light, "[slot1]");
+                snprintf(slot1light, sizeof(slot1light), "[slot1]");
             }
         }
 
@@ -638,16 +638,16 @@ namespace dsp {
             if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_DATA_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_DATA_SYNC) == 0)) {
                 mutecurrentslot = 1;
                 if (currentslot == 0) {
-                    sprintf(slot0light, "[slot0]");
+                    snprintf(slot0light, sizeof(slot0light), "[slot0]");
                 } else {
-                    sprintf(slot1light, "[slot1]");
+                    snprintf(slot1light, sizeof(slot1light), "[slot1]");
                 }
             } else if ((strcmp (sync, DMR_BS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_MS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS1_VOICE_SYNC) == 0) || (strcmp (sync, DMR_DIRECT_MODE_TS2_VOICE_SYNC) == 0)) {
                 mutecurrentslot = 0;
                 if (currentslot == 0) {
-                    sprintf(slot0light, "[SLOT0]");
+                    snprintf(slot0light, sizeof(slot0light), "[SLOT0]");
                 } else {
-                    sprintf(slot1light, "[SLOT1]");
+                    snprintf(slot1light, sizeof(slot1light), "[SLOT1]");
                 }
             }
             if ((strcmp (sync, DMR_MS_VOICE_SYNC) == 0) || (strcmp (sync, DMR_MS_DATA_SYNC) == 0)) {
@@ -725,15 +725,15 @@ namespace dsp {
 
             if ((strcmp (sync, DMR_BS_DATA_SYNC) == 0) || (msMode == 1)) {
                 if (currentslot == 0) {
-                    sprintf(slot1light, " slot1 ");
+                    snprintf(slot1light, sizeof(slot1light), " slot1 ");
                 } else {
-                    sprintf(slot0light, " slot0 ");
+                    snprintf(slot0light, sizeof(slot0light), " slot0 ");
                 }
             } else if (strcmp (sync, DMR_BS_VOICE_SYNC) == 0) {
                 if (currentslot == 0) {
-                    sprintf(slot1light, " SLOT1 ");
+                    snprintf(slot1light, sizeof(slot1light), " SLOT1 ");
                 } else {
-                    sprintf(slot0light, " SLOT0 ");
+                    snprintf(slot0light, sizeof(slot0light), " SLOT0 ");
                 }
             }
 

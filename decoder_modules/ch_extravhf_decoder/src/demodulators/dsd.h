@@ -141,8 +141,8 @@ namespace demod {
                 ImGui::Text("MFID    : 0x%02x", p25_st.p25_status_mfid);
                 ImGui::TextColored((p25_st.p25_status_emr ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "EMR");
                 ImGui::Text("LCFORMAT: 0x%02x", p25_st.p25_status_lcformat);
-                ImGui::Text("LCINFO: 0x%016lx", p25_st.p25_status_lcinfo);
-                ImGui::Text("MI(INV): 0x%016lx %04x", p25_st.p25_status_mi_0, p25_st.p25_status_mi_1);
+                ImGui::Text("LCINFO: 0x%016llx", (unsigned long long)p25_st.p25_status_lcinfo);
+                ImGui::Text("MI(INV): 0x%016llx %04x", (unsigned long long)p25_st.p25_status_mi_0, p25_st.p25_status_mi_1);
                 if (!fr_st.sync) {
                     style::endDisabled();
                 }

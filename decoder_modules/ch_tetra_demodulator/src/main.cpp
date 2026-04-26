@@ -129,9 +129,9 @@ public:
         sigpath::sinkManager.unregisterStream(name);
     }
 
-    void postInit() {}
+    void postInit() override {}
 
-    void enable() {
+    void enable() override {
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
         mainDemodulator.setInput(vfo->output);
         mainDemodulator.start();
@@ -148,7 +148,7 @@ public:
         enabled = true;
     }
 
-    void disable() {
+    void disable() override {
         mainDemodulator.stop();
         constDiagSplitter.stop();
         constDiagReshaper.stop();
@@ -164,7 +164,7 @@ public:
         enabled = false;
     }
 
-    bool isEnabled() {
+    bool isEnabled() override {
         return enabled;
     }
 

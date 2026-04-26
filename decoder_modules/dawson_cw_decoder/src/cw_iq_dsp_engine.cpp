@@ -109,6 +109,13 @@ void IQCWDSPEngine::set_center_frequency(double freq_hz) {
     rf_center_frequency = freq_hz;
 }
 
+void IQCWDSPEngine::set_cw_band(float min_abs_hz, float max_abs_hz) {
+    config.min_cw_abs_freq = min_abs_hz;
+    config.max_cw_abs_freq = max_abs_hz;
+    printf("[CWDBG] CW band set: %.3f - %.3f MHz\n", min_abs_hz/1e6, max_abs_hz/1e6);
+    fflush(stdout);
+}
+
 void IQCWDSPEngine::init(dsp::stream<dsp::complex_t>* in) {
     printf("[CWDBG] init() in=%p\n", (void*)in);
     fflush(stdout);

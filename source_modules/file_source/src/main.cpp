@@ -154,19 +154,19 @@ public:
         }
     }
 
-    void postInit() {
+    void postInit() override {
         refreshFiles();
     }
 
-    void enable() {
+    void enable() override {
         enabled = true;
     }
 
-    void disable() {
+    void disable() override {
         enabled = false;
     }
 
-    bool isEnabled() {
+    bool isEnabled() override {
         return enabled;
     }
 
@@ -343,7 +343,7 @@ private:
     }
 
 
-    void openPath(const std::string& path) {
+    void openPath(const std::string& path) override {
         try {
             lastError = "";
             reader = new wav::Reader(path);

@@ -97,9 +97,10 @@ struct IQConfig {
     float min_cw_freq = -400000.0f;     // Full bandwidth lower bound
     float max_cw_freq = 400000.0f;      // Full bandwidth upper bound
     
-    // Absolute CW band limits for filtering detected peaks
-    float min_cw_abs_freq = 14000000.0f;  // 14.000 MHz
-    float max_cw_abs_freq = 14070000.0f;  // 14.070 MHz
+    // CW band limits - set dynamically from main.cpp based on current frequency
+    // These define the absolute frequency range for peak filtering
+    float min_cw_abs_freq = 3000000.0f;   // Default: 3 MHz (lowest ham band)
+    float max_cw_abs_freq = 30000000.0f;  // Default: 30 MHz (highest ham band)
     
     // Channel spacing: minimum separation between CW stations (Hz)
     // CW contest stations can be ~50-100Hz apart
@@ -132,6 +133,9 @@ public:
     
     // Set actual RF center frequency for absolute frequency reporting
     void set_center_frequency(double freq_hz);
+    
+    // Set CW band limits for peak filtering
+    void set_cw_band(float min_abs_hz, float max_abs_hz);
     
     // Channel management
     size_t get_active_channel_count() const;

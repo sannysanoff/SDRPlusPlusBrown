@@ -707,8 +707,8 @@ namespace dsp {
             min = -15000;
             center = 0;
             errStr[0] = '\0';
-            sprintf(fsubtype, "              ");
-            sprintf(ftype, "             ");
+            snprintf(fsubtype, sizeof(fsubtype), "              ");
+            snprintf(ftype, sizeof(ftype), "             ");
             errs = 0;
             errs2 = 0;
             lasttg = 0;
@@ -717,11 +717,11 @@ namespace dsp {
             repeat = 0;
             nac = 0;
             numtdulc = 0;
-            sprintf(slot0light, " slot0 ");
-            sprintf(slot1light, " slot1 ");
+            snprintf(slot0light, sizeof(slot0light), " slot0 ");
+            snprintf(slot1light, sizeof(slot1light), " slot1 ");
             firstframe = 0;
-            sprintf(algid, "________");
-            sprintf(keyid, "________________");
+            snprintf(algid, sizeof(algid), "________");
+            snprintf(keyid, sizeof(keyid), "________________");
             status_sync = false;
             status_mbedecoding = false;
         }
@@ -786,7 +786,7 @@ namespace dsp {
                     }
                 }
                 nac = 0;
-                sprintf(fsubtype, " VOICE        ");
+                snprintf(fsubtype, sizeof(fsubtype), " VOICE        ");
                 processNXDNVoice ();
                 return;
             } else if ((synctype == 16) || (synctype == 17)) {
@@ -802,7 +802,7 @@ namespace dsp {
                     }
                 }
                 nac = 0;
-                sprintf(fsubtype, " DATA         ");
+                snprintf(fsubtype, sizeof(fsubtype), " DATA         ");
                 processNXDNData ();
                 return;
             } else if ((synctype == 6) || (synctype == 7)) {
@@ -817,7 +817,7 @@ namespace dsp {
                     }
                 }
                 nac = 0;
-                sprintf(fsubtype, " VOICE        ");
+                snprintf(fsubtype, sizeof(fsubtype), " VOICE        ");
                 processDSTAR ();
                 return;
             } else if ((synctype == 18) || (synctype == 19)) {
@@ -832,7 +832,7 @@ namespace dsp {
                     }
                 }
                 nac = 0;
-                sprintf(fsubtype, " DATA         ");
+                snprintf(fsubtype, sizeof(fsubtype), " DATA         ");
                 processDSTAR_HD ();
                 return;
             } else if ((synctype >= 10) && (synctype <= 13)) {
@@ -847,7 +847,7 @@ namespace dsp {
                     }
                 }
                 if ((synctype == 11) || (synctype == 12)) {
-                    sprintf(fsubtype, " VOICE        ");
+                    snprintf(fsubtype, sizeof(fsubtype), " VOICE        ");
                     processDMRvoice ();
                 } else {
                     errStr[0] = 0;
@@ -860,7 +860,7 @@ namespace dsp {
                     printFrameInfo ();
                 }
                 if ((synctype == 3) || (synctype == 4)) {
-                    sprintf(fsubtype, " VOICE        ");
+                    snprintf(fsubtype, sizeof(fsubtype), " VOICE        ");
                     processX2TDMAvoice ();
                 } else {
                     errStr[0] = 0;
@@ -878,7 +878,7 @@ namespace dsp {
                         status_lvl = level;
                     }
                 }
-                sprintf(fsubtype, " VOICE        ");
+                snprintf(fsubtype, sizeof(fsubtype), " VOICE        ");
                 processProVoice ();
                 return;
             } else {
@@ -968,7 +968,7 @@ namespace dsp {
                     status_last_p25_duid = "HDU";
                 }
                 lastp25type = 2;
-                sprintf(fsubtype, " HDU          ");
+                snprintf(fsubtype, sizeof(fsubtype), " HDU          ");
                 P25processHDU ();
             } else if (strcmp (duid, "11") == 0) {
                 // Logical Link Data Unit 1
@@ -978,7 +978,7 @@ namespace dsp {
                     status_last_p25_duid = "LDU1";
                 }
                 lastp25type = 1;
-                sprintf(fsubtype, " LDU1         ");
+                snprintf(fsubtype, sizeof(fsubtype), " LDU1         ");
                 numtdulc = 0;
                 P25processLDU1 ();
             } else if (strcmp (duid, "22") == 0) {
@@ -990,7 +990,7 @@ namespace dsp {
                         status_last_p25_duid = "";
                     }
                     lastp25type = 0;
-                    sprintf(fsubtype, "              ");
+                    snprintf(fsubtype, sizeof(fsubtype), "              ");
                 } else {
                     if (errorbars == 1) {
                         printFrameInfo ();
@@ -998,7 +998,7 @@ namespace dsp {
                         status_last_p25_duid = "LDU2";
                     }
                     lastp25type = 2;
-                    sprintf(fsubtype, " LDU2         ");
+                    snprintf(fsubtype, sizeof(fsubtype), " LDU2         ");
                     numtdulc = 0;
                     P25processLDU2 ();
                 }
@@ -1013,7 +1013,7 @@ namespace dsp {
                 lastsrc = 0;
                 lastp25type = 0;
                 errStr[0] = 0;
-                sprintf(fsubtype, " TDULC        ");
+                snprintf(fsubtype, sizeof(fsubtype), " TDULC        ");
                 numtdulc++;
                 P25processTDULC ();
                 errStr[0] = 0;
@@ -1028,7 +1028,7 @@ namespace dsp {
                 lastsrc = 0;
                 lastp25type = 0;
                 errStr[0] = 0;
-                sprintf(fsubtype, " TDU          ");
+                snprintf(fsubtype, sizeof(fsubtype), " TDU          ");
 
                 P25processTDU ();
             } else if (strcmp (duid, "13") == 0) {
@@ -1040,7 +1040,7 @@ namespace dsp {
                 lasttg = 0;
                 lastsrc = 0;
                 lastp25type = 3;
-                sprintf(fsubtype, " TSDU         ");
+                snprintf(fsubtype, sizeof(fsubtype), " TSDU         ");
 
                 // Now processing NID
 
@@ -1052,7 +1052,7 @@ namespace dsp {
                     status_last_p25_duid = "PDU";
                 }
                 lastp25type = 4;
-                sprintf(fsubtype, " PDU          ");
+                snprintf(fsubtype, sizeof(fsubtype), " PDU          ");
             } else if (lastp25type == 1) {
                 // try to guess based on previous frame if unknown type
                 if (errorbars == 1) {
@@ -1062,7 +1062,7 @@ namespace dsp {
                 }
                 // Guess that the state is LDU2
                 lastp25type = 2;
-                sprintf(fsubtype, "(LDU2)        ");
+                snprintf(fsubtype, sizeof(fsubtype), "(LDU2)        ");
                 numtdulc = 0;
                 P25processLDU2 ();
             } else if (lastp25type == 2) {
@@ -1073,7 +1073,7 @@ namespace dsp {
                 }
                 // Guess that the state is LDU1
                 lastp25type = 1;
-                sprintf(fsubtype, "(LDU1)        ");
+                snprintf(fsubtype, sizeof(fsubtype), "(LDU1)        ");
                 numtdulc = 0;
                 P25processLDU1 ();
             } else if (lastp25type == 3) {
@@ -1084,7 +1084,7 @@ namespace dsp {
                 }
                 // Guess that the state is TSDU
                 lastp25type = 3;
-                sprintf(fsubtype, "(TSDU)        ");
+                snprintf(fsubtype, sizeof(fsubtype), "(TSDU)        ");
 
                 // Now processing NID
 
@@ -1098,7 +1098,7 @@ namespace dsp {
                 lastp25type = 0;
             } else if(strcmp (duid, "EE") != 0) {
                 lastp25type = 0;
-                sprintf(fsubtype, "              ");
+                snprintf(fsubtype, sizeof(fsubtype), "              ");
                 if (errorbars == 1) {
                     printFrameInfo ();
 //                    printf (" duid:%s *Unknown DUID*\n", duid);
@@ -1250,11 +1250,11 @@ namespace dsp {
                 }
 
                 if (rfMod == 0) {
-                    sprintf (framesyncmodulation, "C4FM");
+                    snprintf(framesyncmodulation, sizeof(framesyncmodulation), "C4FM");
                 } else if (rfMod == 1) {
-                    sprintf (framesyncmodulation, "QPSK");
+                    snprintf(framesyncmodulation, sizeof(framesyncmodulation), "QPSK");
                 } else if (rfMod == 2) {
-                    sprintf (framesyncmodulation, "GFSK");
+                    snprintf(framesyncmodulation, sizeof(framesyncmodulation), "GFSK");
                 }
 
                 strncpy (framesynctest, (framesynctest_p - 23), 24);
@@ -1264,7 +1264,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " P25 Phase 1 ");
+                        snprintf(ftype, sizeof(ftype), " P25 Phase 1 ");
                         if (errorbars == 1) {
                             printFrameSync ( "+P25p1", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1276,7 +1276,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " P25 Phase 1 ");
+                        snprintf(ftype, sizeof(ftype), " P25 Phase 1 ");
                         if (errorbars == 1) {
                             printFrameSync ( "-P25p1", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1292,7 +1292,7 @@ namespace dsp {
                         min = ((min) + (framesynclmin)) / 2;
                         if (invertedX2tdma == 0) {
                             // data frame
-                            sprintf(ftype, " X2-TDMA     ");
+                            snprintf(ftype, sizeof(ftype), " X2-TDMA     ");
                             if (errorbars == 1) {
                                 printFrameSync ( "+X2-TDMA", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1300,7 +1300,7 @@ namespace dsp {
                             return (2);
                         } else {
                             // inverted voice frame
-                            sprintf(ftype, " X2-TDMA     ");
+                            snprintf(ftype, sizeof(ftype), " X2-TDMA     ");
                             if (errorbars == 1) {
                                 printFrameSync ( "-X2-TDMA", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1318,7 +1318,7 @@ namespace dsp {
                         min = ((min) + framesynclmin) / 2;
                         if (invertedX2tdma == 0) {
                             // voice frame
-                            sprintf(ftype, " X2-TDMA     ");
+                            snprintf(ftype, sizeof(ftype), " X2-TDMA     ");
                             if (errorbars == 1) {
                                 printFrameSync ( "+X2-TDMA", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1329,7 +1329,7 @@ namespace dsp {
                             return (4);
                         } else {
                             // inverted data frame
-                            sprintf(ftype, " X2-TDMA     ");
+                            snprintf(ftype, sizeof(ftype), " X2-TDMA     ");
                             if (errorbars == 1) {
                                 printFrameSync ( "-X2-TDMA", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1346,7 +1346,7 @@ namespace dsp {
                         min = ((min) + (framesynclmin)) / 2;
                         if (invertedDmr == 0) {
                             // data frame
-                            sprintf(ftype, " DMR         ");
+                            snprintf(ftype, sizeof(ftype), " DMR         ");
                             if (errorbars == 1){
                                 printFrameSync ( "+DMR", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1354,7 +1354,7 @@ namespace dsp {
                             return (10);
                         } else {
                             // inverted voice frame
-                            sprintf(ftype, " DMR         ");
+                            snprintf(ftype, sizeof(ftype), " DMR         ");
                             if (errorbars == 1) {
                                 printFrameSync ( "-DMR", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1372,7 +1372,7 @@ namespace dsp {
                         min = ((min) + framesynclmin) / 2;
                         if (invertedDmr == 0) {
                             // voice frame
-                            sprintf(ftype, " DMR         ");
+                            snprintf(ftype, sizeof(ftype), " DMR         ");
                             if (errorbars == 1) {
                                 printFrameSync ( "+DMR", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1383,7 +1383,7 @@ namespace dsp {
                             return (12);
                         } else {
                             // inverted data frame
-                            sprintf(ftype, " DMR         ");
+                            snprintf(ftype, sizeof(ftype), " DMR         ");
                             if (errorbars == 1) {
                                 printFrameSync ( "-DMR", framesynctest_pos + 1, framesyncmodulation);
                             }
@@ -1399,7 +1399,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " ProVoice    ");
+                        snprintf(ftype, sizeof(ftype), " ProVoice    ");
                         if (errorbars == 1) {
                             printFrameSync ( "-ProVoice", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1410,7 +1410,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " ProVoice    ");
+                        snprintf(ftype, sizeof(ftype), " ProVoice    ");
                         if (errorbars == 1) {
                             printFrameSync ( "-ProVoice", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1427,12 +1427,12 @@ namespace dsp {
                             max = ((max) + framesynclmax) / 2;
                             min = ((min) + framesynclmin) / 2;
                             if (samplesPerSymbol == 20) {
-                                sprintf(ftype, " NXDN48      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN48      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "+NXDN48", framesynctest_pos + 1, framesyncmodulation);
                                 }
                             } else {
-                                sprintf(ftype, " NXDN96      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN96      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "+NXDN96", framesynctest_pos + 1, framesyncmodulation);
                                 }
@@ -1449,12 +1449,12 @@ namespace dsp {
                             max = ((max) + framesynclmax) / 2;
                             min = ((min) + framesynclmin) / 2;
                             if (samplesPerSymbol == 20) {
-                                sprintf(ftype, " NXDN48      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN48      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "-NXDN48", framesynctest_pos + 1, framesyncmodulation);
                                 }
                             } else {
-                                sprintf(ftype, " NXDN96      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN96      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "-NXDN96", framesynctest_pos + 1, framesyncmodulation);
                                 }
@@ -1471,12 +1471,12 @@ namespace dsp {
                             max = ((max) + framesynclmax) / 2;
                             min = ((min) + framesynclmin) / 2;
                             if (samplesPerSymbol == 20) {
-                                sprintf(ftype, " NXDN48      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN48      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "+NXDN48", framesynctest_pos + 1, framesyncmodulation);
                                 }
                             } else {
-                                sprintf(ftype, " NXDN96      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN96      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "+NXDN96", framesynctest_pos + 1, framesyncmodulation);
                                 }
@@ -1493,12 +1493,12 @@ namespace dsp {
                             max = ((max) + framesynclmax) / 2;
                             min = ((min) + framesynclmin) / 2;
                             if (samplesPerSymbol == 20) {
-                                sprintf(ftype, " NXDN48      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN48      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "-NXDN48", framesynctest_pos + 1, framesyncmodulation);
                                 }
                             } else {
-                                sprintf(ftype, " NXDN96      ");
+                                snprintf(ftype, sizeof(ftype), " NXDN96      ");
                                 if (errorbars == 1) {
                                     printFrameSync ( "-NXDN96", framesynctest_pos + 1, framesyncmodulation);
                                 }
@@ -1516,7 +1516,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " D-STAR      ");
+                        snprintf(ftype, sizeof(ftype), " D-STAR      ");
                         if (errorbars == 1) {
                             printFrameSync ( "+D-STAR", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1528,7 +1528,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " D-STAR      ");
+                        snprintf(ftype, sizeof(ftype), " D-STAR      ");
                         if (errorbars == 1) {
                             printFrameSync ( "-D-STAR", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1540,7 +1540,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " D-STAR_HD   ");
+                        snprintf(ftype, sizeof(ftype), " D-STAR_HD   ");
                         if (errorbars == 1)
                             {
                             printFrameSync ( "+D-STAR_HD", framesynctest_pos + 1, framesyncmodulation);
@@ -1553,7 +1553,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, " D-STAR_HD   ");
+                        snprintf(ftype, sizeof(ftype), " D-STAR_HD   ");
                         if (errorbars == 1) {
                             printFrameSync ( "-D-STAR_HD", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1568,7 +1568,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + (framesynclmax)) / 2;
                         min = ((min) + (framesynclmin)) / 2;
-                        sprintf(ftype, "(P25 Phase 1)");
+                        snprintf(ftype, sizeof(ftype), "(P25 Phase 1)");
                         if (errorbars == 1) {
                             printFrameSync ( "(+P25p1)", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1579,7 +1579,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, "(P25 Phase 1)");
+                        snprintf(ftype, sizeof(ftype), "(P25 Phase 1)");
                         if (errorbars == 1) {
                             printFrameSync ( "(-P25p1)", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1590,7 +1590,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, "(X2-TDMA)    ");
+                        snprintf(ftype, sizeof(ftype), "(X2-TDMA)    ");
                         if (errorbars == 1) {
                             printFrameSync ( "(-X2-TDMA)", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1601,7 +1601,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, "(X2-TDMA)    ");
+                        snprintf(ftype, sizeof(ftype), "(X2-TDMA)    ");
                         if (errorbars == 1) {
                             printFrameSync ( "(+X2-TDMA)", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1612,7 +1612,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, "(DMR)        ");
+                        snprintf(ftype, sizeof(ftype), "(DMR)        ");
                         if (errorbars == 1) {
                             printFrameSync ( "(-DMR)", framesynctest_pos + 1, framesyncmodulation);
                         }
@@ -1623,7 +1623,7 @@ namespace dsp {
                         offset = framesynctest_pos;
                         max = ((max) + framesynclmax) / 2;
                         min = ((min) + framesynclmin) / 2;
-                        sprintf(ftype, "(DMR)        ");
+                        snprintf(ftype, sizeof(ftype), "(DMR)        ");
                         if (errorbars == 1) {
                             printFrameSync ( "(+DMR)", framesynctest_pos + 1, framesyncmodulation);
                         }
