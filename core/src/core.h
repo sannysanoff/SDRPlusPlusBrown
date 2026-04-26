@@ -17,6 +17,8 @@ namespace core {
     SDRPP_EXPORT ModuleComManager modComManager;
     SDRPP_EXPORT CommandArgsParser args;
     SDRPP_EXPORT const char *getRoot();
+    SDRPP_EXPORT const char *getResourcesDirectory();
+    SDRPP_EXPORT const char *getModulesDirectory();
 
     void setInputSampleRate(double samplerate, double bandwidth = 0.0);
 
@@ -67,6 +69,7 @@ inline std::string GetThreadName( ) {
 }
 
 SDRPP_EXPORT char* sdrppResourcesDirectory; // to reference from C files.
+SDRPP_EXPORT char* sdrppModulesDirectory; // to reference from C files.
 
 
 int sdrpp_main(int argc, char* argv[]);

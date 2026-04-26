@@ -141,7 +141,6 @@ namespace server {
 
         // Load config
         core::configManager.acquire();
-        std::string modulesDir = core::configManager.conf["modulesDirectory"];
         std::vector<std::string> modules = core::configManager.conf["modules"];
         std::vector<std::string> moduleBlacklist;
         if (core::configManager.conf.contains("moduleBlacklist")) {
@@ -150,7 +149,7 @@ namespace server {
         auto modList = core::configManager.conf["moduleInstances"].items();
         std::string sourceName = core::configManager.conf["source"];
         core::configManager.release();
-        modulesDir = std::filesystem::absolute(modulesDir).string();
+        std::string modulesDir = std::filesystem::absolute(core::getModulesDirectory()).string();
 
         // Initialize SmGui in server mode
         SmGui::init(true);

@@ -34,7 +34,7 @@ namespace geomap {
 
     void maybeInit() {
         if (geoJSON.empty()) {
-            std::string resDir = core::configManager.conf["resourcesDirectory"];
+            std::string resDir = core::getResourcesDirectory();
             const std::string filePath = resDir + "/cty/map.json";
             geoJSON = readGeoJSONFile(filePath);
 

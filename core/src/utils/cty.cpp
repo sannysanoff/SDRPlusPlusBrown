@@ -248,7 +248,7 @@ namespace utils {
     CTY globalCty;
 
     void loadAllCty() {
-        std::string resDir = core::configManager.conf["resourcesDirectory"];
+        std::string resDir = core::getResourcesDirectory();
         loadCTY((resDir + "/cty/cty.dat").c_str(), "", globalCty);
         loadCTY((resDir + "/cty/AF_cty.dat").c_str(), ", AF", globalCty);
         loadCTY((resDir + "/cty/BY_cty.dat").c_str(), ", CN", globalCty);
