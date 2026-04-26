@@ -456,13 +456,6 @@ if(APPLE)
     set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
 endif()
 
-if(NOT APPLE AND NOT WIN32)
-    list(APPEND SDRPP_LIBS orc-0.4)
-endif()
-
-
-
-
 target_link_libraries(sdrpp PRIVATE ${SDRPP_LIBS})
 
 # Compiler arguments
