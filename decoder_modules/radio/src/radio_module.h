@@ -18,6 +18,7 @@
 #include <utils/optionlist.h>
 #include <cmath>
 #include <fftw3.h>
+#include <algorithm>
 #include "radio_interface.h"
 #include "demod.h"
 #include "radio_module_interface.h"
@@ -227,6 +228,17 @@ public:
                 }
             }
             return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + "}";
+        }
+        if (cmd == "list_demods") {
+            std::string json = "{\"radio\": \"" + name + "\", \"demods\": [";
+            bool first = true;
+            for (auto& mode : radioModes) {
+                if (!first) json += ", ";
+                first = false;
+                json += "{\"name\": \"" + mode.first + "\", \"id\": " + std::to_string(mode.second) + "}";
+            }
+            json += "]}";
+            return json;
         }
         if (cmd == "set_freq") {
             try {
@@ -455,34 +467,34 @@ private:
         float menuWidth = ImGui::GetContentRegionAvail().x;
         ImGui::BeginGroup();
 
-        ImGui::Columns(4, CONCAT("RadioModeColumns##_", _this->name), false);
-        if (ImGui::RadioButton(CONCAT("NFM##_", _this->name), _this->selectedDemodID == 0) && _this->selectedDemodID != 0) {
-            _this->selectDemodByID(RADIO_DEMOD_NFM);
+        // Dynamically render radio buttons from radioModes vector
+        // Layout: 4 per row, order by id ascending (row-by-row)
+        int numModes = _this->radioModes.size();
+        int numCols = 4;
+
+        // Sort modes by id for consistent display order
+        std::vector<std::pair<std::string, int>> sortedModes = _this->radioModes;
+        std::sort(sortedModes.begin(), sortedModes.end(),
+                  [](const auto& a, const auto& b) { return a.second < b.second; });
+
+        ImGui::Columns(numCols, CONCAT("RadioModeColumns##_", _this->name), false);
+
+        for (int i = 0; i < numModes; i++) {
+            const auto& mode = sortedModes[i];
+            const char* label = CONCAT(mode.first.c_str(), CONCAT("##_", _this->name));
+            int modeId = mode.second;
+            if (ImGui::RadioButton(label, _this->selectedDemodID == modeId) && _this->selectedDemodID != modeId) {
+                _this->selectDemodByID((DemodID)modeId);
+            }
+            // Move to next column, or next row after every 4 items
+            if ((i + 1) % numCols == 0 && i < numModes - 1) {
+                ImGui::Columns(1);  // End current row
+                ImGui::Columns(numCols, CONCAT("RadioModeColumns##_", _this->name), false);  // Start new row
+            } else if (i < numModes - 1) {
+                ImGui::NextColumn();
+            }
         }
-        if (ImGui::RadioButton(CONCAT("WFM##_", _this->name), _this->selectedDemodID == 1) && _this->selectedDemodID != 1) {
-            _this->selectDemodByID(RADIO_DEMOD_WFM);
-        }
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("AM##_", _this->name), _this->selectedDemodID == 2) && _this->selectedDemodID != 2) {
-            _this->selectDemodByID(RADIO_DEMOD_AM);
-        }
-        if (ImGui::RadioButton(CONCAT("DSB##_", _this->name), _this->selectedDemodID == 3) && _this->selectedDemodID != 3) {
-            _this->selectDemodByID(RADIO_DEMOD_DSB);
-        }
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("USB##_", _this->name), _this->selectedDemodID == 4) && _this->selectedDemodID != 4) {
-            _this->selectDemodByID(RADIO_DEMOD_USB);
-        }
-        if (ImGui::RadioButton(CONCAT("CW##_", _this->name), _this->selectedDemodID == 5) && _this->selectedDemodID != 5) {
-            _this->selectDemodByID(RADIO_DEMOD_CW);
-        };
-        ImGui::NextColumn();
-        if (ImGui::RadioButton(CONCAT("LSB##_", _this->name), _this->selectedDemodID == 6) && _this->selectedDemodID != 6) {
-            _this->selectDemodByID(RADIO_DEMOD_LSB);
-        }
-        if (ImGui::RadioButton(CONCAT("RAW##_", _this->name), _this->selectedDemodID == 7) && _this->selectedDemodID != 7) {
-            _this->selectDemodByID(RADIO_DEMOD_RAW);
-        };
+
         ImGui::Columns(1, CONCAT("EndRadioModeColumns##_", _this->name), false);
 
         ImGui::EndGroup();
@@ -1200,9 +1212,4 @@ private:
     bool enabled = true;
 
     EventHandler<bool> txHandler;
-
-    std::map<std::string, int> radioModes = {
-        {"NFM", 0}, {"WFM", 1}, {"AM", 2}, {"DSB", 3},
-        {"USB", 4}, {"CW", 5}, {"LSB", 6}, {"RAW", 7}
-    };
 };

@@ -48,33 +48,31 @@ Bandwidth: {'vfo_bandwidth': 2700.0, ...}
 
 ## Test Framework Library
 
-`sdrpp_test_framework.py` provides reusable utilities for creating E2E tests:
+`e2e_common.py` provides reusable utilities for creating E2E tests:
 
-### SDRPPTestInstance
+### SDRPPTestContext
 
 Manages a test instance of SDR++:
 
 ```python
-from sdrpp_test_framework import SDRPPTestInstance, create_lsb_radio_config
+from e2e_common import SDRPPTestContext, get_lsb_config
 
 # Create config
-main_config, radio_config = create_lsb_radio_config(
-    radio_name="Radio",
+main_config, radio_config = get_lsb_config(
     frequency=7100000,  # 40m band
-    bandwidth=2700,     # LSB bandwidth
-    sample_rate=48000
+    bandwidth=2700      # LSB bandwidth
 )
 
 # Launch SDR++
-with SDRPPTestInstance(
-    config=main_config,
-    radio_config=radio_config,
-    binary_path="./cmake-build-debug/sdrpp",
-    debug_port=8080,
+with SDRPPTestContext(
+    http_port=8080,
     headless=True
-) as sdrpp:
+) as ctx:
+    ctx.write_configs(main_config, radio_config)
+    ctx.start()
+    
     # Query via debug API
-    response = sdrpp.debug_cmd("Radio", "get_vfo_bandwidth")
+    response = ctx.module_cmd("Radio", "get_vfo_bandwidth")
     print(f"VFO bandwidth: {response['vfo_bandwidth']}")
 ```
 
