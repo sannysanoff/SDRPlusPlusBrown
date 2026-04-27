@@ -29,8 +29,6 @@ def test_lsb_startup():
             stats.test_fail("test_lsb_startup", "Failed to start SDR++")
             return False
         
-        ctx.sleep(2.0)
-        
         # Check demod
         resp = ctx.module_cmd("Radio", "get_demod")
         stats.debug("Demod", resp)

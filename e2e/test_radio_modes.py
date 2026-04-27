@@ -44,8 +44,6 @@ def run_modes_test(ctx: SDRPPTestContext, expected_modes: list, test_name: str) 
         stats.test_fail(test_name, "Failed to start SDR++")
         return False
     
-    ctx.sleep(5.0)
-    
     # Debug: print log section about module loading
     log_section = ctx.find_in_log("ch_extravhf", 200, 500)
     if log_section:

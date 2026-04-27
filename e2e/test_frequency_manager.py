@@ -78,8 +78,6 @@ def test_frequency_manager():
             stats.final_summary(0, 0, 1)
             return False
         
-        ctx.sleep(2.0)
-        
         # Test 1: Get lists
         stats.subsection("Test 1: get_lists")
         total_tests += 1
