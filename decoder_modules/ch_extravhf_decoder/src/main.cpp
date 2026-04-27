@@ -91,7 +91,7 @@ public:
         radio->radioModes.back().first = "DSD";
         radio->radioModes.back().second = RADIO_DEMOD_DSD;
         radio->radioModes.emplace_back();
-        radio->radioModes.back().first = "OLD DSD";
+        radio->radioModes.back().first = "oldDSD";
         radio->radioModes.back().second = RADIO_DEMOD_OLDDSD;
 
     }

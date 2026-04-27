@@ -18,6 +18,8 @@
 #include <gui/menus/display.h>
 #include <http_debug_server.h>
 #include <thread>
+#include <mutex>
+#include <unordered_map>
 
 #include "../../tests/test_utils.h"
 
@@ -97,6 +99,107 @@ namespace core {
         return rootPath;
     }
 
+    // Forward declaration
+    std::string getMigrationPath(const std::string& path, const std::string& oldName, const std::string& newName);
+
+    // Generic helper to replace oldName with newName in path if newName variant exists
+    // Checks for /oldName/ or \oldName\ (with separator) and /oldName or \oldName at end
+    std::string getMigrationPath(const std::string& path, const std::string& oldName, const std::string& newName) {
+        // Thread-safe cache: map from input path to output path
+        static std::unordered_map<std::string, std::string> cache;
+        static std::mutex cacheMutex;
+
+        std::string cacheKey = path + "|" + oldName + "|" + newName;
+
+        // Check cache first (read lock)
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            auto it = cache.find(cacheKey);
+            if (it != cache.end()) {
+                return it->second;
+            }
+        }
+
+        // Compute the result
+        std::string result = path;
+
+        // Check for /oldName/ or \oldName\ (with trailing separator)
+        size_t pos = path.find("/" + oldName + "/");
+        std::string sep = "/";
+        size_t len = oldName.length() + 2; // +2 for the separators
+
+        if (pos == std::string::npos) {
+            pos = path.find("\\" + oldName + "\\");
+            sep = "\\";
+        }
+
+        // Check for /oldName or \oldName at end of path (without trailing separator)
+        if (pos == std::string::npos) {
+            std::string endCheckFwd = "/" + oldName;
+            std::string endCheckBwd = "\\" + oldName;
+            if (path.length() >= endCheckFwd.length() &&
+                path.substr(path.length() - endCheckFwd.length()) == endCheckFwd) {
+                pos = path.length() - endCheckFwd.length();
+                sep = "/";
+                len = endCheckFwd.length();
+            } else if (path.length() >= endCheckBwd.length() &&
+                       path.substr(path.length() - endCheckBwd.length()) == endCheckBwd) {
+                pos = path.length() - endCheckBwd.length();
+                sep = "\\";
+                len = endCheckBwd.length();
+            }
+        }
+
+        if (pos != std::string::npos) {
+            std::string newPath = path;
+            newPath.replace(pos, len, sep + newName);
+            if (std::filesystem::is_directory(newPath)) {
+                result = newPath;
+            }
+        }
+
+        // Store in cache and log (write lock)
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+        // Double-check to avoid logging twice in race condition
+        if (cache.find(cacheKey) == cache.end()) {
+            if (result != path) {
+                flog::info("getMigrationPath: migrated from '{}' to '{}' (oldName={}, newName={})", path, result, oldName, newName);
+            } else {
+                flog::info("getMigrationPath: no migration needed, returning '{}' (oldName={}, newName={})", path, oldName, newName);
+            }
+            cache[cacheKey] = result;
+        }
+        }
+
+        return result;
+    }
+
+    SDRPP_EXPORT const char* getResourcesDirectory() {
+        // HACK: During migration from sdrpp to sdrpp_brown, check if the brown variant exists
+        // and prefer it over the original path if the original contains "sdrpp" but not "sdrpp_brown"
+        static std::string cachedPath;
+        if (!cachedPath.empty()) {
+            return cachedPath.c_str();
+        }
+
+        // Check for sdrpp -> sdrpp_brown migration
+        cachedPath = getMigrationPath(sdrppResourcesDirectory, "sdrpp", "sdrpp_brown");
+        return cachedPath.c_str();
+    }
+
+    SDRPP_EXPORT const char* getModulesDirectory() {
+        // HACK: During migration from sdrpp to sdrpp_brown, check if the brown variant exists
+        // and prefer it over the original path if the original contains "sdrpp" but not "sdrpp_brown"
+        static std::string cachedPath;
+        if (!cachedPath.empty()) {
+            return cachedPath.c_str();
+        }
+
+        // Check for sdrpp -> sdrpp_brown migration (keep "plugins" as is)
+        cachedPath = getMigrationPath(sdrppModulesDirectory, "sdrpp", "sdrpp_brown");
+        return cachedPath.c_str();
+    }
 
     void setInputSampleRate(double samplerate, double bandwidth) {
         // Forward this to the server
@@ -735,6 +838,9 @@ int sdrpp_main(int argc, char* argv[]) {
     sdrppResourcesDirectory = strdup(resDir.c_str());
     json bandColors = core::configManager.conf["bandColors"];
     core::configManager.release();
+
+    // Apply migration (sdrpp -> sdrpp_brown) before checking existence
+    resDir = core::getMigrationPath(resDir, "sdrpp", "sdrpp_brown");
 
     // Assert that the resource directory is absolute and check existence
     resDir = std::filesystem::absolute(resDir).string();
