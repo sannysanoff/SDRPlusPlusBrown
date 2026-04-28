@@ -650,7 +650,13 @@ private:
             case DemodID::RADIO_DEMOD_CW:   demod = new demod::CW();  break;
             case DemodID::RADIO_DEMOD_LSB:  demod = new demod::LSB(); break;
             case DemodID::RADIO_DEMOD_RAW:  demod = new demod::RAW(); break;
-            default:                        demod = NULL;             break;
+            default:
+                // Try external demodulator providers
+                for (auto& provider : demodulatorProviders) {
+                    demod = provider(id);
+                    if (demod) { break; }
+                }
+                break;
         }
         if (!demod) { return NULL; }
 

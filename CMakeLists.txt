@@ -489,7 +489,7 @@ if (MSVC)
         endforeach()
 
         # Create target
-        add_custom_target(do_always_msvc ALL ${REDIST_DLLS_STR})
+        add_custom_target(do_always_msvc_redist ALL ${REDIST_DLLS_STR})
     endif ()
 endif ()
 
