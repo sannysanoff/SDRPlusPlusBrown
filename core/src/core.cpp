@@ -153,10 +153,23 @@ namespace core {
 
         if (pos != std::string::npos) {
             std::string newPath = path;
-            newPath.replace(pos, len, sep + newName);
+            // Check if the found pattern had a trailing separator (middle of path)
+            bool hasTrailingSep = (len == (oldName.length() + 2));
+            if (hasTrailingSep) {
+                newPath.replace(pos, len, sep + newName + sep);
+            } else {
+                newPath.replace(pos, len, sep + newName);
+            }
+            // Always prefer newName if it exists
             if (std::filesystem::is_directory(newPath)) {
                 result = newPath;
             }
+            // If newName doesn't exist but old path also doesn't exist,
+            // still prefer newName (it may be created later or user may fix it)
+            else if (!std::filesystem::is_directory(path)) {
+                result = newPath;
+            }
+            // Otherwise old path exists and new doesn't, keep old (backward compat)
         }
 
         // Store in cache and log (write lock)
