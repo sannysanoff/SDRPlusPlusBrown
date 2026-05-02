@@ -469,7 +469,7 @@ private:
 
         // Dynamically render radio buttons from radioModes vector
         // Layout: 4 per row, order by id ascending (row-by-row)
-        int numModes = _this->radioModes.size();
+        int numModes = (int)_this->radioModes.size();
         int numCols = 4;
 
         // Sort modes by id for consistent display order
@@ -477,25 +477,22 @@ private:
         std::sort(sortedModes.begin(), sortedModes.end(),
                   [](const auto& a, const auto& b) { return a.second < b.second; });
 
-        ImGui::Columns(numCols, CONCAT("RadioModeColumns##_", _this->name), false);
+        std::string columnsId = "RadioModeColumns##_" + _this->name;
+        ImGui::Columns(numCols, columnsId.c_str(), false);
 
         for (int i = 0; i < numModes; i++) {
             const auto& mode = sortedModes[i];
-            const char* label = CONCAT(mode.first.c_str(), CONCAT("##_", _this->name));
             int modeId = mode.second;
-            if (ImGui::RadioButton(label, _this->selectedDemodID == modeId) && _this->selectedDemodID != modeId) {
+            std::string label = mode.first + "##_radio_mode_" + _this->name + "_" + std::to_string(modeId);
+            if (ImGui::RadioButton(label.c_str(), _this->selectedDemodID == modeId) && _this->selectedDemodID != modeId) {
                 _this->selectDemodByID((DemodID)modeId);
             }
-            // Move to next column, or next row after every 4 items
-            if ((i + 1) % numCols == 0 && i < numModes - 1) {
-                ImGui::Columns(1);  // End current row
-                ImGui::Columns(numCols, CONCAT("RadioModeColumns##_", _this->name), false);  // Start new row
-            } else if (i < numModes - 1) {
+            if (i < numModes - 1) {
                 ImGui::NextColumn();
             }
         }
 
-        ImGui::Columns(1, CONCAT("EndRadioModeColumns##_", _this->name), false);
+        ImGui::Columns(1);
 
         ImGui::EndGroup();
 
