@@ -69,7 +69,9 @@ namespace dsp {
             tempStop();
             unregisterInput(_in);
             _in = in;
-            registerInput(_in);
+            if (_in) {
+                registerInput(_in);
+            }
             tempStart();
         }
 

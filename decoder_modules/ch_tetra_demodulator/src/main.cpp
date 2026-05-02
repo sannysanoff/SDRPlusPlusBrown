@@ -91,7 +91,9 @@ public:
         symbolExtractor.init(&demodStream);
         bitsUnpacker.init(&symbolExtractor.out);
 
-        demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
+        // Initialize demodSink with NULL input - will be set dynamically in setMode()
+        // to avoid having two readers on bitsUnpacker.out simultaneously
+        demodSink.init(nullptr, _demodSinkHandler, this);
 
         osmotetradecoder.init(&bitsUnpacker.out);
         resamp.init(&osmotetradecoder.out, 8000.0, audioSampleRate);
@@ -219,12 +221,16 @@ private:
 
     void setMode() {
         if(decoder_mode == 0) {
-            //osmo-tetra
+            //osmo-tetra mode: use osmotetradecoder, detach demodSink
             demodSink.stop();
+            demodSink.setInput(nullptr);  // Detach from bitsUnpacker.out
+            osmotetradecoder.setInput(&bitsUnpacker.out);  // Reattach to bitsUnpacker.out
             osmotetradecoder.start();
         } else {
-            //network syms
+            //network syms mode: use demodSink, detach osmotetradecoder
             osmotetradecoder.stop();
+            osmotetradecoder.setInput(nullptr);  // Detach from bitsUnpacker.out
+            demodSink.setInput(&bitsUnpacker.out);  // Attach to bitsUnpacker.out
             demodSink.start();
         }
         config.acquire();
