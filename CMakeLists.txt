@@ -32,6 +32,7 @@ option(OPT_BUILD_HAROGIC_SOURCE "Build Harogic Source Module (Dependencies: htra
 option(OPT_BUILD_HERMES_SOURCE "Build Hermes Source Module (no dependencies required)" ON)
 option(OPT_BUILD_HYDRASDR_SOURCE "Build HydraSDR Source Module (Dependencies: libhydrasdr)" OFF)
 option(OPT_BUILD_KCSDR_SOURCE "Build KCSDR Source Module (Dependencies: libkcsdr)" OFF)
+option(OPT_BUILD_DRAGONLABS_SOURCE "Build DragonLabs Source Module (Dependencies: libdlcr)" OFF)
 option(OPT_BUILD_LIMESDR_SOURCE "Build LimeSDR Source Module (Dependencies: liblimesuite)" OFF)
 option(OPT_BUILD_NETWORK_SOURCE "Build Network Source Module (no dependencies required)" ON)
 option(OPT_BUILD_PERSEUS_SOURCE "Build Perseus Source Module (Dependencies: libperseus-sdr)" OFF)
@@ -192,6 +193,10 @@ endif (OPT_BUILD_HERMES_SOURCE)
 if (OPT_BUILD_HYDRASDR_SOURCE)
 add_subdirectory("source_modules/hydrasdr_source")
 endif (OPT_BUILD_HYDRASDR_SOURCE)
+
+if (OPT_BUILD_DRAGONLABS_SOURCE)
+add_subdirectory("source_modules/dragonlabs_source")
+endif (OPT_BUILD_DRAGONLABS_SOURCE)
 
 if (OPT_BUILD_KCSDR_SOURCE)
 add_subdirectory("source_modules/kcsdr_source")
