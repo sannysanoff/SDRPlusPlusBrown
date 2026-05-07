@@ -1,10 +1,15 @@
 cmake_minimum_required(VERSION 3.13)
 project(ch_tetra_demodulator)
 
+message(STATUS "[CH_TETRA_DEMODULATOR] ===== Configuring ch_tetra_demodulator module =====")
+
+# User agent for downloads
+set(DOWNLOAD_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 set(CMAKE_INSTALL_PREFIX "/usr/")
 include(GNUInstallDirs)
 
-set(ETSI_CODEC_URL "http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip")
+set(ETSI_CODEC_URL "https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip")
 set(ETSI_CODEC_MD5 "a8115fe68ef8f8cc466f4192572a1e3e")
 set(ETSI_CODEC_DIR "${CMAKE_CURRENT_BINARY_DIR}/etsi_codec")
 set(ETSI_CODEC_ZIP "${ETSI_CODEC_DIR}/etsi_tetra_codec.zip")
@@ -15,12 +20,24 @@ set(ETSI_CODEC_EXTRACTED_DIR "${ETSI_CODEC_DIR}/en_30039502v010301p0")
 if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     file(MAKE_DIRECTORY "${ETSI_CODEC_DIR}")
     if (NOT EXISTS "${ETSI_CODEC_ZIP}")
-        message("Downloading ETSI TETRA codec")
-        file(DOWNLOAD "${ETSI_CODEC_URL}" "${ETSI_CODEC_ZIP}" EXPECTED_MD5 "${ETSI_CODEC_MD5}")
+        message(STATUS "[CH_TETRA_DEMODULATOR] Downloading ETSI TETRA codec from ${ETSI_CODEC_URL}")
+        file(DOWNLOAD "${ETSI_CODEC_URL}" "${ETSI_CODEC_ZIP}"
+            HTTPHEADER "User-Agent: ${DOWNLOAD_USER_AGENT}"
+            TIMEOUT 60
+            STATUS DOWNLOAD_STATUS
+        )
+        list(GET DOWNLOAD_STATUS 0 DOWNLOAD_RESULT)
+        if (NOT DOWNLOAD_RESULT EQUAL 0)
+            file(REMOVE "${ETSI_CODEC_ZIP}")
+            list(GET DOWNLOAD_STATUS 1 DOWNLOAD_ERROR)
+            message(FATAL_ERROR "[CH_TETRA_DEMODULATOR] Failed to download ETSI TETRA codec: ${DOWNLOAD_ERROR}")
+        else()
+            message(STATUS "[CH_TETRA_DEMODULATOR] Download succeeded")
+        endif()
     else ()
-        message("Not downloading ETSI TETRA codec.")
+        message(STATUS "[CH_TETRA_DEMODULATOR] ETSI codec zip already exists, skipping download")
     endif ()
-    message("Extracting ETSI TETRA codec.")
+    message(STATUS "[CH_TETRA_DEMODULATOR] Extracting ETSI TETRA codec...")
     if (WIN32)
         find_program(ETSI_7Z_PROGRAM 7z 7za)
         if (ETSI_7Z_PROGRAM)
@@ -70,15 +87,33 @@ if (NOT EXISTS "${ETSI_CODEC_MARKER}")
     else ()
         find_program(ETSI_UNZIP_PROGRAM unzip)
         if (NOT ETSI_UNZIP_PROGRAM)
-            message(FATAL_ERROR "Missing 'unzip' command; required to extract ETSI codec with lowercase filenames.")
+            message(STATUS "[CH_TETRA_DEMODULATOR] unzip program not found in PATH!")
+            find_program(ETSI_UNZIP_PROGRAM_FULL /usr/bin/unzip /bin/unzip /usr/local/bin/unzip)
+            if (ETSI_UNZIP_PROGRAM_FULL)
+                message(STATUS "[CH_TETRA_DEMODULATOR] Found unzip at: ${ETSI_UNZIP_PROGRAM_FULL}")
+                set(ETSI_UNZIP_PROGRAM ${ETSI_UNZIP_PROGRAM_FULL})
+            else()
+                message(FATAL_ERROR "[CH_TETRA_DEMODULATOR] Missing 'unzip' command; required to extract ETSI codec with lowercase filenames. Install unzip package.")
+            endif()
+        else()
+            message(STATUS "[CH_TETRA_DEMODULATOR] Found unzip at: ${ETSI_UNZIP_PROGRAM}")
         endif ()
+        message(STATUS "[CH_TETRA_DEMODULATOR] Extracting ${ETSI_CODEC_ZIP} to ${ETSI_CODEC_DIR} with verbose output...")
         execute_process(
             COMMAND "${ETSI_UNZIP_PROGRAM}" -q -L "${ETSI_CODEC_ZIP}"
             WORKING_DIRECTORY "${ETSI_CODEC_DIR}"
             RESULT_VARIABLE ETSI_UNZIP_RESULT
+            OUTPUT_VARIABLE ETSI_UNZIP_OUTPUT
+            ERROR_VARIABLE ETSI_UNZIP_ERROR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_STRIP_TRAILING_WHITESPACE
         )
+        message(STATUS "[CH_TETRA_DEMODULATOR] unzip stdout: ${ETSI_UNZIP_OUTPUT}")
+        message(STATUS "[CH_TETRA_DEMODULATOR] unzip stderr: ${ETSI_UNZIP_ERROR}")
         if (NOT ETSI_UNZIP_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to unzip ETSI codec archive.")
+            message(FATAL_ERROR "[CH_TETRA_DEMODULATOR] Failed to unzip ETSI codec archive (exit: ${ETSI_UNZIP_RESULT})")
+        else()
+            message(STATUS "[CH_TETRA_DEMODULATOR] unzip completed successfully")
         endif ()
     endif ()
     message("Final listing ETSI codec files (for case/structure diagnostics).")
@@ -223,3 +258,5 @@ if (NOT ANDROID)
     target_compile_options(etsi_codec PRIVATE -march=native)
     target_compile_options(ch_tetra_demodulator PRIVATE -march=native)
 endif ()
+
+message(STATUS "[CH_TETRA_DEMODULATOR] ===== ch_tetra_demodulator module configured =====")
