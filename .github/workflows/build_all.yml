@@ -141,6 +141,12 @@ jobs:
         - name: Install more recent librtlsdr
           run: git clone https://github.com/osmocom/rtl-sdr && cd rtl-sdr && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 LIBRARY_PATH=$(pkg-config --libs-only-L libusb-1.0 | sed 's/\-L//') && sudo make install && cd ../../
 
+        - name: Install libhydrasdr
+          run: git clone https://github.com/hydrasdr/rfone_host && cd rfone_host && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        - name: Install libdlcr
+          run: wget https://dragnlabs.com/host-tools/dlcr_host_v0.3.0.zip && mkdir dlcr_host && cd dlcr_host && 7z x ../dlcr_host_v0.3.0.zip && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 .. -DCMAKE_BUILD_TYPE=Release && make -j2 && sudo make install && cd ../../
+
 #        - name: Some debugging
 #          run: echo "before" && find /opt/homebrew/Cellar/codec2/1.2.0/include -print && echo "#ifndef CODEC2_HAVE_VERSION\n#define CODEC2_HAVE_VERSION\n#define CODEC2_VERSION_MAJOR 1\n#define CODEC2_VERSION_MINOR 2\n#define CODEC2_VERSION \"1.2.0\"\n#endif\n" > /opt/homebrew/Cellar/codec2/1.2.0/include/codec2/version.h && echo "after"; find /opt/homebrew/Cellar/codec2/1.2.0/include -print
 #
@@ -208,6 +214,9 @@ jobs:
 
         - name: Install libhydrasdr
           run: git clone https://github.com/hydrasdr/rfone_host && cd rfone_host && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
+
+        - name: Install libdlcr
+          run: wget https://dragnlabs.com/host-tools/dlcr_host_v0.3.0.zip && mkdir dlcr_host && cd dlcr_host && 7z x ../dlcr_host_v0.3.0.zip && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 .. -DCMAKE_BUILD_TYPE=Release && make -j2 && sudo make install && cd ../../
 
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
