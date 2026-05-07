@@ -143,6 +143,26 @@ make VERBOSE=1 -j$(nproc)
 
 The compiled application `sdrpp` and various module `.so` files will be located in the `build/` directory (specifically, `build/sdrpp` and `build/core/` for `libsdrpp_core.so`, with other modules in their respective subdirectories under `build/`).
 
+## Agent Behavior Guidelines
+
+### ⚠️ CRITICAL: Git Operations
+
+**NEVER push commits to the remote repository unless explicitly requested by the user.**
+
+- ❌ DO NOT run `git push` automatically after commits
+- ❌ DO NOT run `git push` after merges
+- ❌ DO NOT run `git push` as part of any automated workflow
+- ✅ ONLY push when the user explicitly says "push" or requests it
+- ✅ Always confirm before pushing if unsure
+
+This applies to all branches including `master` and feature branches.
+
+### Committing
+- You MAY commit changes locally with appropriate messages
+- You MAY create commits to save work
+- You MAY prepare commits for review
+- Wait for explicit user approval before pushing
+
 ## General Notes
 * The build process can be lengthy due to the number of dependencies and modules.
 * The CI scripts in `.github/workflows/build_all.yml` and `docker_builds/` are good references for platform-specific dependencies and build commands.
