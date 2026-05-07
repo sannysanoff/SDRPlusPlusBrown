@@ -40,7 +40,7 @@ cp $build_dir/source_modules/hermes_source/$RELDIR/hermes_source.dll sdrpp_windo
 cp $build_dir/source_modules/limesdr_source/$RELDIR/limesdr_source.dll sdrpp_windows_x64/modules/
 
 cp $build_dir/source_modules/hydrasdr_source/$RELDIR/hydrasdr_source.dll sdrpp_windows_x64/modules/
-cp 'C:/Program Files (x86)/hydrasdr_all/bin/hydrasdr.dll' sdrpp_windows_x64/
+cp 'C:/Program Files/hydrasdr-host/bin/hydrasdr.dll' sdrpp_windows_x64/
 
 cp 'C:/Program Files/PothosSDR/bin/LimeSuite.dll' sdrpp_windows_x64/
 
