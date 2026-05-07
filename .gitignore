@@ -22,7 +22,6 @@ android/app/bin
 .env
 node_modules
 cmake-*
-source_modules/dragonlabs_source
 source_modules/badgesdr_source
 decoder_modules/mystery_decoder
 decoder_modules/tetra_decoder

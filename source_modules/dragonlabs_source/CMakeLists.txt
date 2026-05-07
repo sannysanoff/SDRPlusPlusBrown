@@ -6,6 +6,15 @@ file(GLOB SRC "src/*.cpp")
 include(${SDRPP_MODULE_CMAKE})
 
 if (MSVC)
+<<<<<<< HEAD
+=======
+    # Debugging only
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libusb REQUIRED IMPORTED_TARGET libusb-1.0)
+    target_link_libraries(dragonlabs_source PRIVATE PkgConfig::libusb)
+    target_include_directories(dragonlabs_source PRIVATE "C:/Users/ryzerth/Documents/DragonLabs/products/KrakenSlayer/host/src")
+
+>>>>>>> upstream/master
     target_include_directories(dragonlabs_source PRIVATE "C:/Program Files/DragonLabs/CR/include")
     target_link_directories(dragonlabs_source PRIVATE "C:/Program Files/DragonLabs/CR/lib")
     target_link_libraries(dragonlabs_source PRIVATE dlcr)

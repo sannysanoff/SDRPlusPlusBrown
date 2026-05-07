@@ -22,18 +22,17 @@ namespace dsp::demod {
             dsp::taps::free(filterTaps);
         }
 
-        void init(dsp::stream<dsp::complex_t>* in, double samplerate, double bandwidth, bool lowPass, bool highPass) {
+        void init(dsp::stream<dsp::complex_t>* in, double samplerate, double bandwidth, bool lowPass) {
             _samplerate = samplerate;
             _bandwidth = bandwidth;
             _lowPass = lowPass;
-            _highPass = highPass;
 
             demod.init(NULL, bandwidth / 2.0, _samplerate);
             loadDummyTaps();
             fir.init(NULL, filterTaps);
 
             // Initialize taps
-            updateFilter(lowPass, highPass);
+            updateFilter(lowPass);
 
             if constexpr (std::is_same_v<T, float>) {
                 demod.out.free();
@@ -49,7 +48,7 @@ namespace dsp::demod {
             base_type::tempStop();
             _samplerate = samplerate;
             demod.setDeviation(_bandwidth / 2.0, _samplerate);
-            updateFilter(_lowPass, _highPass);
+            updateFilter(_lowPass);
             base_type::tempStart();
         }
 
@@ -59,19 +58,13 @@ namespace dsp::demod {
             if (bandwidth == _bandwidth) { return; }
             _bandwidth = bandwidth;
             demod.setDeviation(_bandwidth / 2.0, _samplerate);
-            updateFilter(_lowPass, _highPass);
+            updateFilter(_lowPass);
         }
 
         void setLowPass(bool lowPass) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
-            updateFilter(lowPass, _highPass);
-        }
-
-        void setHighPass(bool highPass) {
-            assert(base_type::_block_init);
-            std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
-            updateFilter(_lowPass, highPass);
+            updateFilter(lowPass);
         }
 
         void reset() {
@@ -86,14 +79,14 @@ namespace dsp::demod {
         inline int process(int count, dsp::complex_t* in, T* out) {
             if constexpr (std::is_same_v<T, float>) {
                 demod.process(count, in, out);
-                if (filtering) {
+                if (_lowPass) {
                     std::lock_guard<std::mutex> lck(filterMtx);
                     fir.process(count, out, out);
                 }
             }
             if constexpr (std::is_same_v<T, stereo_t>) {
                 demod.process(count, in, demod.out.writeBuf);
-                if (filtering) {
+                if (_lowPass) {
                     std::lock_guard<std::mutex> lck(filterMtx);
                     fir.process(count, demod.out.writeBuf, demod.out.writeBuf);
                 }
@@ -114,25 +107,17 @@ namespace dsp::demod {
         }
 
     private:
-        void updateFilter(bool lowPass, bool highPass) {
+        void updateFilter(bool lowPass) {
             std::lock_guard<std::mutex> lck(filterMtx);
 
             // Update values
             _lowPass = lowPass;
-            _highPass = highPass;
-            filtering = (lowPass || highPass);
 
             // Free filter taps
             dsp::taps::free(filterTaps);
 
-            // Generate filter depending on low and high pass settings
-            if (_lowPass && _highPass) {
-                filterTaps = dsp::taps::bandPass<float>(300.0, _bandwidth / 2.0, 100.0, _samplerate);
-            }
-            else if (_highPass) {
-                filterTaps = dsp::taps::highPass(300.0, 100.0, _samplerate);
-            }
-            else if (_lowPass) {
+            // Generate filter depending on the low pass settings
+            if (_lowPass) {
                 filterTaps = dsp::taps::lowPass(_bandwidth / 2.0, (_bandwidth / 2.0) * 0.1, _samplerate);
             }
             else {
@@ -152,7 +137,6 @@ namespace dsp::demod {
         double _samplerate;
         double _bandwidth;
         bool _lowPass;
-        bool _highPass;
         bool filtering;
 
         Quadrature demod;

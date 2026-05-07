@@ -22,6 +22,14 @@ namespace rds {
         { BLOCK_TYPE_D,  0b0110110100 }
     };
 
+    const BlockType nextType[_BLOCK_TYPE_COUNT] = {
+        BLOCK_TYPE_B, // From BLOCK_TYPE_A,
+        BLOCK_TYPE_C, // From BLOCK_TYPE_B,
+        BLOCK_TYPE_D, // From BLOCK_TYPE_C,
+        BLOCK_TYPE_D, // From BLOCK_TYPE_CP,
+        BLOCK_TYPE_A  // From BLOCK_TYPE_D,
+    };
+
     std::map<uint16_t, const char*> THREE_LETTER_CALLS = {
         { 0x99A5, "KBW" },
         { 0x99A6, "KCY" },
@@ -145,7 +153,8 @@ namespace rds {
                 type = SYNDROMES[syn];
             }
             else {
-                type = (BlockType)((lastType + 1) % _BLOCK_TYPE_COUNT);
+                // Assume the type is the one following the previous block
+                type = nextType[lastType + 1];
             }
 
             // Save block while correcting errors (NOT YET) <- idk why the "not yet is here", TODO: find why

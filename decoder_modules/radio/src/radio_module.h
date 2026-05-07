@@ -9,7 +9,8 @@
 #include <dsp/types.h>
 #include <dsp/noise_reduction/noise_blanker.h>
 #include <dsp/noise_reduction/fm_if.h>
-#include <dsp/noise_reduction/squelch.h>
+#include <dsp/noise_reduction/power_squelch.h>
+#include <dsp/noise_reduction/ctcss_squelch.h>
 #include <dsp/multirate/rational_resampler.h>
 #include <dsp/filter/deephasis.h>
 #include <core.h>
@@ -45,6 +46,22 @@ public:
         ifnrPresets.define("Voice", IFNR_PRESET_VOICE);
         ifnrPresets.define("Narrow Band", IFNR_PRESET_NARROW_BAND);
 
+        squelchModes.define("off", "Off", SQUELCH_MODE_OFF);
+        squelchModes.define("power", "Power", SQUELCH_MODE_POWER);
+        //squelchModes.define("snr", "SNR", SQUELCH_MODE_SNR);
+        squelchModes.define("ctcss_mute", "CTCSS (Mute)", SQUELCH_MODE_CTCSS_MUTE);
+        squelchModes.define("ctcss_decode", "CTCSS (Decode Only)", SQUELCH_MODE_CTCSS_DECODE);
+        //squelchModes.define("dcs_mute", "DCS (Mute)", SQUELCH_MODE_DCS_MUTE);
+        //squelchModes.define("dcs_decode", "DCS (Decode Only)", SQUELCH_MODE_DCS_DECODE);
+
+        for (int i = 0; i < dsp::noise_reduction::_CTCSS_TONE_COUNT; i++) {
+            float tone = dsp::noise_reduction::CTCSS_TONES[i];
+            char buf[64];
+            sprintf(buf, "%.1fHz", tone);
+            ctcssTones.define((int)round(tone) * 10, buf, (dsp::noise_reduction::CTCSSTone)i);
+        }
+        ctcssTones.define(-1, "Any", dsp::noise_reduction::CTCSS_TONE_ANY);
+
         // Initialize the config if it doesn't exist
         bool created = false;
         config.acquire();
@@ -72,19 +89,24 @@ public:
 
         nb.init(NULL, 500.0 / 24000.0, 10.0);
         fmnr.init(NULL, 32);
-        squelch.init(NULL, MIN_SQUELCH);
+        powerSquelch.init(NULL, MIN_SQUELCH);
 
         ifChain.addBlock(&nb, false);
-        ifChain.addBlock(&squelch, false);
+        ifChain.addBlock(&powerSquelch, false);
         ifChain.addBlock(&fmnr, false);
 
         // Initialize audio DSP chain
         afChain.init(&dummyAudioStream);
 
+        ctcss.init(NULL, 50000.0);
         resamp.init(NULL, 250000.0, 48000.0);
+        hpTaps = dsp::taps::highPass(300.0, 100.0, 48000.0);
+        hpf.init(NULL, hpTaps);
         deemp.init(NULL, 50e-6, 48000.0);
 
+        afChain.addBlock(&ctcss, false);
         afChain.addBlock(&resamp, true);
+        afChain.addBlock(&hpf, false);
         afChain.addBlock(&deemp, false);
 
         // Initialize the sink
@@ -392,16 +414,39 @@ private:
         
 
         // Squelch
-        if (ImGui::Checkbox(("Squelch##_radio_sqelch_ena_" + _this->name).c_str(), &_this->squelchEnabled)) {
-            _this->setSquelchEnabled(_this->squelchEnabled);
+        if (_this->squelchAllowed) {
+            ImGui::LeftLabel("Squelch Mode");
+            ImGui::FillWidth();
+            if (ImGui::Combo(("##_radio_sqelch_mode_" + _this->name).c_str(), &_this->squelchModeId, _this->squelchModes.txt)) {
+                _this->setSquelchMode(_this->squelchModes[_this->squelchModeId]);
+            }
+            switch (_this->squelchModes[_this->squelchModeId]) {
+            case SQUELCH_MODE_POWER:
+                ImGui::LeftLabel("Squelch Level");
+                ImGui::FillWidth();
+                if (ImGui::SliderFloat(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->squelchLevel, _this->MIN_SQUELCH, _this->MAX_SQUELCH, "%.3fdB")) {
+                    _this->setSquelchLevel(_this->squelchLevel);
+                }
+                break;
+
+            case SQUELCH_MODE_CTCSS_MUTE:
+                if (_this->squelchModes[_this->squelchModeId] == SQUELCH_MODE_CTCSS_MUTE) {
+                    ImGui::LeftLabel("CTCSS Tone");
+                    ImGui::FillWidth();
+                    if (ImGui::Combo(("##_radio_ctcss_tone_" + _this->name).c_str(), &_this->ctcssToneId, _this->ctcssTones.txt)) {
+                        _this->setCTCSSTone(_this->ctcssTones[_this->ctcssToneId]);
+                    }
+                }
+                break;
+            }
         }
-        if (!_this->squelchEnabled && _this->enabled) { style::beginDisabled(); }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-        if (ImGui::SliderFloat(("##_radio_sqelch_lvl_" + _this->name).c_str(), &_this->squelchLevel, _this->MIN_SQUELCH, _this->MAX_SQUELCH, "%.3fdB")) {
-            _this->setSquelchLevel(_this->squelchLevel);
+
+        // High pass
+        if (_this->highPassAllowed) {
+            if (ImGui::Checkbox(("High Pass##_radio_hpf_" + _this->name).c_str(), &_this->highPass)) {
+                _this->setHighPass(_this->highPass);
+            }
         }
-        if (!_this->squelchEnabled && _this->enabled) { style::endDisabled(); }
 
         // FM IF Noise Reduction
         if (_this->FMIFNRAllowed) {
@@ -422,6 +467,43 @@ private:
         // Demodulator specific menu
         if (_this->selectedDemod) {
             _this->selectedDemod->showMenu();
+        }
+
+        // Display the squelch diagnostics
+        switch (_this->squelchModes[_this->squelchModeId]) {
+        case SQUELCH_MODE_CTCSS_MUTE:
+            ImGui::TextUnformatted("Received Tone:");
+            ImGui::SameLine();
+            {
+                auto ctone = _this->ctcss.getCurrentTone();
+                auto dtone = _this->ctcssTones[_this->ctcssToneId];
+                if (ctone != dsp::noise_reduction::CTCSS_TONE_NONE) {
+                    if (dtone == dsp::noise_reduction::CTCSS_TONE_ANY || ctone == dtone) {
+                        ImGui::TextColored(ImVec4(0, 1, 0, 1), "%.1fHz", dsp::noise_reduction::CTCSS_TONES[_this->ctcss.getCurrentTone()]);
+                    }
+                    else {
+                        ImGui::TextColored(ImVec4(1, 0, 0, 1), "%.1fHz", dsp::noise_reduction::CTCSS_TONES[_this->ctcss.getCurrentTone()]);
+                    }
+                }
+                else {
+                    ImGui::TextUnformatted("None");
+                }
+            }
+            break;
+            
+        case SQUELCH_MODE_CTCSS_DECODE:
+            ImGui::TextUnformatted("Received Tone:");
+            ImGui::SameLine();
+            {
+                auto ctone = _this->ctcss.getCurrentTone();
+                if (ctone != dsp::noise_reduction::CTCSS_TONE_NONE) {
+                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "%.1fHz", dsp::noise_reduction::CTCSS_TONES[_this->ctcss.getCurrentTone()]);
+                }
+                else {
+                    ImGui::TextUnformatted("None");
+                }
+            }
+            break;
         }
 
         if (!_this->enabled) { style::endDisabled(); }
@@ -455,7 +537,7 @@ private:
             config.conf[name][demod->getName()]["bandwidth"] = bw;
             config.conf[name][demod->getName()]["snapInterval"] = demod->getDefaultSnapInterval();
             config.conf[name][demod->getName()]["squelchLevel"] = MIN_SQUELCH;
-            config.conf[name][demod->getName()]["squelchEnabled"] = false;
+            config.conf[name][demod->getName()]["squelchMode"] = "off";
             config.release(true);
         }
         else {
@@ -493,15 +575,19 @@ private:
         maxBandwidth = selectedDemod->getMaxBandwidth();
         bandwidthLocked = selectedDemod->getBandwidthLocked();
         snapInterval = selectedDemod->getDefaultSnapInterval();
-        squelchLevel = MIN_SQUELCH;
         deempAllowed = selectedDemod->getDeempAllowed();
         deempId = deempModes.valueId((DeemphasisMode)selectedDemod->getDefaultDeemphasisMode());
-        squelchEnabled = false;
+        squelchModeId = squelchModes.valueId(SQUELCH_MODE_OFF);
+        squelchLevel = MIN_SQUELCH;
+        ctcssToneId = ctcssTones.valueId(dsp::noise_reduction::CTCSS_TONE_67Hz);
+        highPass = false;
         postProcEnabled = selectedDemod->getPostProcEnabled();
         FMIFNRAllowed = selectedDemod->getFMIFNRAllowed();
         FMIFNREnabled = false;
         fmIFPresetId = ifnrPresets.valueId(IFNR_PRESET_VOICE);
         nbAllowed = selectedDemod->getNBAllowed();
+        squelchAllowed = selectedDemod->getSquelchAllowed();
+        highPassAllowed = selectedDemod->getHighPassAllowed();
         nbEnabled = false;
         nbLevel = 0.0f;
         double ifSamplerate = selectedDemod->getIFSampleRate();
@@ -516,8 +602,20 @@ private:
         if (config.conf[name][selectedDemod->getName()].contains("squelchLevel")) {
             squelchLevel = config.conf[name][selectedDemod->getName()]["squelchLevel"];
         }
-        if (config.conf[name][selectedDemod->getName()].contains("squelchEnabled")) {
-            squelchEnabled = config.conf[name][selectedDemod->getName()]["squelchEnabled"];
+        if (config.conf[name][selectedDemod->getName()].contains("squelchMode")) {
+            std::string squelchModeStr = config.conf[name][selectedDemod->getName()]["squelchMode"];
+            if (squelchModes.keyExists(squelchModeStr)) {
+                squelchModeId = squelchModes.keyId(squelchModeStr);
+            }
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("ctcssTone")) {
+            int ctcssToneX10 = config.conf[name][selectedDemod->getName()]["ctcssTone"];
+            if (ctcssTones.keyExists(ctcssToneX10)) {
+                ctcssToneId = ctcssTones.keyId(ctcssToneX10);
+            }
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("highPass")) {
+            highPass = config.conf[name][selectedDemod->getName()]["highPass"];
         }
         if (config.conf[name][selectedDemod->getName()].contains("deempMode")) {
             if (!config.conf[name][selectedDemod->getName()]["deempMode"].is_string()) {
@@ -567,16 +665,22 @@ private:
         setFMIFNREnabled(FMIFNRAllowed ? FMIFNREnabled : false);
 
         // Configure squelch
+        setSquelchMode(squelchAllowed ? squelchModes[squelchModeId] : SQUELCH_MODE_OFF);
         setSquelchLevel(squelchLevel);
-        setSquelchEnabled(squelchEnabled);
+        setCTCSSTone(ctcssTones[ctcssToneId]);
 
         // Configure AF chain
         if (postProcEnabled) {
             // Configure resampler
             afChain.stop();
-            resamp.setInSamplerate(selectedDemod->getAFSampleRate());
-            setAudioSampleRate(audioSampleRate);
+            double afsr = selectedDemod->getAFSampleRate();
+            ctcss.setSamplerate(afsr);
+            resamp.setInSamplerate(afsr);
             afChain.enableBlock(&resamp, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+            setAudioSampleRate(audioSampleRate);
+
+            // Configure the HPF
+            setHighPass(highPass && highPassAllowed);
 
             // Configure deemphasis
             setDeemphasisMode(deempModes[deempId]);
@@ -622,6 +726,10 @@ private:
         // Configure resampler
         resamp.setOutSamplerate(audioSampleRate);
 
+        // Configure the HPF sample rate
+        hpTaps = dsp::taps::highPass(300.0, 100.0, audioSampleRate);
+        hpf.setTaps(hpTaps);
+
         // Configure deemphasis sample rate
         deemp.setSamplerate(audioSampleRate);
 
@@ -649,24 +757,97 @@ private:
         config.release(true);
     }
 
-    void setSquelchEnabled(bool enable) {
-        squelchEnabled = enable;
+    void setSquelchMode(SquelchMode mode) {
+        squelchModeId = squelchModes.valueId(mode);
         if (!selectedDemod) { return; }
-        ifChain.setBlockEnabled(&squelch, squelchEnabled, [=](dsp::stream<dsp::complex_t>* out){ selectedDemod->setInput(out); });
+
+        // Disable all squelch blocks
+        ifChain.disableBlock(&powerSquelch, [=](dsp::stream<dsp::complex_t>* out){ selectedDemod->setInput(out); });
+        afChain.disableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+
+        // Enable the block depending on the mode
+        switch (mode) {
+        case SQUELCH_MODE_OFF:
+            break;
+
+        case SQUELCH_MODE_POWER:
+            // Enable the power squelch block
+            ifChain.enableBlock(&powerSquelch, [=](dsp::stream<dsp::complex_t>* out){ selectedDemod->setInput(out); });
+            break;
+
+        case SQUELCH_MODE_SNR:
+            // TODO
+            break;
+
+        case SQUELCH_MODE_CTCSS_MUTE:
+            // Set the required tone and enable the CTCSS squelch block
+            ctcss.setRequiredTone(ctcssTones[ctcssToneId]);
+            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+            break;
+
+        case SQUELCH_MODE_CTCSS_DECODE:
+            // Set the required tone to none and enable the CTCSS squelch block
+            ctcss.setRequiredTone(dsp::noise_reduction::CTCSS_TONE_NONE);
+            afChain.enableBlock(&ctcss, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+            break;
+
+        case SQUELCH_MODE_DCS_MUTE:
+            // TODO
+            break;
+
+        case SQUELCH_MODE_DCS_DECODE:
+            // TODO
+            break;
+        }
 
         // Save config
         config.acquire();
-        config.conf[name][selectedDemod->getName()]["squelchEnabled"] = squelchEnabled;
+        config.conf[name][selectedDemod->getName()]["squelchMode"] = squelchModes.key(squelchModeId);
         config.release(true);
     }
 
     void setSquelchLevel(float level) {
         squelchLevel = std::clamp<float>(level, MIN_SQUELCH, MAX_SQUELCH);
-        squelch.setLevel(squelchLevel);
+        powerSquelch.setLevel(squelchLevel);
+        if (!selectedDemod) { return; }
 
         // Save config
         config.acquire();
         config.conf[name][selectedDemod->getName()]["squelchLevel"] = squelchLevel;
+        config.release(true);
+    }
+
+    void setHighPass(bool enabled) {
+        // Update the state
+        highPass = enabled;
+
+        // Check if post-processing is enabled and that a demodulator is selected
+        if (!postProcEnabled || !selectedDemod) { return; }
+
+        // Set the state of the HPF in the AF chain
+        afChain.setBlockEnabled(&hpf, enabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["highPass"] = enabled;
+        config.release(true);
+    }
+
+    void setCTCSSTone(dsp::noise_reduction::CTCSSTone tone) {
+        // Check for an invalid value
+        if (tone == dsp::noise_reduction::CTCSS_TONE_NONE) { return; }
+
+        // If not in CTCSS mute mode, do nothing
+        if (squelchModes[squelchModeId] != SQUELCH_MODE_CTCSS_MUTE) { return; }
+
+        // Set the tone
+        ctcssToneId = ctcssTones.valueId(tone);
+        ctcss.setRequiredTone(tone);
+        if (!selectedDemod) { return; }
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["ctcssTone"] = ctcssTones.key(ctcssToneId);
         config.release(true);
     }
 
@@ -789,13 +970,13 @@ private:
             if (_this->bandwidthLocked) { return; }
             _this->setBandwidth(*_in);
         }
-        else if (code == RADIO_IFACE_CMD_GET_SQUELCH_ENABLED && out) {
-            bool* _out = (bool*)out;
-            *_out = _this->squelchEnabled;
+        else if (code == RADIO_IFACE_CMD_GET_SQUELCH_MODE && out) {
+            SquelchMode* _out = (SquelchMode*)out;
+            *_out = _this->squelchModes[_this->squelchModeId];
         }
-        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_ENABLED && in && _this->enabled) {
-            bool* _in = (bool*)in;
-            _this->setSquelchEnabled(*_in);
+        else if (code == RADIO_IFACE_CMD_SET_SQUELCH_MODE && in && _this->enabled) {
+            SquelchMode* _in = (SquelchMode*)in;
+            _this->setSquelchMode(*_in);
         }
         else if (code == RADIO_IFACE_CMD_GET_SQUELCH_LEVEL && out) {
             float* _out = (float*)out;
@@ -804,6 +985,22 @@ private:
         else if (code == RADIO_IFACE_CMD_SET_SQUELCH_LEVEL && in && _this->enabled) {
             float* _in = (float*)in;
             _this->setSquelchLevel(*_in);
+        }
+        else if (code == RADIO_IFACE_CMD_GET_CTCSS_TONE && out) {
+            dsp::noise_reduction::CTCSSTone* _out = (dsp::noise_reduction::CTCSSTone*)out;
+            *_out = _this->ctcssTones[_this->ctcssToneId];
+        }
+        else if (code == RADIO_IFACE_CMD_SET_CTCSS_TONE && in && _this->enabled) {
+            dsp::noise_reduction::CTCSSTone* _in = (dsp::noise_reduction::CTCSSTone*)in;
+            _this->setCTCSSTone(*_in);
+        }
+        else if (code == RADIO_IFACE_CMD_GET_HIGHPASS && out) {
+            bool* _out = (bool*)out;
+            *_out = _this->highPass;
+        }
+        else if (code == RADIO_IFACE_CMD_SET_HIGHPASS && in && _this->enabled) {
+            bool* _in = (bool*)in;
+            _this->setHighPass(*_in);
         }
         else {
             return;
@@ -829,12 +1026,15 @@ private:
     dsp::chain<dsp::complex_t> ifChain;
     dsp::noise_reduction::NoiseBlanker nb;
     dsp::noise_reduction::FMIF fmnr;
-    dsp::noise_reduction::Squelch squelch;
+    dsp::noise_reduction::PowerSquelch<dsp::complex_t> powerSquelch;
 
     // Audio chain
     dsp::stream<dsp::stereo_t> dummyAudioStream;
     dsp::chain<dsp::stereo_t> afChain;
+    dsp::noise_reduction::CTCSSSquelch ctcss;
     dsp::multirate::RationalResampler<dsp::stereo_t> resamp;
+    dsp::tap<float> hpTaps;
+    dsp::filter::FIR<dsp::stereo_t, float> hpf;
     dsp::filter::Deemphasis<dsp::stereo_t> deemp;
 
     dsp::routing::Splitter<dsp::stereo_t> afsplitter;
@@ -846,6 +1046,8 @@ private:
 
     OptionList<std::string, DeemphasisMode> deempModes;
     OptionList<std::string, IFNRPreset> ifnrPresets;
+    OptionList<std::string, SquelchMode> squelchModes;
+    OptionList<int, dsp::noise_reduction::CTCSSTone> ctcssTones;
 
     double audioSampleRate = 48000.0;
     float minBandwidth;
@@ -856,8 +1058,13 @@ private:
     int selectedDemodID = 1;
     bool postProcEnabled;
 
-    bool squelchEnabled = false;
+    int squelchModeId = 0;
     float squelchLevel;
+    int ctcssToneId = 0;
+    bool squelchAllowed = false;
+
+    bool highPass = false;
+    bool highPassAllowed = false;
 
     int deempId = 0;
     bool deempAllowed;

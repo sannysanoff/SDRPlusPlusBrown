@@ -92,6 +92,8 @@ namespace demod {
         int getDefaultDeemphasisMode() override { return DEEMP_MODE_NONE; }
         bool getFMIFNRAllowed() override { return false; }
         bool getNBAllowed() override { return false; }
+        bool getHighPassAllowed() override { return false; }
+        bool getSquelchAllowed() override { return false; }
         dsp::stream<dsp::stereo_t>* getOutput() override { return &demod.out; }
 
         void setFrozen(bool frozen) override {
