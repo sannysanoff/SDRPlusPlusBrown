@@ -255,8 +255,13 @@ target_include_directories(ch_tetra_demodulator PRIVATE BEFORE "src/" "src/decod
 target_link_libraries(ch_tetra_demodulator PRIVATE etsi_codec)
 
 if (NOT ANDROID)
-    target_compile_options(etsi_codec PRIVATE -march=native)
-    target_compile_options(ch_tetra_demodulator PRIVATE -march=native)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+        target_compile_options(etsi_codec PRIVATE -march=x86-64)
+        target_compile_options(ch_tetra_demodulator PRIVATE -march=x86-64)
+    else()
+        target_compile_options(etsi_codec PRIVATE -march=native)
+        target_compile_options(ch_tetra_demodulator PRIVATE -march=native)
+    endif()
 endif ()
 
 message(STATUS "[CH_TETRA_DEMODULATOR] ===== ch_tetra_demodulator module configured =====")
