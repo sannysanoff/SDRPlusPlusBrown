@@ -5,6 +5,13 @@
 #include <thread> // NATIVE FIX: Include thread mapping headers for sleep macros
 #include <chrono>
 
+// Windows fix: prevent windows.h min/max macros from clashing with std::min
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <cmath>
+#include <ctime>
+
 // #include <osmocom/core/utils.h>
 // #include <osmocom/core/talloc.h>
 
@@ -227,7 +234,11 @@ namespace dsp {
                         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
                         
                         struct tm time_info;
+#ifdef _WIN32
+                        localtime_s(&time_info, &time_t_now);
+#else
                         localtime_r(&time_t_now, &time_info);
+#endif
 
                         // ------------------------------------------------------------------------
                         // SIGNAL QUALITY MATH: Calculate real-time sliding CRC success window
