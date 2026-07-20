@@ -217,7 +217,7 @@ namespace dsp {
 
             const int SAFE_SLOT_BURST_SIZE = 510;
             for (int off = 0; off < unpacked_bit_count; off += SAFE_SLOT_BURST_SIZE) {
-                int chunk_size = std::min(SAFE_SLOT_BURST_SIZE, unpacked_bit_count - off);
+                int chunk_size = (std::min)(SAFE_SLOT_BURST_SIZE, unpacked_bit_count - off);
                 
                 if (chunk_size > 0) {
                     trs->burst_cb_priv = tms;
