@@ -51,10 +51,10 @@ struct RadioModuleInterface {
     }
 
     DemodID getDemodByIndex(int index) {
-        if (index >= 0 && index < radioModes.size()) {
-            return (DemodID)radioModes[index].second;
+        if (this == nullptr || index < 0 || index >= radioModes.size()) {
+            return RADIO_DEMOD_NFM;
         }
-        return RADIO_DEMOD_NFM;
+        return (DemodID)radioModes[index].second;
     }
 
 };

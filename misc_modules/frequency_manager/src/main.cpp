@@ -536,6 +536,9 @@ private:
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str());
+//		std::string modeStr = (radio != nullptr && bm.modeIndex >= 0) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)] : "DIGITAL";
+//		ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), modeStr.c_str());
+
                 ImVec2 max = ImGui::GetCursorPos();
             }
             ImGui::EndTable();

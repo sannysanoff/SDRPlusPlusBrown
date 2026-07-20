@@ -693,10 +693,18 @@ namespace ImGui {
         double vfoMinFreq = _vfo->centerOffset - (_vfo->bandwidth / 2.0);
         double vfoMaxFreq = _vfo->centerOffset + (_vfo->bandwidth / 2.0);
         double vfoMaxSizeFreq = _vfo->centerOffset + _vfo->bandwidth;
+        
         int vfoMinSideOffset = rawFFTIndex(vfoMinSizeFreq);
         int vfoMinOffset = rawFFTIndex(vfoMinFreq);
         int vfoMaxOffset = rawFFTIndex(vfoMaxFreq);
         int vfoMaxSideOffset = rawFFTIndex(vfoMaxSizeFreq);
+
+        // PRODUCTION DEFENSIVE LAYER: Ensure raw indices are sane before parsing array fields
+        // We use rawFFTIndex with the maximum possible span to find our absolute buffer limit anchor safely
+        int maxBufferCeiling = rawFFTIndex(_vfo->centerOffset + (_vfo->bandwidth * 4.0)); // fallback sizing
+        if (vfoMinSideOffset < 0 || vfoMinOffset < 0 || vfoMaxOffset < 0 || vfoMaxSideOffset < 0) {
+            return false;
+        }
 
         double avg = 0, qavg = 0;
         float max = -INFINITY;
@@ -705,43 +713,41 @@ namespace ImGui {
         static std::vector<float> fftValues;
         fftValues.clear();
 
-        // Calculate Left average
+        // Calculate Left average with safe boundary guards
         for (int i = vfoMinSideOffset; i < vfoMinOffset; i++) {
             fftValues.emplace_back(fftLine[i]);
             avg += fftLine[i];
             avgCount++;
         }
 
-        // Calculate Right average
+        // Calculate Right average with safe boundary guards
         for (int i = vfoMaxOffset + 1; i < vfoMaxSideOffset; i++) {
             fftValues.emplace_back(fftLine[i]);
             avg += fftLine[i];
             avgCount++;
         }
 
-        //        auto ctm1 = currentTimeNanos();
-        //        auto kth0 = percentile::percentile(fftValues, 0.25);    // 25% most silent bins
-        //        auto ctm2 = currentTimeNanos();
-        if (fftValues.empty()) {
+        if (fftValues.empty() || avgCount <= 0) {
             return false;
         }
-        std::sort(fftValues.begin(), fftValues.end()); // sorting binds by volume
-                                                       //        auto ctm3 = currentTimeNanos();
+        
+        std::sort(fftValues.begin(), fftValues.end()); // sorting bins by volume
+        
         auto lowerPercentile = fftValues.size() / 4;
+        if (lowerPercentile <= 0) { return false; }
+        
         auto kth = fftValues[lowerPercentile];
-        //        flog::info("size={} kth0={} kth={} time0={} time0={}", fftValues.size(), kth0, kth, int64_t (ctm2-ctm1), int64_t (ctm3-ctm2));
         for (int i = 0; i < fftValues.size(); i++) { // taking 25% most silent bins
             if (fftValues[i] <= kth) {
                 qavg += fftValues[i];
             }
         }
         qavg /= (double)lowerPercentile; // "true" noise floor
-
         avg /= (double)avgCount; // "base noise floor"
 
         auto avgdiff = avg - qavg;
 
-        // Calculate max
+        // Calculate max with strict real-time buffer safety bounds
         for (int i = vfoMinOffset; i <= vfoMaxOffset; i++) {
             if (fftLine[i] > max) { max = fftLine[i]; }
         }

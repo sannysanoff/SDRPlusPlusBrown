@@ -32,16 +32,16 @@
 
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
-#define VFO_SAMPLERATE 36000
-#define VFO_BANDWIDTH 30000
-#define CLOCK_RECOVERY_BW 0.00628f
-#define CLOCK_RECOVERY_DAMPN_F 0.707f
-#define CLOCK_RECOVERY_REL_LIM 0.02f
-#define RRC_TAP_COUNT 65
-#define RRC_ALPHA 0.35f
-#define AGC_RATE 0.02f
-#define COSTAS_LOOP_BANDWIDTH 0.01f
-#define FLL_LOOP_BANDWIDTH 0.006f
+#define VFO_SAMPLERATE 72000
+#define VFO_BANDWIDTH 45000
+#define CLOCK_RECOVERY_BW 0.025f         // Changed from 0.00628f
+#define CLOCK_RECOVERY_DAMPN_F 0.707f    // Kept (Critically Damped is perfect)
+#define CLOCK_RECOVERY_REL_LIM 0.05f     // Changed from 0.02f
+#define RRC_TAP_COUNT 65                 // Kept (Filter depth is fine)
+#define RRC_ALPHA 0.35f                  // Kept (Strict TETRA standard)
+#define AGC_RATE 0.05f                   // Changed from 0.02f
+#define COSTAS_LOOP_BANDWIDTH 0.04f      // Changed from 0.01f
+#define FLL_LOOP_BANDWIDTH 0.02f         // Changed from 0.006f
 
 SDRPP_MOD_INFO {
     /* Name:            */ "ch_tetra_demodulator",
@@ -90,9 +90,15 @@ public:
         symbolExtractor.init(&demodStream);
         bitsUnpacker.init(&symbolExtractor.out);
 
-        demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
+        demodSink.init(&symbolExtractor.out, _demodSinkHandler, this);
 
-        osmotetradecoder.init(&bitsUnpacker.out);
+        // ------------------------------------------------------------------------
+        // NATIVE VALUE BINDING: Pass the symbolExtractor pointer to the decoder
+        // ------------------------------------------------------------------------
+        osmotetradecoder.init(&symbolExtractor.out);
+        osmotetradecoder.setExtractor(&symbolExtractor); // Feed the extractor address
+        // ------------------------------------------------------------------------
+        
         resamp.init(&osmotetradecoder.out, 8000.0, audioSampleRate);
         outconv.init(&resamp.out);
 
@@ -138,7 +144,10 @@ public:
         constDiagReshaper.start();
         constDiagSink.start();
         symbolExtractor.start();
-        bitsUnpacker.start();
+        
+        // NATIVE CLEANUP: Stop the obsolete background thread worker loop
+        // bitsUnpacker.start(); 
+        
         setMode();
         resamp.start();
         outconv.start();
@@ -153,9 +162,12 @@ public:
         constDiagReshaper.stop();
         constDiagSink.stop();
         symbolExtractor.stop();
-        bitsUnpacker.stop();
+        
+        // NATIVE CLEANUP: Stop the obsolete blocks cleanly
+        // bitsUnpacker.stop();
+        // demodSink.stop();
+        
         osmotetradecoder.stop();
-        demodSink.stop();
         resamp.stop();
         outconv.stop();
         stream.stop();
