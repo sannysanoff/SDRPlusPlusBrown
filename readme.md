@@ -28,6 +28,7 @@ Thanks and due respect to:
 * alexander-sholohov (github) for his work on soapy_sdr module.
 * Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes.
 * monolifed for his [pbkdf2 header-only implementation](https://github.com/monolifed/pbkdf2-hmac-sha256)  
+* ruse39 for his contributions on code quality
 
 ## Feedback
 
