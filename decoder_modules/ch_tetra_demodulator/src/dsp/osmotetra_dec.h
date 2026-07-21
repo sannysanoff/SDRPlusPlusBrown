@@ -2,18 +2,21 @@
 
 #include <algorithm>
 #include <dsp/processor.h>
-#include <thread> // NATIVE FIX: Include thread mapping headers for sleep macros
-#include <chrono>
-
-// Windows fix: prevent windows.h min/max macros from clashing with std::min
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <cmath>
 #include <ctime>
 
-// #include <osmocom/core/utils.h>
-// #include <osmocom/core/talloc.h>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/time.h>
+#endif
 
 extern "C" {
     #include "tetra_common.h"
@@ -35,8 +38,12 @@ namespace dsp {
             // Native Fix: Force base processing loops to stop running first
             base_type::stop();
 
-            // Native Fix: Sleep for 50ms to allow background threads (merger.run) to exit cleanly
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // Native Fix: 50ms platform-native sleep bypassing <chrono> and <thread>
+            #if defined(_WIN32)
+                ::Sleep(50); 
+            #else
+                ::usleep(50000); 
+            #endif
 
             // NATIVE FIX: ONLY free the single heap array allocated with malloc
             if (conv_data != nullptr) {
@@ -106,88 +113,33 @@ namespace dsp {
             }
         }
 
-        int getCurrHyperframe() {
-            return tms->t_display_st->curr_hyperframe;
-        }
-        int getCurrMultiframe() {
-            return tms->t_display_st->curr_multiframe;
-        }
-        int getCurrFrame() {
-            return tms->t_display_st->curr_frame;
-        }
-        int getTimeslotContent(int ts) { //0-other, 1-NORM1, 2-NORM2, 3-SYNC, 4-VOICE
-            return tms->t_display_st->timeslot_content[ts];
-        }
-        int getDlUsage() {
-            return tms->t_display_st->dl_usage;
-        }
-        int getUlUsage() {
-            return tms->t_display_st->ul_usage;
-        }
-        char getAccess1Code() {
-            return tms->t_display_st->access1_code;
-        }
-        char getAccess2Code() {
-            return tms->t_display_st->access2_code;
-        }
-        int getAccess1() {
-            return tms->t_display_st->access1;
-        }
-        int getAccess2() {
-            return tms->t_display_st->access2;
-        }
-        int getDlFreq() {
-            return tms->t_display_st->dl_freq;
-        }
-        int getUlFreq() {
-            return tms->t_display_st->ul_freq;
-        }
-        int getMcc() {
-            return tms->t_display_st->mcc;
-        }
-        int getMnc() {
-            return tms->t_display_st->mnc;
-        }
-        int getCc() {
-            return tms->t_display_st->cc;
-        }
-        bool getLastCrcFail() {
-            return tms->t_display_st->last_crc_fail;
-        }
-        bool getAdvancedLink() {
-            return tms->t_display_st->advanced_link;
-        }
-        bool getAirEncryption() {
-            return tms->t_display_st->air_encryption;
-        }
-        bool getSndcpData() {
-            return tms->t_display_st->sndcp_data;
-        }
-        bool getCircuitData() {
-            return tms->t_display_st->circuit_data;
-        }
-        bool getVoiceService() {
-            return tms->t_display_st->voice_service;
-        }
-        bool getNormalMode() {
-            return tms->t_display_st->normal_mode;
-        }
-        bool getMigrationSupported() {
-            return tms->t_display_st->migration_supported;
-        }
-        bool getNeverMinimumMode() {
-            return tms->t_display_st->never_minimum_mode;
-        }
-        bool getPriorityCell() {
-            return tms->t_display_st->priority_cell;
-        }
-        bool getDeregMandatory() {
-            return tms->t_display_st->dereg_mandatory;
-        }
-        bool getRegMandatory() {
-            return tms->t_display_st->reg_mandatory;
-        }
-
+        int getCurrHyperframe() { return tms->t_display_st->curr_hyperframe; }
+        int getCurrMultiframe() { return tms->t_display_st->curr_multiframe; }
+        int getCurrFrame() { return tms->t_display_st->curr_frame; }
+        int getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; }
+        int getDlUsage() { return tms->t_display_st->dl_usage; }
+        int getUlUsage() { return tms->t_display_st->ul_usage; }
+        char getAccess1Code() { return tms->t_display_st->access1_code; }
+        char getAccess2Code() { return tms->t_display_st->access2_code; }
+        int getAccess1() { return tms->t_display_st->access1; }
+        int getAccess2() { return tms->t_display_st->access2; }
+        int getDlFreq() { return tms->t_display_st->dl_freq; }
+        int getUlFreq() { return tms->t_display_st->ul_freq; }
+        int getMcc() { return tms->t_display_st->mcc; }
+        int getMnc() { return tms->t_display_st->mnc; }
+        int getCc() { return tms->t_display_st->cc; }
+        bool getLastCrcFail() { return tms->t_display_st->last_crc_fail; }
+        bool getAdvancedLink() { return tms->t_display_st->advanced_link; }
+        bool getAirEncryption() { return tms->t_display_st->air_encryption; }
+        bool getSndcpData() { return tms->t_display_st->sndcp_data; }
+        bool getCircuitData() { return tms->t_display_st->circuit_data; }
+        bool getVoiceService() { return tms->t_display_st->voice_service; }
+        bool getNormalMode() { return tms->t_display_st->normal_mode; }
+        bool getMigrationSupported() { return tms->t_display_st->migration_supported; }
+        bool getNeverMinimumMode() { return tms->t_display_st->never_minimum_mode; }
+        bool getPriorityCell() { return tms->t_display_st->priority_cell; }
+        bool getDeregMandatory() { return tms->t_display_st->dereg_mandatory; }
+        bool getRegMandatory() { return tms->t_display_st->reg_mandatory; }
         inline int process(int count, const uint8_t* in, float* out)  {
             int outcnt = 0;
             static int unique_frame_log = -1;
@@ -229,15 +181,25 @@ namespace dsp {
                     if (active_frame != unique_frame_log) {
                         unique_frame_log = active_frame;
                         
-                        auto now = std::chrono::system_clock::now();
-                        auto time_t_now = std::chrono::system_clock::to_time_t(now);
-                        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-                        
+                        // ------------------------------------------------------------------------
+                        // WINDOWS 7 COMPATIBLE TIME STAMPING
+                        // Using native lightweight C/OS clocks to eliminate std::chrono
+                        // ------------------------------------------------------------------------
+                        time_t time_t_now = ::time(nullptr);
                         struct tm time_info;
+                        int current_ms = 0;
+
 #ifdef _WIN32
-                        localtime_s(&time_info, &time_t_now);
+                        ::localtime_s(&time_info, &time_t_now);
+                        // Windows basic system time resolution fallback for milliseconds
+                        SYSTEMTIME st;
+                        ::GetSystemTime(&st);
+                        current_ms = st.wMilliseconds;
 #else
-                        localtime_r(&time_t_now, &time_info);
+                        ::localtime_r(&time_t_now, &time_info);
+                        struct timeval tv;
+                        ::gettimeofday(&tv, nullptr);
+                        current_ms = tv.tv_usec / 1000;
 #endif
 
                         // ------------------------------------------------------------------------
@@ -250,8 +212,6 @@ namespace dsp {
                         // ------------------------------------------------------------------------
                         float live_gui_quality = 0.0f;
                         if (upstream_extractor != nullptr) {
-                            // Cast the generic address back to its parent header type to read standarderr
-                            // We use a safe forward-declared structure mapping to prevent circular header loops
                             struct local_extractor_shape {
                                 void* vtable;
                                 void* in_ptr;
@@ -260,10 +220,8 @@ namespace dsp {
                                 float standarderr;
                             };
                             local_extractor_shape* ext = (local_extractor_shape*)upstream_extractor;
-                            // Match the exact math of line 223 in main.cpp
                             live_gui_quality = (1.0f - ext->standarderr) * 100.0f;
                         } else {
-                            // Fallback to basic locking state if not bound yet
                             live_gui_quality = is_locked ? 100.0f : 0.0f;
                         }
                         // ------------------------------------------------------------------------
@@ -274,18 +232,12 @@ namespace dsp {
                                         (tms->t_display_st->timeslot_content[3] == 4);
 
                         // PRINT LOG TICKER: Mirroring the GUI bar with 100% precision
-//                        printf("[%02d:%02d:%02d.%03d] [TETRA] F: %02d | MF: %02d | %s | Q: %3.1f%% | %s | Slots: [%d,%d,%d,%d]\n",
-//                               time_info.tm_hour, time_info.tm_min, time_info.tm_sec, (int)ms.count(),
-//                               active_frame,
-//                               tms->t_display_st->curr_multiframe,
-//                               is_locked ? "SYNC_LOCKED" : "SYNC_TRACKING",
-//                               live_gui_quality, // Print the true physical constellation error
-//                               is_voice ? "AUDIO_TRAFFIC" : "SIGNALING_BEACON",
-//                               tms->t_display_st->timeslot_content[0],
-//                               tms->t_display_st->timeslot_content[1],
-//                               tms->t_display_st->timeslot_content[2],
-//                               tms->t_display_st->timeslot_content[3]);
-//                        fflush(stdout);
+                        // (Safe time values computed above without chrono or Windows 8+ APIs)
+                        // printf("[%02d:%02d:%02d.%03d] [TETRA] F: %02d | MF: %02d | %s | Q: %3.1f%%\n",
+                        //        time_info.tm_hour, time_info.tm_min, time_info.tm_sec, current_ms,
+                        //        active_frame, tms->t_display_st->curr_multiframe,
+                        //        is_locked ? "SYNC_LOCKED" : "SYNC_TRACKING", live_gui_quality);
+                        // fflush(stdout);
                     }
                 }
             }
@@ -305,7 +257,7 @@ namespace dsp {
                             (tms->t_display_st->timeslot_content[3] == 4);
                             
             if(remainingOut > 0 && !decoding) {
-                memset(&(out[outcnt]), 0, remainingOut * sizeof(float));
+                ::memset(&(out[outcnt]), 0, remainingOut * sizeof(float));
                 outcnt += remainingOut;
             }
             
@@ -336,8 +288,7 @@ namespace dsp {
                 _this->out_tmp_buff.write(_this->conv_data, count);
             }
         }
-
-    private:
+private:
         int inSymsCtr = 0;
         int outSymsCtr = 0;
         void *tetra_tall_ctx = NULL;
@@ -345,7 +296,7 @@ namespace dsp {
         struct tetra_mac_state *tms = NULL;
         float *conv_data = NULL;
         buffer::RingBuffer<float> out_tmp_buff;
-	void* upstream_extractor = nullptr;
+        void* upstream_extractor = nullptr;
         struct tetra_mac_state instance_tms;
         struct tetra_rx_state instance_trs;
         struct tetra_crypto_state instance_tcs;
