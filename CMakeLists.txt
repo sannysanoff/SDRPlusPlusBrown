@@ -121,6 +121,10 @@ else()
 endif()
 set(SDRPP_MODULE_COMPILER_FLAGS ${SDRPP_COMPILER_FLAGS})
 
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES WINVER=0x0601 _WIN32_WINNT=0x0601)
+endif()
+
 # Set a default install prefix
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
