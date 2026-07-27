@@ -241,11 +241,17 @@ def get_base_config(build_dir: str = DEFAULT_BUILD_DIR, root_dev: str = DEFAULT_
     
     Paths are set explicitly to ensure SDR++ can find modules and resources.
     """
+    modules_dir = os.path.join(root_dev, "inst/lib/sdrpp/plugins")
+    if not os.path.isdir(modules_dir):
+        modules_dir = os.path.join(root_dev, "inst/lib/sdrpp_brown/plugins")
+    res_dir = os.path.join(root_dev, "inst/share/sdrpp")
+    if not os.path.isdir(res_dir):
+        res_dir = os.path.join(root_dev, "inst/share/sdrpp_brown")
     return {
         "frequency": 7100000.0,
         "sampleRate": 48000.0,
-        "modulesDirectory": "/Users/san/Fun/SDRPlusPlus/root_dev/inst/lib/sdrpp_brown/plugins",
-        "resourcesDirectory": "/Users/san/Fun/SDRPlusPlus/root_dev/inst/share/sdrpp_brown",
+        "modulesDirectory": modules_dir,
+        "resourcesDirectory": res_dir,
         "moduleInstances": {
             "Radio": {"module": "radio", "enabled": True},
             "NullAudioSink": {"module": "null_audio_sink", "enabled": True},
