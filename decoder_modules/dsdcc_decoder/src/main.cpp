@@ -24,10 +24,11 @@ class DSDCCDecoderModule : public ModuleManager::Instance {
 public:
     DSDCCDecoderModule(std::string name) {
         this->name = name;
-        config.release(true);
 
         // Setup audio stream
-        stream.init(NULL, audioSampRate);
+        srChangeHandler.ctx = this;
+        srChangeHandler.handler = sampleRateChangeHandler;
+        stream.init(&srChangeHandler, audioSampRate);
         sigpath::sinkManager.registerStream(name, &stream);
         stream.start();
 
@@ -67,10 +68,14 @@ private:
     static void menuHandler(void* ctx) {
     }
 
+    static void sampleRateChangeHandler(float, void*) {
+    }
+
     std::string name;
     bool enabled = false;
     VFOManager::VFO* vfo;
     double audioSampRate = 48000;
+    EventHandler<float> srChangeHandler;
     SinkManager::Stream stream;
 };
 
