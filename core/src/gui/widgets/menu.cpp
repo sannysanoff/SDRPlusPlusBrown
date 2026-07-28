@@ -3,6 +3,7 @@
 #include <imgui/imgui_internal.h>
 #include <gui/style.h>
 #include "gui/menus/display.h"
+#include <core.h>
 
 Menu::Menu() {
 }
@@ -122,6 +123,12 @@ bool Menu::draw(bool updateStates) {
                 ImGui::SetCursorPosY(pos.y + checkboxOffset.y);
                 bool enabled = item.inst->isEnabled();
                 if (ImGui::Checkbox(("##_menu_checkbox_" + opt.name).c_str(), &enabled)) {
+                    if (!enabled && core::configManager.conf["moduleInstances"].contains(opt.name)) {
+                        core::configManager.acquire();
+                        core::configManager.conf["moduleInstances"][opt.name]["enabled"] = false;
+                        core::configManager.release(true);
+                        core::configManager.save(true);
+                    }
                     enabled ? item.inst->enable() : item.inst->disable();
                     changed = true;
                 }
@@ -144,6 +151,12 @@ bool Menu::draw(bool updateStates) {
             ImGui::SetCursorPosY(pos.y + checkboxOffset.y);
             bool enabled = item.inst->isEnabled();
             if (ImGui::Checkbox(("##_menu_checkbox_" + opt.name).c_str(), &enabled)) {
+                if (!enabled && core::configManager.conf["moduleInstances"].contains(opt.name)) {
+                    core::configManager.acquire();
+                    core::configManager.conf["moduleInstances"][opt.name]["enabled"] = false;
+                    core::configManager.release(true);
+                    core::configManager.save(true);
+                }
                 enabled ? item.inst->enable() : item.inst->disable();
                 changed = true;
             }
