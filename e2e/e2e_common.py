@@ -9,6 +9,11 @@ This module provides all boilerplate code for E2E tests including:
 - Test context managers
 - Statistics reporting for CI/aggregator consumption
 
+Build selection:
+    By default, tests use this repo's local `build/`, `build/root_dev/`, and
+    `build/sdrpp` so Python tests target the same artifacts as manual launches.
+    `E2E_BUILD_DIR`, `E2E_ROOT_DEV`, and `E2E_BINARY` still override that.
+
 Environment Variables:
     E2E_HTTP_PORT       - HTTP debug port (default: auto-assigned per test)
     E2E_BUILD_DIR       - Path to build directory
@@ -72,11 +77,35 @@ def get_env_bool(name: str, default: bool = False) -> bool:
     return default
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+LOCAL_BUILD_DIR = REPO_ROOT / "build"
+LOCAL_ROOT_DEV = LOCAL_BUILD_DIR / "root_dev"
+LOCAL_BINARY = LOCAL_BUILD_DIR / "sdrpp"
+
+
+def get_default_build_dir() -> str:
+    if LOCAL_BUILD_DIR.is_dir():
+        return str(LOCAL_BUILD_DIR)
+    return "/Users/san/Fun/SDRPlusPlus/cmake-build-debug"
+
+
+def get_default_root_dev() -> str:
+    if LOCAL_ROOT_DEV.is_dir():
+        return str(LOCAL_ROOT_DEV)
+    return "/Users/san/Fun/SDRPlusPlus/root_dev"
+
+
+def get_default_binary() -> str:
+    if LOCAL_BINARY.is_file():
+        return str(LOCAL_BINARY)
+    return "./sdrpp_brown"
+
+
 # Default paths (can be overridden via env vars)
-DEFAULT_BUILD_DIR = get_env_str("E2E_BUILD_DIR", "/Users/san/Fun/SDRPlusPlus/cmake-build-debug")
-DEFAULT_ROOT_DEV = get_env_str("E2E_ROOT_DEV", "/Users/san/Fun/SDRPlusPlus/root_dev")
+DEFAULT_BUILD_DIR = get_env_str("E2E_BUILD_DIR", get_default_build_dir())
+DEFAULT_ROOT_DEV = get_env_str("E2E_ROOT_DEV", get_default_root_dev())
 DEFAULT_HTTP_PORT = get_env_int("E2E_HTTP_PORT", 8085)
-DEFAULT_BINARY = get_env_str("E2E_BINARY", "./sdrpp_brown")
+DEFAULT_BINARY = get_env_str("E2E_BINARY", get_default_binary())
 DEFAULT_STARTUP_TIMEOUT = get_env_float("E2E_STARTUP_TIMEOUT", 20.0)
 DEFAULT_SHUTDOWN_TIMEOUT = get_env_float("E2E_SHUTDOWN_TIMEOUT", 5.0)
 

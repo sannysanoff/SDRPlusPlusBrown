@@ -708,17 +708,16 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
 #endif
 
     if (strcmp(request->path, "/log") == 0) {
-        std::string logPath = std::string(core::getRoot()) + "/sdrpp.log";
-        std::ifstream logFile(logPath);
-        if (!logFile.is_open()) {
-            return responseAllocJSONWithFormat(
-                "{\"error\": \"log file not found: {0}\"}", logPath.c_str());
+        std::string content;
+        {
+            std::lock_guard<std::mutex> lock(flog::outMtx);
+            for (const auto& rec : flog::logRecords) {
+                content += rec.message;
+                content += '\n';
+            }
+            flog::logRecords.clear();
         }
-        std::stringstream ss;
-        ss << logFile.rdbuf();
-        std::string content = ss.str();
-        logFile.close();
-        // Escape content for JSON embedding
+
         std::string escaped;
         for (char c : content) {
             switch (c) {
@@ -730,8 +729,8 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 default:   escaped += c; break;
             }
         }
-        return responseAllocJSONWithFormat(
-            "{\"log\": \"{0}\"}", escaped.c_str());
+        std::string json = std::string("{\"log\": \"") + escaped + "\"}";
+        return responseAllocJSON(json.c_str());
     }
 
     return responseAlloc404NotFoundHTML(request->path);

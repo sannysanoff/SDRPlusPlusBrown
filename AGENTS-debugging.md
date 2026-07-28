@@ -208,6 +208,7 @@ Use this exact order when fixing SDR++ runtime bugs:
    curl http://localhost:8080/status
    ```
    Prefer a real running SDR++ process over a Python test at the beginning.
+   Manual launch and Python tests must target the same build artifacts.
 
 2. **Reproduce only through HTTP/manual inspection**
    Use curl, `/status`, `/modules`, `/streams`, `/log`, module commands, and procfs endpoints.
@@ -252,7 +253,8 @@ Use this exact order when fixing SDR++ runtime bugs:
 
 8. **Update the Python test to assert the fixed behavior**
    Change the test from “bug is observable” to “correct behavior is enforced”.
-   If needed, point the test framework to the same build with:
+   The test harness now defaults to this repo's local `build/` target. If you
+   need to override it, point the framework explicitly to the same build with:
    ```bash
    E2E_BUILD_DIR=/path/to/build \
    E2E_ROOT_DEV=/path/to/build/root_dev \
