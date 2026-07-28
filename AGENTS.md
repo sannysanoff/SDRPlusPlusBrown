@@ -184,6 +184,8 @@ make -j$(nproc)
 make install
 ```
 
+> **⚠️ Must run `make install` after any source change to redeploy `.dylib`/`.so` modules into `root_dev/inst/`. Without `make install`, `sdrpp` loads stale modules from the build directory or an old install location, making it impossible to test runtime fixes (e.g., stream teardown hangs).
+
 ## Debugging
 
 See [AGENTS-debugging.md](./AGENTS-debugging.md) for detailed debugging and remote control capabilities.

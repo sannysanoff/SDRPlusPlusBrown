@@ -269,68 +269,63 @@ public:
 private:
     bool doStart() {
 
-        flog::info("Starting RtAudio streams..");
         RtAudio::StreamParameters inputParameters;
         inputParameters.deviceId = defaultInputDeviceId;
         inputParameters.nChannels = 1;
 
-        {
-            RtAudio::StreamParameters outputParameters;
-            outputParameters.deviceId = deviceIds[devId];
-            outputParameters.nChannels = 2;
-            unsigned int bufferFrames = sampleRate / 60;
-            playBuffer.reserve(bufferFrames);
-            RtAudio::StreamOptions opts;
-            opts.flags = RTAUDIO_MINIMIZE_LATENCY;
-            opts.streamName = _streamName;
-            std::replace(opts.streamName.begin(), opts.streamName.end(), '#', '_');
-            flog::info("Starting RtAudio stream {}  parameters.deviceId={}  it is default input? {}", _streamName, outputParameters.deviceId, defaultInputDeviceId == outputParameters.deviceId);
+        RtAudio::StreamParameters outputParameters;
+        outputParameters.deviceId = deviceIds[devId];
+        outputParameters.nChannels = 2;
+        unsigned int bufferFrames = sampleRate / 60;
+        playBuffer.reserve(bufferFrames);
+        RtAudio::StreamOptions opts;
+        opts.flags = RTAUDIO_MINIMIZE_LATENCY;
+        opts.streamName = _streamName;
+        std::replace(opts.streamName.begin(), opts.streamName.end(), '#', '_');
 
-            try {
-                unsigned int microBuffer = bufferFrames / microFrames;
-                audio.openStream(&outputParameters, micInput && (defaultInputDeviceId == outputParameters.deviceId) ? &inputParameters : nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
-                stereoPacker.setSampleCount((int)bufferFrames);
-                audio.startStream();
-                stereoPacker.start();
-            }
-            catch (const std::runtime_error& e) {
-                flog::error("Could not open audio device: {}", e.what());
-                return false;
-            } catch (...) {
-                flog::error("Could not open audio device. generic exception");
-                return false;
-            }
-
-            flog::info("RtAudio output stream open");
+        try {
+            unsigned int microBuffer = bufferFrames / microFrames;
+            audio.openStream(&outputParameters, micInput && (defaultInputDeviceId == outputParameters.deviceId) ? &inputParameters : nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
+            stereoPacker.setSampleCount((int)bufferFrames);
+            audio.startStream();
+            stereoPacker.start();
         }
+        catch (const std::runtime_error& e) {
+            flog::error("Could not open audio device: {}", e.what());
+            return false;
+        } catch (...) {
+            flog::error("Could not open audio device. generic exception");
+            return false;
+        }
+
         if (SinkManager::getSecondaryStreamIndex(_streamName).second == 0 && micInput) {
             if (defaultInputDeviceId != deviceIds[devId] && defaultInputDeviceId != -1) {
-                // input device differs from output
-                RtAudio::StreamOptions opts;
-                opts.flags = RTAUDIO_MINIMIZE_LATENCY;
-                opts.streamName = inputDeviceInfo.name;
-                flog::info("Starting (separately) RtAudio INPUT stream {}  parameters.deviceId={} (output was: {})", inputDeviceInfo.name, defaultInputDeviceId, deviceIds[devId]);
-                unsigned int bufferFrames = sampleRate / 60 / microFrames;
+                if (audio2RefCount.fetch_add(1) == 0) {
+                    audio2Owner = this;
+                    RtAudio::StreamOptions inputOpts;
+                    inputOpts.flags = RTAUDIO_MINIMIZE_LATENCY;
+                    inputOpts.streamName = inputDeviceInfo.name;
+                    unsigned int inputBufferFrames = sampleRate / 60 / microFrames;
 
-                try {
-//                    flog::info("_this->microphone.writeBuf={}", (void*)microphone.writeBuf);
-                    audio2.openStream(nullptr, &inputParameters, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &microphoneCallback, this, &opts);
-                    audio2.startStream();
-                    flog::info("RtAudio2 input stream open");
-                }
-                catch (const std::runtime_error& e) {
-                    flog::error("Could not open INPUT audio device: {}", e.what());
-                    return false;
-                } catch (...) {
-                    flog::error("Could not open audio device. generic exception");
-                    return false;
+                    try {
+                        audio2.openStream(nullptr, &inputParameters, RTAUDIO_FLOAT32, sampleRate, &inputBufferFrames, &microphoneCallback, this, &inputOpts);
+                        audio2.startStream();
+                    }
+                    catch (const std::runtime_error& e) {
+                        flog::error("Could not open INPUT audio device: {}", e.what());
+                        audio2Owner = nullptr;
+                        audio2RefCount.fetch_sub(1);
+                        return false;
+                    } catch (...) {
+                        flog::error("Could not open audio device. generic exception");
+                        audio2Owner = nullptr;
+                        audio2RefCount.fetch_sub(1);
+                        return false;
+                    }
+                    sigpath::sinkManager.defaultInputAudio.setInput(&microphone);
+                    sigpath::sinkManager.defaultInputAudio.start();
                 }
             }
-            flog::info("sigpath::sinkManager.defaultInputAudio.init(microphone)");
-            sigpath::sinkManager.defaultInputAudio.setInput(&microphone);
-            sigpath::sinkManager.defaultInputAudio.start();
-            //            microphone.setBufferSize(sampleRate / 60);
-            //            flog::info("_this->microphone.writeBuf={} after setsize", (void*)microphone.writeBuf);
         }
         return true;
     }
@@ -341,39 +336,30 @@ private:
     void doStop() {
         flog::info("Stopping RtAudio stream:  {}", _streamName);
         bool isPrimary = SinkManager::getSecondaryStreamIndex(_streamName).second == 0;
-        if (isPrimary && micInput) {
-            sigpath::sinkManager.defaultInputAudio.stop();
-            flog::info("sigpath::sinkManager.defaultInputAudio.setInput(nullptr)");
-            sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
-        }
 
-        //        s2m.stop();
-        //        monoPacker.stop();
         stereoPacker.stop();
-        //        monoPacker.out.stopReader();
         stereoPacker.out.stopReader();
-
-        if (audio2.isStreamRunning()) {
-            flog::info("Stopping RtAudio-2 stream p.3");
-            audio2.stopStream();
-            flog::info("Stopped RtAudio stream p.3");
+        flog::info("Stopping RtAudio-1 stream p.1");
+        audio.stopStream();
+        flog::info("Stopped RtAudio stream p.1");
+        flog::info("Stopping RtAudio-1 stream p.2");
+        audio.closeStream();
+        flog::info("Stopped RtAudio stream p.2");
+        if (isPrimary && micInput) {
+            if (audio2Owner == this) {
+                flog::info("sigpath::sinkManager.defaultInputAudio.stop()");
+                sigpath::sinkManager.defaultInputAudio.stop();
+                flog::info("sigpath::sinkManager.defaultInputAudio.setInput(nullptr)");
+                sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
+                flog::info("Stopping RtAudio-2 stream p.3");
+                microphone.stopWriter();
+                flog::info("Stopped RtAudio stream p.3");
+                audio2.closeStream();
+                microphone.clearWriteStop();
+                audio2Owner = nullptr;
+            }
+            audio2RefCount.fetch_sub(1);
         }
-        if (audio2.isStreamOpen()) {
-            flog::info("Stopping RtAudio-2 stream p.4");
-            audio2.closeStream();
-            flog::info("Stopped RtAudio stream p.4");
-        }
-        if (audio.isStreamRunning()) {
-            flog::info("Stopping RtAudio-1 stream p.1");
-            audio.stopStream();
-            flog::info("Stopped RtAudio stream p.1");
-        }
-        if (audio.isStreamOpen()) {
-            flog::info("Stopping RtAudio-1 stream p.2");
-            audio.closeStream();
-            flog::info("Stopped RtAudio stream p.2");
-        }
-        //        monoPacker.out.clearReadStop();
         stereoPacker.out.clearReadStop();
     }
 
@@ -528,8 +514,14 @@ private:
     unsigned int sampleRate = 48000;
 
     RtAudio audio;
-    RtAudio audio2;
+    static RtAudio audio2;
+    static std::atomic<int> audio2RefCount;
+    static AudioSink* audio2Owner;
 };
+
+RtAudio AudioSink::audio2;
+std::atomic<int> AudioSink::audio2RefCount{0};
+AudioSink* AudioSink::audio2Owner{nullptr};
 
 class AudioSinkModule : public ModuleManager::Instance {
 public:

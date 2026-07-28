@@ -419,8 +419,12 @@ public:
             vfo->wtfVFO->onUserChangedBandwidth.bindHandler(&onUserChangedBandwidthHandler);
             vfo->wtfVFO->onUserChangedDemodulator.bindHandler(&onUserChangedDemodulatorHandler);
         }
-        ifSplitter.init(vfo->output);
-        ifSplitter.bindStream(&ifChainInputStream);
+        if (!ifSplitter.hasInput()) {
+            ifSplitter.init(vfo->output);
+            ifSplitter.bindStream(&ifChainInputStream);
+        } else {
+            ifSplitter.setInput(vfo->output);
+        }
         ifSplitter.start();
         ifChain.setInput(&ifChainInputStream, [=](dsp::stream<dsp::complex_t>* out){ ifChainOutputChangeHandler(out, this); });
         ifChain.start();

@@ -555,11 +555,78 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         for (auto& [name, inst] : core::moduleManager.instances) {
             if (!first) json += ", ";
             std::string modName = inst.module.info ? inst.module.info->name : "unknown";
-            json += "\"" + name + "\": \"" + modName + "\"";
+            bool enabled = inst.instance->isEnabled();
+            json += "\"" + name + "\": {\"module\": \"" + modName + "\", \"enabled\": " + (enabled ? "true" : "false") + "}";
             first = false;
         }
         json += "}";
         return responseAllocJSON(json.c_str());
+    }
+
+    // /module/<instance_name>/enable or /module/<instance_name>/disable
+    {
+        std::string reqPath(request->path);
+        std::string enableSuffix = "/enable";
+        std::string disableSuffix = "/disable";
+        std::string enabledSuffix = "/enabled";
+        bool isEnable = false, isDisable = false, isQueryEnabled = false;
+        if (reqPath.size() > 8 && reqPath.substr(0, 8) == "/module/") {
+            std::string remainder = reqPath.substr(8);
+            if (remainder.size() > enableSuffix.size() && remainder.substr(remainder.size() - enableSuffix.size()) == enableSuffix) {
+                isEnable = true;
+            } else if (remainder.size() > disableSuffix.size() && remainder.substr(remainder.size() - disableSuffix.size()) == disableSuffix) {
+                isDisable = true;
+            } else if (remainder.size() > enabledSuffix.size() && remainder.substr(remainder.size() - enabledSuffix.size()) == enabledSuffix) {
+                isQueryEnabled = true;
+            }
+            if (isEnable || isDisable || isQueryEnabled) {
+                std::string instanceName = remainder.substr(0, remainder.size() - (isEnable ? enableSuffix.size() : isDisable ? disableSuffix.size() : enabledSuffix.size()));
+                std::string decoded;
+                for (size_t i = 0; i < instanceName.size(); i++) {
+                    if (instanceName[i] == '%' && i + 2 < instanceName.size()) {
+                        char hex[3] = { instanceName[i+1], instanceName[i+2], 0 };
+                        decoded += (char)strtol(hex, nullptr, 16);
+                        i += 2;
+                    } else if (instanceName[i] == '+') {
+                        decoded += ' ';
+                    } else {
+                        decoded += instanceName[i];
+                    }
+                }
+                instanceName = decoded;
+
+                auto& instances = core::moduleManager.instances;
+                auto it = instances.find(instanceName);
+                if (it == instances.end()) {
+                    return responseAllocJSONWithFormat(
+                        "{\"error\": \"instance '%s' not found\"}",
+                        instanceName.c_str());
+                }
+
+                if (isQueryEnabled) {
+                    bool enabled = it->second.instance->isEnabled();
+                    return responseAllocJSONWithFormat(
+                        "{\"instance\": \"%s\", \"enabled\": %s}",
+                        instanceName.c_str(), enabled ? "true" : "false");
+                }
+
+                if (isEnable) {
+                    it->second.instance->enable();
+                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = true;
+                    return responseAllocJSONWithFormat(
+                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true}",
+                        instanceName.c_str());
+                }
+
+                if (isDisable) {
+                    it->second.instance->disable();
+                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = false;
+                    return responseAllocJSONWithFormat(
+                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false}",
+                        instanceName.c_str());
+                }
+            }
+        }
     }
 
     // Generic module command routing via /module/<instance_name>/command

@@ -393,6 +393,73 @@ Example response:
 {"status": "exiting"}
 ```
 
+## LLDB for Crashes and Locks
+
+**Always use lldb when SDR++ crashes or hangs.** Do not guess from logs.
+
+### Crash: Delayed-Trigger Pattern
+
+Use `--debug-wait` + delayed background curl to trigger crash after lldb attaches. **Never use interactive lldb** — use a script file:
+
+```bash
+kill $(pgrep -f sdrpp) 2>/dev/null; sleep 1
+rm -f /tmp/sdrpp_debug_ready
+SDRPP_ENABLE_MEMORY_LOG=1 DYLD_LIBRARY_PATH=.../core \
+  ./sdrpp -r ./root_dev --http 8080 --debug-wait /tmp/sdrpp_debug_ready \
+  > root_dev/sdrpp.log 2>&1 &
+SPID=$!; sleep 1; touch /tmp/sdrpp_debug_ready; sleep 8
+
+# Pre-condition system
+curl -s -X POST http://localhost:8080/module/Radio/disable; sleep 2
+
+# lldb script file
+cat > /tmp/lldb_script.txt << 'EOF'
+breakpoint set --name abort
+continue
+bt all
+frame select 0
+frame variable
+frame select 1
+frame variable
+frame select 2
+frame variable
+quit
+EOF
+
+# Delayed trigger (background) → lldb (foreground) catches crash
+(sleep 8 && curl -s -X POST http://localhost:8080/module/Radio/enable) &
+lldb -p $SPID -s /tmp/lldb_script.txt 2>&1
+```
+
+### Deadlock/Hang
+
+```bash
+lldb -p $(pgrep -f sdrpp)
+(lldb) thread interrupt
+(lldb) bt all          # look for __psynch_cvwait / __psynch_mutexwait
+(lldb) frame select N  # pick blocked thread
+(lldb) frame variable
+```
+
+### Key Commands
+
+| Command | Use |
+|---------|-----|
+| `bt all` | all thread backtraces |
+| `frame select N` + `frame variable` | locals at frame |
+| `thread list` | list all threads |
+| `breakpoint set --name abort` | catch abort() |
+| `frame variable --ptr *this` | print object |
+| `frame variable myVec.__size_` | vector size |
+
+### Real Example: SIGABRT on Radio Enable/Disable
+
+Crash at `radio_module.h:422` — `ifSplitter.init()` called twice because `disable()` calls `stop()` (keeps `_block_init=true`) but `enable()` called `init()` unconditionally. Fix: guard with `hasInput()`, use `setInput()` on re-enable.
+
+### Real Example: AudioSink CoreAudio Deadlock
+
+Two AudioSink instances. `doStop()` on wrong instance → `stopWriter()` set `writerStop` on wrong stream → primary stuck in `swapCV.wait()` → `audio2.closeStream()` deadlocks on `HALB_Mutex`. Fix: shared static `audio2` with refcounting.
+
 ## Complete Example
 
 TETRA pipeline example:
