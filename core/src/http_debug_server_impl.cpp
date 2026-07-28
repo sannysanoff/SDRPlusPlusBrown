@@ -387,6 +387,15 @@ namespace httpdebug {
 
 // Implement createResponseForRequest here
 struct Response* createResponseForRequest(const struct Request* request, struct Connection* connection) {
+    if (strcmp(request->path, "/log") != 0) {
+        std::string reqLine = std::string(request->method) + " " + request->pathDecoded;
+        if (request->body.length > 0 && request->body.contents) {
+            reqLine += " body=";
+            reqLine += std::string(request->body.contents, request->body.length);
+        }
+        flog::info("HTTP debug: {}", reqLine);
+    }
+
     if (strcmp(request->path, "/status") == 0 || strcmp(request->path, "/") == 0) {
         return responseAllocJSONWithFormat(
             "{\"ready\": %s, \"httpListening\": %s, \"mainLoopStarted\": %s}",
@@ -722,14 +731,26 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         }
 
         std::string escaped;
-        for (char c : content) {
+        escaped.reserve(content.size() + 16);
+        for (unsigned char c : content) {
             switch (c) {
                 case '"':  escaped += "\\\""; break;
                 case '\\': escaped += "\\\\"; break;
                 case '\n': escaped += "\\n"; break;
                 case '\r': escaped += "\\r"; break;
                 case '\t': escaped += "\\t"; break;
-                default:   escaped += c; break;
+                case '\b': escaped += "\\b"; break;
+                case '\f': escaped += "\\f"; break;
+                default:
+                    if (c < 0x20) {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        escaped += buf;
+                    }
+                    else {
+                        escaped += (char)c;
+                    }
+                    break;
             }
         }
         std::string json = std::string("{\"log\": \"") + escaped + "\"}";
