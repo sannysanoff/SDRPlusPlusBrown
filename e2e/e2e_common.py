@@ -193,6 +193,17 @@ def set_stats_mode(enabled: bool = True) -> None:
 # HTTP Communication
 # =============================================================================
 
+def http_get(base_url: str, path: str, timeout: float = 5.0) -> Dict:
+    """Make HTTP GET request to SDR++ debug API."""
+    url = f"{base_url}{path}"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def http_post(base_url: str, path: str, json_data: Optional[Dict] = None, timeout: float = 5.0) -> Dict:
     """Make HTTP POST request to SDR++ debug API."""
     url = f"{base_url}{path}"
