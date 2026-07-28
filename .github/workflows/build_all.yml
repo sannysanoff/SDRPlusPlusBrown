@@ -2,8 +2,6 @@ name: Build Binaries
 
 on:
     push:
-        branches:
-        - master
     pull_request:
         branches:
         - master
@@ -102,6 +100,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_windows_x64.zip
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
 
 
@@ -169,6 +168,7 @@ jobs:
             path: ${{runner.workspace}}/sdrpp_macos_intel.zip
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_intel.zip -R ${{github.repository}} --clobber
 
 
@@ -237,6 +237,7 @@ jobs:
             path: ${{runner.workspace}}/sdrpp_macos_arm.zip
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_macos_arm.zip -R ${{github.repository}} --clobber
 
 
@@ -264,6 +265,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb -R ${{github.repository}} --clobber
 
 
@@ -289,6 +291,7 @@ jobs:
             path: ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_amd64:
@@ -314,6 +317,7 @@ jobs:
             path: ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_aarch64:
@@ -339,6 +343,7 @@ jobs:
             path: ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_amd64:
@@ -364,6 +369,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_aarch64:
@@ -389,6 +395,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_amd64:
@@ -414,6 +421,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_aarch64:
@@ -439,6 +447,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_amd64:
@@ -464,6 +473,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_aarch64:
@@ -489,6 +499,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble:
@@ -513,6 +524,7 @@ jobs:
               name: sdrpp_ubuntu_noble_amd64
               path: ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble_aarch64:
@@ -538,6 +550,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb -R ${{github.repository}} --clobber
 
     build_android:
@@ -568,6 +581,7 @@ jobs:
               path: ${{runner.workspace}}/sdrpp.apk
 
         - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
           run:  gh release upload rolling ${{runner.workspace}}/sdrpp.apk -R ${{github.repository}} --clobber
 
 
