@@ -264,8 +264,12 @@ class MainActivity : NativeActivity(), SensorEventListener {
                 val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                 val uri: Uri = Uri.fromParts("package", packageName, null)
                 intent.data = uri
-                startActivityForResult(intent, PERMISSION_REQUEST_CODE+2);
-                return;
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivityForResult(intent, PERMISSION_REQUEST_CODE+2);
+                    return;
+                } else {
+                    Log.w("SDR++", "PERM: No activity for MANAGE_APP_ALL_FILES, skipping.")
+                }
             }
             permissionsPassed.add(PERMISSION_REQUEST_CODE+2);
 
