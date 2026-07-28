@@ -204,6 +204,15 @@ int x = (std::min)(a, b);
 
 Search for unguarded uses with `grep 'std::\(min\|max\)('`.
 
+### VS 2026 drops Windows 7/8 runtime support
+
+Since June 2026, GitHub Actions `windows-latest` and `windows-2025` images ship **VS 2026** (MSVC 14.51), whose redistributable no longer supports Windows 7/8/8.1. The minimum target is Windows 10.
+
+To build binaries compatible with Windows 7, pin the runner to `windows-2022` in CI:
+```yaml
+runs-on: windows-2022
+```
+
 ## General Notes
 * The build process can be lengthy due to the number of dependencies and modules.
 * The CI scripts in `.github/workflows/build_all.yml` and `docker_builds/` are good references for platform-specific dependencies and build commands.
