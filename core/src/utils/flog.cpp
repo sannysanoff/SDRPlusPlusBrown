@@ -211,6 +211,7 @@ namespace flog {
             // Print format string
             fprintf(outStream, COLOR_WHITE "[%02d/%02d/%02d %02d:%02d:%02d.%03d] [%s%s" COLOR_WHITE "] %s\n",
                     nowc->tm_mday, nowc->tm_mon + 1, nowc->tm_year + 1900, nowc->tm_hour, nowc->tm_min, nowc->tm_sec, (int)(msec % 1000), TYPE_COLORS[type], TYPE_STR[type], out.c_str());
+            fflush(outStream);
 #endif
 
             if (performAdhocFileLogging == -1) {
@@ -227,6 +228,7 @@ namespace flog {
                 FILE *f = fopen(adhocLogFileName,"at");
                 fprintf(f, "[%02d/%02d/%02d %02d:%02d:%02d.%03d] [%s" "] %s\n",
                     nowc->tm_mday, nowc->tm_mon + 1, nowc->tm_year + 1900, nowc->tm_hour, nowc->tm_min, nowc->tm_sec, (int)(msec % 1000), TYPE_STR[type], out.c_str());
+                fflush(f);
                 fclose(f);
             }
             if (memoryLogEnabled) {

@@ -902,13 +902,12 @@ int sdrpp_main(int argc, char* argv[]) {
         httpdebug::waitForDebugCommand(debugWaitFile);
     }
 
-    flog::info("Ready.");
-
     test1();
 
     httpdebug::signalMainLoopStarted();
 
-    // Run render loop (TODO: CHECK RETURN VALUE)
+    flog::info("Ready. Main loop starts.");
+
     backend::renderLoop();
 
     gui::mainWindow.end();
