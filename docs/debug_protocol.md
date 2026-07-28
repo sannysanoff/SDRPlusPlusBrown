@@ -229,7 +229,16 @@ GET /module/File%20Source/command?cmd=set_filename&args=/path/to/file.wav
 
 ---
 
-## 7. Procfs Endpoints
+## 7. Debug Logs
+
+### `GET /log`
+Retrieve the SDR++ application log as JSON. Useful for debugging test failures.
+
+```json
+{"log": "<escaped log content>"}
+```
+
+## 8. Procfs Endpoints
 
 The procfs system provides lightweight read/write endpoints registered by modules.
 
@@ -255,7 +264,7 @@ Returns `ok` on success.
 
 ---
 
-## 8. GUI Automation (ImGui Interaction)
+## 9. GUI Automation (ImGui Interaction)
 
 These endpoints allow automating the graphical interface. They queue actions that are processed on the main render thread.
 
@@ -303,7 +312,7 @@ List all registered procfs endpoints with their current values, types, and writa
 
 ---
 
-## 9. Lifecycle
+## 10. Lifecycle
 
 ### `GET /stop` (or `GET /exit`)
 Gracefully shut down SDR++.

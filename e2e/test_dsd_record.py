@@ -136,6 +136,15 @@ def test_dmr_record():
             stats.debug(f"poll {i+1}", {"NullAudioSink.samples": cur_samples})
 
         if not dsd_active:
+            # Retrieve SDR++ logs for diagnosis
+            log_resp = http_get(ctx.base_url, "/log")
+            if "log" in log_resp and log_resp["log"]:
+                log_lines = log_resp["log"].split("\\n")
+                stats.info(f"SDR++ log lines: {len(log_lines)} (last 20 shown)")
+                for line in log_lines[-20:]:
+                    stats.info(f"  LOG: {line[:200]}")
+            else:
+                stats.info("No SDR++ log available")
             stats.info("No audio flow on NullAudioSink in headless GUI mode (pre-existing).")
 
         # Step 7: Start Recorder in audio mode (mode=0 captures Radio stream)

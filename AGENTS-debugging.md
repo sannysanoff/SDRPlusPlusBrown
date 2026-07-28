@@ -28,6 +28,7 @@ SDR++ includes an embedded HTTP debug server from [EmbeddableWebServer](https://
 | `GET /sdr/stop` | Stop SDR playback |
 | `GET /sdr/status` | Get SDR playing status (true/false) |
 | `GET /modules` | List all module instances with their module names |
+| `GET /log` | Retrieve SDR++ log file contents |
 | `GET /proc` | List all registered procfs endpoints |
 | `GET /proc/<path>` | Read from a registered procfs endpoint |
 | `POST /proc/<path>` | Write to a registered procfs endpoint |

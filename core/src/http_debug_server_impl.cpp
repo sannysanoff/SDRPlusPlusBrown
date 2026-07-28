@@ -3,6 +3,8 @@
 
 #include "http_debug_server.h"
 #include <utils/flog.h>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <atomic>
@@ -704,6 +706,33 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         return responseAllocJSON(json.c_str());
     }
 #endif
+
+    if (strcmp(request->path, "/log") == 0) {
+        std::string logPath = std::string(core::getRoot()) + "/sdrpp.log";
+        std::ifstream logFile(logPath);
+        if (!logFile.is_open()) {
+            return responseAllocJSONWithFormat(
+                "{\"error\": \"log file not found: {0}\"}", logPath.c_str());
+        }
+        std::stringstream ss;
+        ss << logFile.rdbuf();
+        std::string content = ss.str();
+        logFile.close();
+        // Escape content for JSON embedding
+        std::string escaped;
+        for (char c : content) {
+            switch (c) {
+                case '"':  escaped += "\\\""; break;
+                case '\\': escaped += "\\\\"; break;
+                case '\n': escaped += "\\n"; break;
+                case '\r': escaped += "\\r"; break;
+                case '\t': escaped += "\\t"; break;
+                default:   escaped += c; break;
+            }
+        }
+        return responseAllocJSONWithFormat(
+            "{\"log\": \"{0}\"}", escaped.c_str());
+    }
 
     return responseAlloc404NotFoundHTML(request->path);
 }
