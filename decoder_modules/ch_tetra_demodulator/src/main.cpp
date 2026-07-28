@@ -116,7 +116,6 @@ public:
         constDiagReshaper.start();
         constDiagSink.start();
         symbolExtractor.start();
-        bitsUnpacker.start();
         setMode();
         resamp.start();
         outconv.start();
@@ -161,7 +160,6 @@ public:
         // Start blocks from downstream to upstream.
         // resamp/outconv/stream are NOT stopped in disable(), so they idle
         // and resume automatically when upstream data flows again.
-        bitsUnpacker.start();
         symbolExtractor.start();
         constDiagSink.start();
         constDiagReshaper.start();
@@ -182,13 +180,11 @@ public:
         constDiagSink.stop();
         symbolExtractor.stop();
 
-        // Stop both mode endpoints and detach both from bitsUnpacker.out
+        // Stop both mode endpoints and the optional unpacker path.
         osmotetradecoder.stop();
         osmotetradecoder.setInput(nullptr);
         demodSink.stop();
         demodSink.setInput(nullptr);
-
-        // Now stop bitsUnpacker (no live readers left on its output)
         bitsUnpacker.stop();
 
         // DON'T stop resamp/outconv/stream - the SinkManager merger has a detached
@@ -255,17 +251,20 @@ private:
     }
 
     void setMode() {
-        // Stop both endpoints before switching to prevent partial start/stop states
+        // Keep symbolExtractor.out single-consumer: osmo-tetra reads dibits directly,
+        // NETSYMS uses the unpacked bit stream.
         osmotetradecoder.stop();
         osmotetradecoder.setInput(nullptr);
         demodSink.stop();
         demodSink.setInput(nullptr);
+        bitsUnpacker.stop();
 
         if(decoder_mode == 0) {
-            //osmo-tetra mode: use osmotetradecoder
-            osmotetradecoder.setInput(&bitsUnpacker.out);
+            // osmo-tetra mode consumes dibits from symbolExtractor.out.
+            osmotetradecoder.setInput(&symbolExtractor.out);
             osmotetradecoder.start();
         } else {
+            bitsUnpacker.start();
             //network syms mode: use demodSink
             demodSink.setInput(&bitsUnpacker.out);
             demodSink.start();
