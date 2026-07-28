@@ -188,6 +188,22 @@ make install
 
 See [AGENTS-debugging.md](./AGENTS-debugging.md) for detailed debugging and remote control capabilities.
 
+## Windows Build Caveats
+
+### MSVC `min`/`max` macro clash
+
+`<Windows.h>` defines `min` and `max` as preprocessor macros that break `std::min(...)` and `std::max(...)` with `error C2589: '(': illegal token on right side of '::'`.
+
+Fix by parenthesizing the call:
+```cpp
+// Before (breaks on MSVC):
+int x = std::min(a, b);
+// After:
+int x = (std::min)(a, b);
+```
+
+Search for unguarded uses with `grep 'std::\(min\|max\)('`.
+
 ## General Notes
 * The build process can be lengthy due to the number of dependencies and modules.
 * The CI scripts in `.github/workflows/build_all.yml` and `docker_builds/` are good references for platform-specific dependencies and build commands.
