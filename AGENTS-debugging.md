@@ -196,3 +196,78 @@ The typical debugging workflow:
    ```
 
 The loop is: start → check status/logs → reproduce bug → stop → fix → rebuild → repeat.
+
+## EXAMPLE bugfix workflow
+
+Use this exact order when fixing SDR++ runtime bugs:
+
+1. **Launch manually first**
+   ```bash
+   ./sdrpp-cli build
+   ./sdrpp-cli start
+   curl http://localhost:8080/status
+   ```
+   Prefer a real running SDR++ process over a Python test at the beginning.
+
+2. **Reproduce only through HTTP/manual inspection**
+   Use curl, `/status`, `/modules`, `/streams`, `/log`, module commands, and procfs endpoints.
+   Example:
+   ```bash
+   curl -X POST http://localhost:8080/module/File%20Source/command \
+     -H 'Content-Type: application/json' \
+     -d '{"cmd":"set_filename","args":"/path/to/file.wav"}'
+   curl -X POST http://localhost:8080/module/Radio/command \
+     -H 'Content-Type: application/json' \
+     -d '{"cmd":"set_demod","args":"DSD"}'
+   curl "http://localhost:8080/vfo/set_offset?name=Radio&offset=-253405"
+   curl http://localhost:8080/sdr/start
+   ```
+
+3. **Capture evidence of the bug or incorrect behavior**
+   Examples:
+   - crash / process exit
+   - wrong HTTP response
+   - sample counters not moving
+   - wrong mode / wrong file type
+   - missing sync / missing recorder output
+   - `/log` output showing the failure
+
+4. **Only after reproducing manually, write the Python regression test**
+   The first version of the test should describe the observed bug, not the future fix.
+   If the bug is timing-sensitive, add a stable wait mechanism rather than a one-shot poll.
+
+5. **Commit the test before the fix**
+   Use the commit message format:
+   ```
+   bug found - test case created before fixing (test_name.py)
+   ```
+
+6. **Implement the fix**
+   Keep the fix minimal and scoped to the reproduced issue.
+   Do not redesign unrelated interfaces if a module-specific debug hook is enough.
+
+7. **Launch manually again and verify the real behavior**
+   Repeat the exact curl/manual reproduction steps against the fixed build.
+   Confirm the original failure is gone on a live SDR++ instance.
+
+8. **Update the Python test to assert the fixed behavior**
+   Change the test from “bug is observable” to “correct behavior is enforced”.
+   If needed, point the test framework to the same build with:
+   ```bash
+   E2E_BUILD_DIR=/path/to/build \
+   E2E_ROOT_DEV=/path/to/build/root_dev \
+   E2E_BINARY=/path/to/build/sdrpp \
+   python3 e2e/test_name.py
+   ```
+
+9. **Run the test again and make the second commit**
+   The second commit should contain:
+   - the product fix
+   - the updated passing test
+   - any supporting debug documentation changes
+
+10. **Important practical notes**
+   - The manual launch and the Python test must use the same build target.
+   - For baseband recordings, do not assume the signal is at the file center frequency; use VFO offset when needed.
+   - For the Recorder module, verify whether mode is baseband or audio from code, not assumption.
+   - If decoder state flickers with signal quality, expose a stable wait command instead of polling a single frame.

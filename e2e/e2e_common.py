@@ -216,10 +216,10 @@ def http_post(base_url: str, path: str, json_data: Optional[Dict] = None, timeou
         return {"error": str(e)}
 
 
-def module_cmd(base_url: str, instance_name: str, cmd: str, args: str = "") -> Dict:
+def module_cmd(base_url: str, instance_name: str, cmd: str, args: str = "", timeout: float = 5.0) -> Dict:
     """Execute a command on a module instance."""
     return http_post(base_url, f"/module/{instance_name.replace(' ', '%20')}/command",
-                    json_data={"cmd": cmd, "args": args})
+                    json_data={"cmd": cmd, "args": args}, timeout=timeout)
 
 
 def wait_for_server(base_url: str, timeout: float = DEFAULT_STARTUP_TIMEOUT) -> bool:
@@ -441,9 +441,9 @@ class SDRPPTestContext:
         """Make HTTP POST request to SDR++ debug API."""
         return http_post(self.base_url, path, json_data, timeout)
     
-    def module_cmd(self, instance_name: str, cmd: str, args: str = "") -> Dict:
+    def module_cmd(self, instance_name: str, cmd: str, args: str = "", timeout: float = 5.0) -> Dict:
         """Execute a command on a module instance."""
-        return module_cmd(self.base_url, instance_name, cmd, args)
+        return module_cmd(self.base_url, instance_name, cmd, args, timeout)
     
     def sleep(self, seconds: float) -> None:
         """Sleep for specified seconds (utility for test timing)."""

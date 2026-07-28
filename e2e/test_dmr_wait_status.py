@@ -68,7 +68,7 @@ def test_wait_for_dmr_voice_status():
             stats.test_fail("test_wait_for_dmr_voice_status", f"sdr start failed: {resp}")
             return False
 
-        resp = ctx.module_cmd("Extra V/UHF", "wait_dmr_sync_voice", "Radio,2000,10000")
+        resp = ctx.module_cmd("Extra V/UHF", "wait_dmr_sync_voice", "Radio,2000,10000", timeout=15.0)
         if resp.get("status") != "ok":
             stats.test_fail("test_wait_for_dmr_voice_status", f"wait_dmr_sync_voice failed: {resp}")
             return False
