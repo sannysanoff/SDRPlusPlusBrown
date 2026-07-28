@@ -25,6 +25,7 @@ Server readiness and state.
 
 ### `GET /sdr/start`
 Start SDR playback (source → demod → audio).
+This is also triggered by the **▶ Play button** in the SDR++ GUI.
 
 ```json
 {"action": "sdr_start"}
@@ -43,6 +44,8 @@ Check if SDR is currently playing.
 ```json
 {"playing": true}
 ```
+
+> **Note:** When using `File Source`, you must configure the filename first via the module command interface (`set_filename`). See [Section 6](#6-module-automation) and the File Source commands below.
 
 ---
 
@@ -206,7 +209,7 @@ GET /module/File%20Source/command?cmd=set_filename&args=/path/to/file.wav
 
 | Command | Args | Description |
 |---------|------|-------------|
-| `set_filename` | absolute path to WAV file | Load a WAV/IQ file as source |
+| `set_filename` | absolute path to WAV file | Load a WAV/IQ file as source. **Must be called before `/sdr/start`** |
 | `get_filename` | *(none)* | Returns the currently loaded filename |
 
 **NullAudioSink module** (instance name: `"NullAudioSink"`):
@@ -234,7 +237,7 @@ The procfs system provides lightweight read/write endpoints registered by module
 List all registered procfs endpoints.
 
 ```json
-["/source/type", "/sink/select", "/frequency", "/play/start", "/play/stop"]
+["/source/type", "/sink/select", "/frequency", "/sdr/start", "/sdr/stop"]
 ```
 
 ### `GET /proc/<path>`

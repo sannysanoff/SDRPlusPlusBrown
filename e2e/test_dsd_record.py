@@ -89,7 +89,16 @@ def test_dmr_record():
             return False
         stats.info("SDR++ started")
 
-        # Step 1: Verify DSD mode was injected into Radio
+        # Step 1: Configure File Source (required before /sdr/start)
+        resp = http_post(ctx.base_url, "/proc/source/type", "File")
+        stats.debug("source/type = File", resp)
+        ctx.sleep(0.3)
+
+        resp = ctx.module_cmd("File Source", "set_filename", TEST_FILE)
+        stats.debug("File Source set_filename", resp)
+        ctx.sleep(0.3)
+
+        # Step 2: Verify DSD mode was injected into Radio
         resp = ctx.module_cmd("Radio", "list_demods")
         demod_names = [d["name"] for d in resp.get("demods", [])]
         if "DSD" not in demod_names:
@@ -97,23 +106,22 @@ def test_dmr_record():
             return False
         stats.info(f"DSD demod injected (demods: {demod_names})")
 
-        # Step 2: Select DSD demod on Radio
+        # Step 3: Select DSD demod on Radio
         resp = ctx.module_cmd("Radio", "set_demod", "DSD")
         stats.debug("set_demod DSD", resp)
         ctx.sleep(0.5)
 
-        # Step 3: Route Radio audio to NullAudioSink for monitoring
+        # Step 4: Route Radio audio to NullAudioSink for monitoring
         http_post(ctx.base_url, "/sink/select",
                   {"stream": "Radio", "sink": "NullAudioSink"})
         ctx.sleep(0.3)
 
-        # Step 4: Start playback
+        # Step 5: Start playback
         http_post(ctx.base_url, "/sdr/start")
+        stats.info("Playback started")
         ctx.sleep(2.0)
 
-        # Step 5: Monitor for DSD decoding activity (audio flowing = sync indicator)
-        # DSD decoder produces audio when it has frame sync (fr_st.sync == true).
-        # This manifests as increasing NullAudioSink sample count.
+        # Step 6: Monitor DSD decoding via audio flow (DSD sync indicator)
         stats.info("Monitoring for DSD sync (audio flow on Radio stream)...")
         dsd_active = False
         prev_samples = ctx.module_cmd("NullAudioSink", "get_samples").get("samples", 0)
@@ -128,32 +136,32 @@ def test_dmr_record():
             stats.debug(f"poll {i+1}", {"NullAudioSink.samples": cur_samples})
 
         if not dsd_active:
-            stats.info("No audio flow detected on NullAudioSink in headless GUI mode (pre-existing issue).")
-            stats.info("Proceeding to start Recorder anyway to test pipeline stability.")
+            stats.info("No audio flow on NullAudioSink in headless GUI mode (pre-existing).")
 
-        # Step 6: Start Recorder in audio mode (mode=0 captures Radio stream)
+        # Step 7: Start Recorder in audio mode (mode=0 captures Radio stream)
         resp = ctx.module_cmd("Recorder", "start")
         stats.debug("Recorder start", resp)
         ctx.sleep(0.3)
 
         rec_status = ctx.module_cmd("Recorder", "status")
-        stats.debug("Recorder status after start", rec_status)
+        stats.debug("Recorder status", rec_status)
+        if not rec_status.get("recording"):
+            stats.info("Recorder did not start recording (selectedStreamName may be empty)")
 
-        # Step 7: Wait for recording to capture some data
+        # Step 8: Wait for recording to capture data
         ctx.sleep(4.0)
 
-        # Step 8: Stop Recorder
+        # Step 9: Stop Recorder
         ctx.module_cmd("Recorder", "stop")
         ctx.sleep(0.3)
 
-        # Step 9: Verify recorded WAV file has audio signal
+        # Step 10: Verify recorded WAV file has audio signal
         recordings_dir = os.path.join(ctx.temp_dir, "recordings")
         wav_files = []
         if os.path.isdir(recordings_dir):
             wav_files = [os.path.join(recordings_dir, f) for f in os.listdir(recordings_dir) if f.endswith(".wav")]
 
         if not wav_files:
-            # Also check root dir of temp
             wav_files = [os.path.join(ctx.temp_dir, f) for f in os.listdir(ctx.temp_dir) if f.endswith(".wav")]
 
         if wav_files:
@@ -168,8 +176,8 @@ def test_dmr_record():
                 return True
             else:
                 stats.test_pass("test_dmr_record",
-                    f"WAV file saved but no audio signal detected (dsd_active={dsd_active}, headless-mode audio pipeline may not flow)")
-                stats.info("Note: 0 samples flowing is pre-existing headless-mode behavior for all demods (WFM/NFM/DSD)")
+                    f"WAV file saved but no audio signal (dsd_active={dsd_active})")
+                stats.info("Note: 0 samples on NullAudioSink is pre-existing headless-mode behavior")
                 return True
         else:
             stats.test_fail("test_dmr_record", "No WAV file found in recordings directory")

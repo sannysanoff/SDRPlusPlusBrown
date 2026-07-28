@@ -179,9 +179,14 @@ The typical debugging workflow:
 4. **Interact via HTTP** (list windows, click, keypress, start/stop SDR, etc.):
    ```
    curl http://localhost:8080/layout
-   curl http://localhost:8080/sdr/start
+   curl http://localhost:8080/sdr/start   # equivalent to ▶ Play button in GUI
    curl http://localhost:8080/sdr/stop
    ```
+   **Important:** When using `File Source`, you must configure the input file first:
+   ```
+   curl -X POST http://localhost:8080/module/File%20Source/command -d '{"cmd":"set_filename","args":"/path/to/file.wav"}'
+   ```
+   Otherwise `/sdr/start` will have no effect.
 
 5. **Stop and rebuild** if needed:
    ```
