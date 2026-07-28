@@ -201,6 +201,20 @@ public:
             }
             return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + "}";
         }
+        if (cmd == "get_vfo_bandwidth") {
+            if (!vfo) {
+                return "{\"error\": \"VFO not initialized\"}";
+            }
+            double wtfBw = vfo->wtfVFO->bandwidth;
+            double lowerOffset = vfo->wtfVFO->lowerOffset;
+            double upperOffset = vfo->wtfVFO->upperOffset;
+            return "{\"vfo_bandwidth\": " + std::to_string(wtfBw) +
+                   ", \"lower_offset\": " + std::to_string(lowerOffset) +
+                   ", \"upper_offset\": " + std::to_string(upperOffset) +
+                   ", \"module_bandwidth\": " + std::to_string(bandwidth) +
+                   ", \"min_bandwidth\": " + std::to_string(minBandwidth) +
+                   ", \"max_bandwidth\": " + std::to_string(maxBandwidth) + "}";
+        }
         if (cmd == "list_demods") {
             std::string json = "{\"radio\": \"" + name + "\", \"demods\": [";
             bool first = true;

@@ -83,6 +83,7 @@ void setproctitle(const char* fmt, ...) {
 #endif
 
 char* sdrppResourcesDirectory; // to reference from C files.
+char* sdrppModulesDirectory; // to reference from C files.
 
 namespace core {
     ConfigManager configManager;
@@ -836,6 +837,8 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.acquire();
     std::string resDir = core::configManager.conf["resourcesDirectory"];
     sdrppResourcesDirectory = strdup(resDir.c_str());
+    std::string modDir = core::configManager.conf["modulesDirectory"];
+    sdrppModulesDirectory = strdup(modDir.c_str());
     json bandColors = core::configManager.conf["bandColors"];
     core::configManager.release();
 
