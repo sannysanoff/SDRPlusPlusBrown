@@ -139,40 +139,64 @@ public:
     void postInit() {}
 
     void enable() {
-        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
+        if (enabled) { return; }
+
+        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
+        if (!vfo) {
+            flog::error("TETRA: createVFO failed (name already in use?)");
+            return;
+        }
+
+        float recov_bandwidth = CLOCK_RECOVERY_BW;
+        float recov_dampningFactor = CLOCK_RECOVERY_DAMPN_F;
+        float recov_denominator = (1.0f + 2.0*recov_dampningFactor*recov_bandwidth + recov_bandwidth*recov_bandwidth);
+        float recov_mu = (4.0f * recov_dampningFactor * recov_bandwidth) / recov_denominator;
+        float recov_omega = (4.0f * recov_bandwidth * recov_bandwidth) / recov_denominator;
+
         mainDemodulator.setInput(vfo->output);
-        mainDemodulator.start();
-        constDiagSplitter.start();
-        constDiagReshaper.start();
-        constDiagSink.start();
+        constDiagSplitter.setInput(&mainDemodulator.out);
+        constDiagReshaper.setInput(&constDiagStream);
+        symbolExtractor.setInput(&demodStream);
+
+        // Start blocks from downstream to upstream.
+        // resamp/outconv/stream are NOT stopped in disable(), so they idle
+        // and resume automatically when upstream data flows again.
+        bitsUnpacker.start();
         symbolExtractor.start();
-        
-        // NATIVE CLEANUP: Stop the obsolete background thread worker loop
-        // bitsUnpacker.start(); 
-        
-        setMode();
-        resamp.start();
-        outconv.start();
-        stream.start();
+        constDiagSink.start();
+        constDiagReshaper.start();
+        constDiagSplitter.start();
+        mainDemodulator.start();
 
         enabled = true;
+        setMode();
     }
 
     void disable() {
+        if (!enabled) { return; }
+
+        // Stop upstream first to drain data flow into the chain
         mainDemodulator.stop();
         constDiagSplitter.stop();
         constDiagReshaper.stop();
         constDiagSink.stop();
         symbolExtractor.stop();
-        
-        // NATIVE CLEANUP: Stop the obsolete blocks cleanly
-        // bitsUnpacker.stop();
-        // demodSink.stop();
-        
+
+        // Stop both mode endpoints and detach both from bitsUnpacker.out
         osmotetradecoder.stop();
-        resamp.stop();
-        outconv.stop();
-        stream.stop();
+        osmotetradecoder.setInput(nullptr);
+        demodSink.stop();
+        demodSink.setInput(nullptr);
+
+        // Now stop bitsUnpacker (no live readers left on its output)
+        bitsUnpacker.stop();
+
+        // DON'T stop resamp/outconv/stream - the SinkManager merger has a detached
+        // reader thread on outconv.out. Calling doStop() on outconv would stopWriter()
+        // on outconv.out, killing the merger reader permanently. Let them idle:
+        // when upstream is stopped, they block on read() with no data. On re-enable,
+        // upstream restarts and they resume naturally.
+
         sigpath::vfoManager.deleteVFO(vfo);
         enabled = false;
     }
@@ -231,17 +255,19 @@ private:
     }
 
     void setMode() {
+        // Stop both endpoints before switching to prevent partial start/stop states
+        osmotetradecoder.stop();
+        osmotetradecoder.setInput(nullptr);
+        demodSink.stop();
+        demodSink.setInput(nullptr);
+
         if(decoder_mode == 0) {
-            //osmo-tetra mode: use osmotetradecoder, detach demodSink
-            demodSink.stop();
-            demodSink.setInput(nullptr);  // Detach from bitsUnpacker.out
-            osmotetradecoder.setInput(&bitsUnpacker.out);  // Reattach to bitsUnpacker.out
+            //osmo-tetra mode: use osmotetradecoder
+            osmotetradecoder.setInput(&bitsUnpacker.out);
             osmotetradecoder.start();
         } else {
-            //network syms mode: use demodSink, detach osmotetradecoder
-            osmotetradecoder.stop();
-            osmotetradecoder.setInput(nullptr);  // Detach from bitsUnpacker.out
-            demodSink.setInput(&bitsUnpacker.out);  // Attach to bitsUnpacker.out
+            //network syms mode: use demodSink
+            demodSink.setInput(&bitsUnpacker.out);
             demodSink.start();
         }
         config.acquire();

@@ -611,6 +611,11 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 }
 
                 if (isEnable) {
+                    if (it->second.instance->isEnabled()) {
+                        return responseAllocJSONWithFormat(
+                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true, \"note\": \"already enabled\"}",
+                            instanceName.c_str());
+                    }
                     it->second.instance->enable();
                     core::configManager.conf["moduleInstances"][instanceName]["enabled"] = true;
                     return responseAllocJSONWithFormat(
@@ -619,6 +624,11 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 }
 
                 if (isDisable) {
+                    if (!it->second.instance->isEnabled()) {
+                        return responseAllocJSONWithFormat(
+                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false, \"note\": \"already disabled\"}",
+                            instanceName.c_str());
+                    }
                     it->second.instance->disable();
                     core::configManager.conf["moduleInstances"][instanceName]["enabled"] = false;
                     return responseAllocJSONWithFormat(

@@ -135,7 +135,7 @@ namespace dsp::routing {
 //            flog::info("Merger endwait");
             static int _cnt = 0;
             _cnt++;
-            std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> lck(streamMtx);
             std::shared_ptr<SecondaryStream<T>> bestStream;
             // here we select (maybe) new stream. If SWITCH_DELAY has not passed, using old stream.
             auto ctm = currentTimeMillis();
@@ -203,6 +203,7 @@ namespace dsp::routing {
 
         std::condition_variable dataReady;
         std::mutex dataReadyMutex;
+        std::mutex streamMtx;
 
 
     };
