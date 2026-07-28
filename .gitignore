@@ -34,3 +34,5 @@ qemu/
 /android/.gradle
 /xcode
 *.log
+__pycache__/
+*.pyc
