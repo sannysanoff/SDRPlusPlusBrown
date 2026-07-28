@@ -25,6 +25,7 @@
 #include "../../radio/src/radio_module_interface.h"
 #include <core.h>
 #include <utils/optionlist.h>
+#include <chrono>
 #include "./demod.h"
 
 ConfigManager config;
@@ -91,7 +92,7 @@ public:
         radio->radioModes.back().first = "DSD";
         radio->radioModes.back().second = RADIO_DEMOD_DSD;
         radio->radioModes.emplace_back();
-        radio->radioModes.back().first = "OLD DSD";
+        radio->radioModes.back().first = "oldDSD";
         radio->radioModes.back().second = RADIO_DEMOD_OLDDSD;
 
     }
@@ -179,8 +180,86 @@ public:
         return enabled;
     }
 
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "get_dmr_status") {
+            std::string radioName = args.empty() ? "Radio" : args;
+            demod::DSD::DebugStatus st;
+            if (!demod::DSD::getStatusForRadio(radioName, st)) {
+                return std::string("{\"error\": \"no active DSD demod for radio '") + radioName + "'\"}";
+            }
+            return debugStatusToJson(st, 0, false);
+        }
+        if (cmd == "wait_dmr_sync_voice") {
+            std::string radioName = "Radio";
+            int stableMs = 2000;
+            int timeoutMs = 10000;
+            parseWaitArgs(args, radioName, stableMs, timeoutMs);
+            demod::DSD::DebugStatus st;
+            int waitedMs = 0;
+            bool ok = demod::DSD::waitForDMRSyncVoice(radioName, stableMs, timeoutMs, st, waitedMs);
+            return debugStatusToJson(st, waitedMs, ok);
+        }
+        return "{}";
+    }
+
 
 private:
+    static void parseWaitArgs(const std::string& args, std::string& radioName, int& stableMs, int& timeoutMs) {
+        if (args.empty()) {
+            return;
+        }
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (true) {
+            size_t pos = args.find(',', start);
+            if (pos == std::string::npos) {
+                parts.push_back(args.substr(start));
+                break;
+            }
+            parts.push_back(args.substr(start, pos - start));
+            start = pos + 1;
+        }
+        if (parts.size() > 0 && !parts[0].empty()) { radioName = parts[0]; }
+        if (parts.size() > 1 && !parts[1].empty()) {
+            try { stableMs = std::stoi(parts[1]); } catch (...) {}
+        }
+        if (parts.size() > 2 && !parts[2].empty()) {
+            try { timeoutMs = std::stoi(parts[2]); } catch (...) {}
+        }
+    }
+
+    static std::string escapeJson(const std::string& in) {
+        std::string out;
+        out.reserve(in.size() + 8);
+        for (char c : in) {
+            switch (c) {
+                case '"': out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default: out += c; break;
+            }
+        }
+        return out;
+    }
+
+    static std::string debugStatusToJson(const demod::DSD::DebugStatus& st, int waitedMs, bool ok) {
+        return std::string("{\"status\":\"") + (ok ? "ok" : "timeout") +
+               "\",\"available\":" + (st.available ? "true" : "false") +
+               ",\"sync\":" + (st.sync ? "true" : "false") +
+               ",\"dmr\":" + (st.dmr ? "true" : "false") +
+               ",\"voice\":" + (st.voice ? "true" : "false") +
+               ",\"mbe_decoding\":" + (st.mbe_decoding ? "true" : "false") +
+               ",\"waited_ms\":" + std::to_string(waitedMs) +
+               ",\"color_code\":" + std::to_string(st.color_code) +
+               ",\"slot0_burst\":" + std::to_string(st.slot0_burst) +
+               ",\"slot1_burst\":" + std::to_string(st.slot1_burst) +
+               ",\"slot0_type\":\"" + escapeJson(st.slot0_type) +
+               "\",\"slot1_type\":\"" + escapeJson(st.slot1_type) +
+               "\",\"mbe_errorbar\":\"" + escapeJson(st.mbe_errorbar) + "\"}";
+    }
+
     static void menuHandler(void* ctx) {
         ImGui::Text("See new modes in Radio.");
         ImGui::Text("These modes are provided");

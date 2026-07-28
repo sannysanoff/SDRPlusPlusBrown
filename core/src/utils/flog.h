@@ -26,6 +26,9 @@ namespace flog {
     extern std::mutex outMtx;
     extern std::vector<LogRec> logRecords;
 
+    void setMemoryLogEnabled(bool enabled);
+    bool isMemoryLogEnabled();
+
 
     // IO functions
     void __log__(Type type, const char* fmt, const std::vector<std::string>& args);

@@ -15,7 +15,12 @@
 #include <gui/menus/theme.h>
 #include <backend.h>
 #include <iostream>
+#include <cstdlib>
 #include <gui/menus/display.h>
+#include <http_debug_server.h>
+#include <thread>
+#include <mutex>
+#include <unordered_map>
 
 #include "../../tests/test_utils.h"
 
@@ -79,6 +84,7 @@ void setproctitle(const char* fmt, ...) {
 #endif
 
 char* sdrppResourcesDirectory; // to reference from C files.
+char* sdrppModulesDirectory; // to reference from C files.
 
 namespace core {
     ConfigManager configManager;
@@ -86,12 +92,116 @@ namespace core {
     ModuleComManager modComManager;
     CommandArgsParser args;
 
+    EventHandler<std::string> moduleInstanceCreatedHandler;
+    EventHandler<std::string> moduleInstanceDeletedHandler;
+
 
     SDRPP_EXPORT const char* getRoot() {
         static const char* rootPath = strdup(core::args["root"].s().c_str());
         return rootPath;
     }
 
+    // Forward declaration
+    std::string getMigrationPath(const std::string& path, const std::string& oldName, const std::string& newName);
+
+    // Generic helper to replace oldName with newName in path if newName variant exists
+    // Checks for /oldName/ or \oldName\ (with separator) and /oldName or \oldName at end
+    std::string getMigrationPath(const std::string& path, const std::string& oldName, const std::string& newName) {
+        // Thread-safe cache: map from input path to output path
+        static std::unordered_map<std::string, std::string> cache;
+        static std::mutex cacheMutex;
+
+        std::string cacheKey = path + "|" + oldName + "|" + newName;
+
+        // Check cache first (read lock)
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            auto it = cache.find(cacheKey);
+            if (it != cache.end()) {
+                return it->second;
+            }
+        }
+
+        // Compute the result
+        std::string result = path;
+
+        // Check for /oldName/ or \oldName\ (with trailing separator)
+        size_t pos = path.find("/" + oldName + "/");
+        std::string sep = "/";
+        size_t len = oldName.length() + 2; // +2 for the separators
+
+        if (pos == std::string::npos) {
+            pos = path.find("\\" + oldName + "\\");
+            sep = "\\";
+        }
+
+        // Check for /oldName or \oldName at end of path (without trailing separator)
+        if (pos == std::string::npos) {
+            std::string endCheckFwd = "/" + oldName;
+            std::string endCheckBwd = "\\" + oldName;
+            if (path.length() >= endCheckFwd.length() &&
+                path.substr(path.length() - endCheckFwd.length()) == endCheckFwd) {
+                pos = path.length() - endCheckFwd.length();
+                sep = "/";
+                len = endCheckFwd.length();
+            } else if (path.length() >= endCheckBwd.length() &&
+                       path.substr(path.length() - endCheckBwd.length()) == endCheckBwd) {
+                pos = path.length() - endCheckBwd.length();
+                sep = "\\";
+                len = endCheckBwd.length();
+            }
+        }
+
+        if (pos != std::string::npos) {
+            std::string newPath = path;
+            newPath.replace(pos, len, sep + newName);
+            if (std::filesystem::is_directory(newPath)) {
+                result = newPath;
+            }
+        }
+
+        // Store in cache and log (write lock)
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+        // Double-check to avoid logging twice in race condition
+        if (cache.find(cacheKey) == cache.end()) {
+            if (result != path) {
+                flog::info("getMigrationPath: migrated from '{}' to '{}' (oldName={}, newName={})", path, result, oldName, newName);
+            } else {
+                flog::info("getMigrationPath: no migration needed, returning '{}' (oldName={}, newName={})", path, oldName, newName);
+            }
+            cache[cacheKey] = result;
+        }
+        }
+
+        return result;
+    }
+
+    SDRPP_EXPORT const char* getResourcesDirectory() {
+        // HACK: During migration from sdrpp to sdrpp_brown, check if the brown variant exists
+        // and prefer it over the original path if the original contains "sdrpp" but not "sdrpp_brown"
+        static std::string cachedPath;
+        if (!cachedPath.empty()) {
+            return cachedPath.c_str();
+        }
+
+        // Check for sdrpp -> sdrpp_brown migration
+        cachedPath = getMigrationPath(sdrppResourcesDirectory, "sdrpp", "sdrpp_brown");
+        return cachedPath.c_str();
+    }
+
+    SDRPP_EXPORT const char* getModulesDirectory() {
+        // HACK: During migration from sdrpp to sdrpp_brown, check if the brown variant exists
+        // and prefer it over the original path if the original contains "sdrpp" but not "sdrpp_brown"
+        static std::string cachedPath;
+        if (!cachedPath.empty()) {
+            return cachedPath.c_str();
+        }
+
+        // Check for sdrpp -> sdrpp_brown migration (keep "plugins" as is)
+        cachedPath = getMigrationPath(sdrppModulesDirectory, "sdrpp", "sdrpp_brown");
+        return cachedPath.c_str();
+    }
 
     void setInputSampleRate(double samplerate, double bandwidth) {
         // Forward this to the server
@@ -346,6 +456,11 @@ int sdrpp_main(int argc, char* argv[]) {
         return -1;
     }
 
+    const char* enableMemoryLogEnv = std::getenv("SDRPP_ENABLE_MEMORY_LOG");
+    if (enableMemoryLogEnv && std::string(enableMemoryLogEnv) == "1") {
+        flog::setMemoryLogEnabled(true);
+    }
+
     // Show help and exit if requested
     if (core::args["help"].b()) {
         core::args.showHelp();
@@ -580,7 +695,7 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["VHF Digital Modes"]["module"] = "ch_extravhf_decoder";
     defConfig["moduleInstances"]["VHF Digital Modes"]["enabled"] = true;
     defConfig["moduleInstances"]["TETRA Demodulator"]["module"] = "ch_tetra_demodulator";
-    defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = true;
+    defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = false;
     // defConfig["moduleInstances"]["Rigctl Client"] = "rigctl_client";
     // TODO: Enable rigctl_client when ready
     // defConfig["moduleInstances"]["Scanner"] = "scanner";
@@ -728,8 +843,13 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.acquire();
     std::string resDir = core::configManager.conf["resourcesDirectory"];
     sdrppResourcesDirectory = strdup(resDir.c_str());
+    std::string modDir = core::configManager.conf["modulesDirectory"];
+    sdrppModulesDirectory = strdup(modDir.c_str());
     json bandColors = core::configManager.conf["bandColors"];
     core::configManager.release();
+
+    // Apply migration (sdrpp -> sdrpp_brown) before checking existence
+    resDir = core::getMigrationPath(resDir, "sdrpp", "sdrpp_brown");
 
     // Assert that the resource directory is absolute and check existence
     resDir = std::filesystem::absolute(resDir).string();
@@ -763,10 +883,30 @@ int sdrpp_main(int argc, char* argv[]) {
 
     gui::mainWindow.init();
 
+    // Start HTTP debug server if port > 0
+    int httpPort = (int)core::args["http"];
+    httpdebug::startHttpServer(httpPort);
+
+    // Wait a bit for HTTP server to start listening
+    if (httpPort > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Signal server is ready before entering main loop
+    httpdebug::signalReady();
+
+    // Wait for debug command file if specified
+    std::string debugWaitFile = (std::string)core::args["debug-wait"];
+    if (!debugWaitFile.empty()) {
+        flog::info("Waiting for debug command file: {}", debugWaitFile);
+        httpdebug::waitForDebugCommand(debugWaitFile);
+    }
+
     flog::info("Ready.");
 
     test1();
 
+    httpdebug::signalMainLoopStarted();
 
     // Run render loop (TODO: CHECK RETURN VALUE)
     backend::renderLoop();

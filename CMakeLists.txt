@@ -321,6 +321,9 @@ if (NOT ANDROID)
     endif (OPT_BUILD_NEW_PORTAUDIO_SINK)
 endif ()
 
+# Null audio sink (always built, no deps)
+add_subdirectory("sink_modules/null_audio_sink")
+
 
 # Decoders
 if (OPT_BUILD_ATV_DECODER)
@@ -455,6 +458,10 @@ if(APPLE)
     list(APPEND SDRPP_LIBS "-framework AVFoundation")
     list(APPEND SDRPP_LIBS "-framework Accelerate")
     set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
+endif()
+
+if(NOT APPLE AND NOT WIN32 AND NOT ANDROID)
+    list(APPEND SDRPP_LIBS orc-0.4)
 endif()
 
 

@@ -20,6 +20,7 @@
 #include "utils/wstr.h"
 #include "server.h"
 #include "file_source.h"
+#include "http_debug_server.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -39,7 +40,7 @@ public:
         this->name = name;
         isServer = core::args["server"].b() ? 1 : 0;
 
-//        if (core::args["server"].b()) { return; }
+        //        if (core::args["server"].b()) { return; }
 
         config.acquire();
         fileSelect.setPath(config.conf["path"], true);
@@ -54,6 +55,35 @@ public:
         handler.tuneHandler = tune;
         handler.stream = &stream;
         sigpath::sourceManager.registerSource("File", &handler);
+
+        sigpath::sourceManager.onSourceSelected.bindHandler(&onSourceSelectedHandler);
+        onSourceSelectedHandler.handler = [](std::string name, void* ctx) {
+            if (name != "File") return;
+            auto _this = (FileSourceModule*)ctx;
+            config.acquire();
+            std::string path = config.conf["path"];
+            config.release();
+            httpdebug::procfs::registerEndpoint("/source/filename", [path]() { return path; }, [](const std::string& val) { config.acquire(); config.conf["path"] = val; config.release(true); }, httpdebug::procfs::Type::String);
+            // Get directory from the configured file path
+            std::string dirPath = _this->getDirectoryPath(path);
+            if (dirPath.empty()) {
+                dirPath = std::filesystem::current_path().string();
+            }
+            try {
+                auto wavFiles = _this->getWavFiles(dirPath);
+                std::string json = "[";
+                for (size_t i = 0; i < wavFiles.size(); i++) {
+                    if (i > 0) json += ",";
+                    json += "\"" + wavFiles[i] + "\"";
+                }
+                json += "]";
+                httpdebug::procfs::registerEndpoint("/source/filename:options", [json]() { return json; }, nullptr, httpdebug::procfs::Type::String);
+            } catch (const std::exception& e) {
+                flog::error("FileSource: could not list WAV files: {}", e.what());
+                httpdebug::procfs::registerEndpoint("/source/filename:options", []() { return "[]"; }, nullptr, httpdebug::procfs::Type::String);
+            }
+        };
+        onSourceSelectedHandler.ctx = this;
     }
 
     ~FileSourceModule() {
@@ -106,18 +136,19 @@ public:
             }
             auto dp = getDirectoryPath(fullFilePath);
             auto fn = getFileName(fullFilePath);
-            if (dp.empty()|| fn.empty()) {
+            if (dp.empty() || fn.empty()) {
                 return;
             }
             auto wavFiles = getWavFiles(dp);
             currentDirList.clear();
-            for(auto& file : wavFiles) {
+            for (auto& file : wavFiles) {
                 auto fn0 = getFileName(file);
                 currentDirList.define(fn0, fn0, fn0);
             }
             try {
                 currentDirListId = currentDirList.valueId(fn);
-            } catch (std::exception& e) {
+            }
+            catch (std::exception& e) {
                 currentDirListId = -1; // some file doesn't exist
             }
         }
@@ -139,6 +170,30 @@ public:
         return enabled;
     }
 
+    // Automation channel — invoked by debug HTTP server
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "set_filename" || cmd == "set_path") {
+            config.acquire();
+            config.conf["path"] = args;
+            config.release(true);
+            if (!args.empty()) {
+                try {
+                    openPath(args);
+                } catch (const std::exception& e) {
+                    return "{\"error\": \"" + std::string(e.what()) + "\"}";
+                }
+            }
+            return "{\"status\": \"ok\", \"filename\": \"" + args + "\"}";
+        }
+        if (cmd == "get_filename" || cmd == "get_path") {
+            config.acquire();
+            std::string path = config.conf["path"];
+            config.release();
+            return "{\"filename\": \"" + path + "\"}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
+    }
+
 #ifndef BUILD_TESTS
 private:
 #endif
@@ -150,16 +205,16 @@ private:
         }
         sigpath::iqFrontEnd.setBuffering(false);
         gui::waterfall.centerFrequencyLocked = true;
-        //gui::freqSelect.minFreq = _this->centerFreq - (_this->sampleRate/2);
-        //gui::freqSelect.maxFreq = _this->centerFreq + (_this->sampleRate/2);
-        //gui::freqSelect.limitFreq = true;
+        // gui::freqSelect.minFreq = _this->centerFreq - (_this->sampleRate/2);
+        // gui::freqSelect.maxFreq = _this->centerFreq + (_this->sampleRate/2);
+        // gui::freqSelect.limitFreq = true;
         flog::info("FileSourceModule '{0}': Menu Select!", _this->name);
     }
 
     static void menuDeselected(void* ctx) {
         FileSourceModule* _this = (FileSourceModule*)ctx;
         sigpath::iqFrontEnd.setBuffering(true);
-        //gui::freqSelect.limitFreq = false;
+        // gui::freqSelect.limitFreq = false;
         gui::waterfall.centerFrequencyLocked = false;
         flog::info("FileSourceModule '{0}': Menu Deselect!", _this->name);
     }
@@ -207,7 +262,7 @@ private:
                 if (!_this->running) {
                     auto dp = _this->getDirectoryPath(_this->fileSelect.path);
                     // Save config
-                    auto fullPath = dp + "/"+_this->currentDirList.value(_this->currentDirListId);
+                    auto fullPath = dp + "/" + _this->currentDirList.value(_this->currentDirListId);
                     config.acquire();
                     config.conf["path"] = fullPath;
                     config.release(true);
@@ -224,6 +279,27 @@ private:
             }
             return;
         }
+        // Skip config sync when dialog is open (dialog will set path when done)
+        if (!_this->fileSelect.dialogOpen) {
+            config.acquire();
+            std::string cfgPath = config.conf["path"];
+            config.release();
+            if (!_this->fileSelect.pathIsValid() || (cfgPath != _this->fileSelect.path && !cfgPath.empty())) {
+                _this->fileSelect.setPath(cfgPath, true);
+                if (_this->fileSelect.pathIsValid()) {
+                    if (_this->reader != NULL) {
+                        _this->reader->close();
+                        delete _this->reader;
+                    }
+                    try {
+                        _this->openPathFromFileSelect();
+                    }
+                    catch (const std::exception& e) {
+                        flog::error("FileSourceModule: Error opening file: {}", e.what());
+                    }
+                }
+            }
+        }
 
         if (_this->fileSelect.render("##file_source_" + _this->name)) {
             if (_this->fileSelect.pathIsValid()) {
@@ -235,11 +311,13 @@ private:
                     _this->openPathFromFileSelect();
                 }
                 catch (const std::exception& e) {
-                    flog::error("Error: {}", e.what());
+                    flog::error("FileSourceModule: Error opening file: {}", e.what());
                 }
                 config.acquire();
                 config.conf["path"] = _this->fileSelect.path;
                 config.release(true);
+            } else {
+                flog::warn("FileSourceModule: Selected path is not valid: {0}", _this->fileSelect.path);
             }
         }
 
@@ -250,7 +328,7 @@ private:
 
         if (!isServer) {
             long long int cst = sigpath::iqFrontEnd.getCurrentStreamTime();
-            std::time_t t = cst /1000;
+            std::time_t t = cst / 1000;
             auto tmm = std::localtime(&t);
             char streamTime[64];
             strftime(streamTime, sizeof(streamTime), "%Y-%m-%d %H:%M:%S", tmm);
@@ -259,15 +337,15 @@ private:
         }
     }
 
-    void *getInterface(const char *name) override {
-        if (!strcmp(name,"FileSourceInterface")) {
+    void* getInterface(const char* name) override {
+        if (!strcmp(name, "FileSourceInterface")) {
             return (FileSourceInterface*)this;
         }
         return nullptr;
     }
 
 
-    void openPath(const std::string &path) {
+    void openPath(const std::string& path) {
         try {
             lastError = "";
             reader = new wav::Reader(path);
@@ -283,22 +361,20 @@ private:
             double newFrequency = getFrequency(filename);
             streamStartTime = getStartTime(filename);
             bool fineTune = gui::waterfall.containsFrequency(newFrequency);
-            //                    auto prevFrequency = sigpath::vfoManager.getName();
             centerFreq = newFrequency;
             centerFreqSet = true;
             tuner::tune(tuner::TUNER_MODE_IQ_ONLY, "", centerFreq);
             if (isServer) {
                 server::sendCenterFrequency(centerFreq);
             }
+            flog::info("FileSourceModule: Opened file: {0} @ {1} Hz", path, (int)sampleRate);
             if (fineTune) {
                 // restore the fine tune. When working with file source and restarting the app, the fine tune is lost
-                //                        tuner::tune(tuner::TUNER_MODE_NORMAL, "_current", prevFrequency);
             }
-
         }
-        catch (std::exception &e) {
+        catch (std::exception& e) {
             lastError = e.what();
-            flog::error("Error: {0}", e.what());
+            flog::error("FileSourceModule: Error opening file: {0}", e.what());
         }
     }
 
@@ -378,14 +454,14 @@ private:
         if (".wav" != filename.substr(filename.size() - 4, 4)) return 0;
         auto pos = filename.find("Hz");
         if (pos == std::string::npos) return 0;
-        std::string dateTimeStre = filename.substr(pos+3, 19);
+        std::string dateTimeStre = filename.substr(pos + 3, 19);
         std::tm tm;
         memset(&tm, 0, sizeof(tm));
         char* end;
 #ifdef _WIN32
         int n = sscanf(dateTimeStre.c_str(), "%d-%d-%d_%d-%d-%d", &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &tm.tm_mday, &tm.tm_mon, &tm.tm_year);
         tm.tm_mon--;
-        tm.tm_year-=1900;
+        tm.tm_year -= 1900;
         if (n == 6) {
             end = nullptr;
         }
@@ -400,9 +476,10 @@ private:
             if (t1 < 0) {
                 return 0;
             }
-                //            std::cout << std::asctime(&tm) << '\n';
+            //            std::cout << std::asctime(&tm) << '\n';
             return ((long long)t1) * 1000;
-        } else {
+        }
+        else {
             return 0;
         }
     }
@@ -411,6 +488,7 @@ private:
     std::string name;
     dsp::stream<dsp::complex_t> stream;
     SourceManager::SourceHandler handler;
+    EventHandler<std::string> onSourceSelectedHandler;
     wav::Reader* reader = NULL;
     bool running = false;
     bool enabled = true;

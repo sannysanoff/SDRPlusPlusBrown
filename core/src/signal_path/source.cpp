@@ -3,9 +3,49 @@
 #include <utils/flog.h>
 #include <signal_path/signal_path.h>
 #include <core.h>
+#include <http_debug_server.h>
+
+namespace {
+    std::string currentSourceType;
+    SourceManager::SourceHandler* selectedHandlerRef = nullptr;
+
+    void registerSourceConfigEndpoint(const std::string& sourceName, SourceManager::SourceHandler* handler) {
+        httpdebug::procfs::registerEndpoint("/source/" + sourceName + "/config", [sourceName]() -> std::string {
+                core::configManager.acquire();
+                std::string json = core::configManager.conf[sourceName].dump();
+                core::configManager.release();
+                return json; }, [sourceName](const std::string& val) {
+                try {
+                    json j = json::parse(val);
+                    core::configManager.acquire();
+                    core::configManager.conf[sourceName].update(j);
+                    core::configManager.release(true);
+                } catch (...) {} }, httpdebug::procfs::Type::String);
+    }
+}
 
 SourceManager::SourceManager() {
     nullSource.origin = "source.nullsource";
+
+    httpdebug::procfs::registerEndpoint("/source/type", []() -> std::string { return currentSourceType; }, [](const std::string& val) {
+            currentSourceType = val;
+            httpdebug::requestSourceChange(val); }, httpdebug::procfs::Type::String);
+
+    httpdebug::procfs::registerEndpoint("/source/type:options", []() -> std::string {
+            auto names = sigpath::sourceManager.getSourceNames();
+            std::string json = "[";
+            for (size_t i = 0; i < names.size(); i++) {
+                if (i > 0) json += ",";
+                std::string escaped;
+                for (char c : names[i]) {
+                    if (c == '"') escaped += "\\\"";
+                    else if (c == '\\') escaped += "\\\\";
+                    else escaped += c;
+                }
+                json += "\"" + escaped + "\"";
+            }
+            json += "]";
+            return json; }, nullptr, httpdebug::procfs::Type::String);
 }
 
 void SourceManager::registerSource(std::string name, SourceHandler* handler) {
@@ -51,6 +91,8 @@ void SourceManager::selectSource(std::string name) {
     selectedHandler = sources[name];
     selectedHandler->selectHandler(selectedHandler->ctx);
     selectedName = name;
+    currentSourceType = name;
+    selectedHandlerRef = selectedHandler;
     if (core::args["server"].b()) {
         server::setInput(selectedHandler->stream);
     }
@@ -58,6 +100,8 @@ void SourceManager::selectSource(std::string name) {
         sigpath::iqFrontEnd.setInput(selectedHandler->stream);
     }
     // Set server input here
+    registerSourceConfigEndpoint(name, selectedHandler);
+    onSourceSelected.emit(name);
 }
 
 void SourceManager::showSelectedMenu() {
@@ -90,7 +134,6 @@ void SourceManager::tune(double freq) {
     onRetune.emit(freq);
     currentFreq = freq;
     onTuneChanged.emit(freq);
-
 }
 
 void SourceManager::setTuningOffset(double offset) {

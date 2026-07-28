@@ -25,14 +25,14 @@ struct RadioModuleInterface {
 
     RadioModuleInterface() {
         // fill in default modes.
-        radioModes.push_back(std::make_pair("FM", RADIO_DEMOD_NFM));
+        radioModes.push_back(std::make_pair("NFM", RADIO_DEMOD_NFM));
         radioModes.push_back(std::make_pair("WFM", RADIO_DEMOD_WFM));
         radioModes.push_back(std::make_pair("AM", RADIO_DEMOD_AM));
         radioModes.push_back(std::make_pair("DSB", RADIO_DEMOD_DSB));
         radioModes.push_back(std::make_pair("USB", RADIO_DEMOD_USB));
         radioModes.push_back(std::make_pair("CW", RADIO_DEMOD_CW));
         radioModes.push_back(std::make_pair("LSB", RADIO_DEMOD_LSB));
-        radioModes.push_back(std::make_pair("Raw", RADIO_DEMOD_RAW));
+        radioModes.push_back(std::make_pair("RAW", RADIO_DEMOD_RAW));
 
     }
 

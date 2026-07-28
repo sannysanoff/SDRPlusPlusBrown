@@ -558,6 +558,21 @@ private:
         _this->writer.write(data, count);
     }
 
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) {
+        if (cmd == "start") {
+            if (!recording) { start(); }
+            return recording ? "{\"status\":\"recording\"}" : "{\"status\":\"failed\"}";
+        }
+        if (cmd == "stop") {
+            if (recording) { stop(); }
+            return "{\"status\":\"stopped\"}";
+        }
+        if (cmd == "status") {
+            return "{\"recording\":" + std::string(recording ? "true" : "false") + "}";
+        }
+        return "{}";
+    }
+
     static void moduleInterfaceHandler(int code, void* in, void* out, void* ctx) {
         RecorderModule* _this = (RecorderModule*)ctx;
         std::lock_guard lck(_this->recMtx);

@@ -27,3 +27,12 @@ source_modules/badgesdr_source
 decoder_modules/mystery_decoder
 decoder_modules/tetra_decoder
 qemu/
+
+/root
+/related
+/go
+/android/.gradle
+/xcode
+*.log
+__pycache__/
+*.pyc
