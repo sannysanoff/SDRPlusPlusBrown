@@ -6,6 +6,7 @@ import android.app.NativeActivity
 import android.app.PendingIntent
 import android.app.PendingIntent.FLAG_MUTABLE
 import android.bluetooth.BluetoothSocket.TYPE_SCO
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
