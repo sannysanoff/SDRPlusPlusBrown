@@ -232,11 +232,15 @@ GET /module/File%20Source/command?cmd=set_filename&args=/path/to/file.wav
 ## 7. Debug Logs
 
 ### `GET /log`
-Retrieve the SDR++ application log as JSON. Useful for debugging test failures.
+Retrieve the in-memory SDR++ log batch as JSON and clear it.
+On Android this is available by default. On desktop this is intended for manual HTTP/curl
+debugging and requires launching SDR++ with `SDRPP_ENABLE_MEMORY_LOG=1`.
 
 ```json
 {"log": "<escaped log content>"}
 ```
+
+Each `/log` call drains the current buffer, so the next call returns only newer messages.
 
 ## 8. Procfs Endpoints
 

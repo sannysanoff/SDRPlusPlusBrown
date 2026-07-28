@@ -164,7 +164,7 @@ The typical debugging workflow:
 
 1. **Start the app** with HTTP debug server:
    ```
-   ./sdrpp-cli start
+   SDRPP_ENABLE_MEMORY_LOG=1 ./sdrpp-cli start
    ```
 
 2. **Check status** via HTTP endpoint:
@@ -182,7 +182,9 @@ The typical debugging workflow:
    curl http://localhost:8080/layout
    curl http://localhost:8080/sdr/start   # equivalent to ▶ Play button in GUI
    curl http://localhost:8080/sdr/stop
+   curl http://localhost:8080/log         # returns current log batch and clears it
    ```
+   On desktop, `/log` is for manual agentic research and requires `SDRPP_ENABLE_MEMORY_LOG=1` at launch.
    **Important:** When using `File Source`, you must configure the input file first:
    ```
    curl -X POST http://localhost:8080/module/File%20Source/command -d '{"cmd":"set_filename","args":"/path/to/file.wav"}'
@@ -212,6 +214,7 @@ Use this exact order when fixing SDR++ runtime bugs:
 
 2. **Reproduce only through HTTP/manual inspection**
    Use curl, `/status`, `/modules`, `/streams`, `/log`, module commands, and procfs endpoints.
+   On desktop, enable `/log` explicitly with `SDRPP_ENABLE_MEMORY_LOG=1` when launching SDR++.
    Example:
    ```bash
    curl -X POST http://localhost:8080/module/File%20Source/command \

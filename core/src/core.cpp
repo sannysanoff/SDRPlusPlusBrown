@@ -15,6 +15,7 @@
 #include <gui/menus/theme.h>
 #include <backend.h>
 #include <iostream>
+#include <cstdlib>
 #include <gui/menus/display.h>
 #include <http_debug_server.h>
 #include <thread>
@@ -453,6 +454,11 @@ int sdrpp_main(int argc, char* argv[]) {
     if (core::args.parse(argc, argv) < 0) {
         flog::info("Unable to parse args.");
         return -1;
+    }
+
+    const char* enableMemoryLogEnv = std::getenv("SDRPP_ENABLE_MEMORY_LOG");
+    if (enableMemoryLogEnv && std::string(enableMemoryLogEnv) == "1") {
+        flog::setMemoryLogEnabled(true);
     }
 
     // Show help and exit if requested

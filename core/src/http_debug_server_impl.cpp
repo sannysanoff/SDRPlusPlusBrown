@@ -708,6 +708,9 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
 #endif
 
     if (strcmp(request->path, "/log") == 0) {
+        if (!flog::isMemoryLogEnabled()) {
+            return responseAllocJSON("{\"error\":\"memory log buffer disabled\"}");
+        }
         std::string content;
         {
             std::lock_guard<std::mutex> lock(flog::outMtx);
