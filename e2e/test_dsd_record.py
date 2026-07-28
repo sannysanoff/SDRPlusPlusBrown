@@ -70,8 +70,19 @@ def test_dmr_record():
     main_config["frequency"] = CARRIER_FREQ
     main_config["sampleRate"] = SAMPLE_RATE
 
+    recorder_config = {
+        "Recorder": {
+            "mode": 0,
+            "audioStream": "Radio",
+            "recPath": "",
+            "audioVolume": 1.0,
+            "stereo": True,
+            "ignoreSilence": False,
+        }
+    }
+
     with SDRPPTestContext(startup_timeout=30.0) as ctx:
-        ctx.write_configs(main_config)
+        ctx.write_configs(main_config, recorder_config=recorder_config)
 
         if not ctx.start():
             stats.test_fail("test_dmr_record", "Failed to start SDR++")

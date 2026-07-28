@@ -363,7 +363,8 @@ class SDRPPTestContext:
         self,
         main_config: Dict[str, Any],
         radio_config: Optional[Dict[str, Any]] = None,
-        freq_manager_config: Optional[Dict[str, Any]] = None
+        freq_manager_config: Optional[Dict[str, Any]] = None,
+        recorder_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Write configuration files to temp directory."""
         with open(f"{self.temp_dir}/config.json", 'w') as f:
@@ -376,6 +377,10 @@ class SDRPPTestContext:
         if freq_manager_config:
             with open(f"{self.temp_dir}/frequency_manager_config.json", 'w') as f:
                 json.dump(freq_manager_config, f, indent=2)
+        
+        if recorder_config is not None:
+            with open(f"{self.temp_dir}/recorder_config.json", 'w') as f:
+                json.dump(recorder_config, f, indent=2)
     
     def start(self, extra_args: Optional[List[str]] = None) -> bool:
         """Start SDR++ process and wait for server to be ready.
