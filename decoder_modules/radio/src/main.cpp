@@ -24,6 +24,8 @@ SDRPP_MOD_INFO{
     /* Max instances    */ -1
 };
 
+const int RadioModule::SPECTRUM_BUF_SIZE;
+
 MOD_EXPORT void _INIT_() {
     json def = json({});
     config.setPath(std::string(core::getRoot()) + "/radio_config.json");

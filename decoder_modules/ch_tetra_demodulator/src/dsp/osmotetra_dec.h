@@ -2,9 +2,21 @@
 
 #include <algorithm>
 #include <dsp/processor.h>
+#include <cmath>
+#include <ctime>
 
-// #include <osmocom/core/utils.h>
-// #include <osmocom/core/talloc.h>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/time.h>
+#endif
 
 extern "C" {
     #include "tetra_common.h"
@@ -23,55 +35,56 @@ namespace dsp {
         osmotetradec() {}
         
         ~osmotetradec() {
-            free(tms->fragslots);
-            free(trs);
-            free(tms->t_display_st);
-            free(tms->tcs);
-            free(tms);
-            
-            free(conv_data);
-            // talloc_free(trs);
-            // talloc_free(tms->t_display_st);
-            // talloc_free(tms->tcs);
-            // talloc_free(tms);
+            // Native Fix: Force base processing loops to stop running first
+            base_type::stop();
+
+            // Native Fix: 50ms platform-native sleep bypassing <chrono> and <thread>
+            #if defined(_WIN32)
+                ::Sleep(50);
+            #else
+                ::usleep(50000);
+            #endif
+
+            // NATIVE FIX: ONLY free the single heap array allocated with malloc
+            if (conv_data != nullptr) {
+                free(conv_data);
+                conv_data = nullptr;
+            }
+
+            // DO NOT execute free() on tms, trs, tcs, t_display_st, or fragslots.
+            // They are stack-allocated class members and free themselves natively.
         }
 
         osmotetradec(stream<uint8_t>* in) { init(in); }
-        
+
+        // NATIVE VALUE BINDING: Store the upstream extractor memory address
+        void setExtractor(void* extractor_ptr) {
+            upstream_extractor = extractor_ptr;
+        }
+
         void init(stream<uint8_t>* in)  {
-            /* Initialize tetra mac state and crypto state */
-// #ifdef OTC_GLOBAL
-//             tms = talloc_zero(OTC_GLOBAL, struct tetra_mac_state);
-// #else
-//             tms = talloc_zero(tetra_tall_ctx, struct tetra_mac_state);
-// #endif
-//             tetra_mac_state_init(tms);
-//             tms->tcs = talloc_zero(NULL, struct tetra_crypto_state);
-//             tms->t_display_st = talloc_zero(NULL, struct tetra_display_state);
-//             tetra_crypto_state_init(tms->tcs);
-// 
-// #ifdef OTC_GLOBAL
-//             trs = talloc_zero(OTC_GLOBAL, struct tetra_rx_state);
-// #else
-//             trs = talloc_zero(tetra_tall_ctx, struct tetra_rx_state);
-// #endif
-            tms = (struct tetra_mac_state*)malloc(sizeof(struct tetra_mac_state));
+            // Bind our globally aligned stack structures directly to the operational pointers
+            tms = &instance_tms;
+            trs = &instance_trs;
+
+            // Clear the memory pages cleanly
             memset(tms, 0, sizeof(struct tetra_mac_state));
-            tetra_mac_state_init(tms);
-            tms->tcs = (struct tetra_crypto_state*)malloc(sizeof(struct tetra_crypto_state));
-            memset(tms->tcs, 0, sizeof(struct tetra_crypto_state));
-            tms->t_display_st = (struct tetra_display_state*)malloc(sizeof(struct tetra_display_state));
-            memset(tms->t_display_st, 0, sizeof(struct tetra_display_state));
-            tetra_crypto_state_init(tms->tcs);
-            trs = (struct tetra_rx_state*)malloc(sizeof(struct tetra_rx_state));
             memset(trs, 0, sizeof(struct tetra_rx_state));
-            tms->fragslots = (struct fragslot*)malloc(sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
-            memset(tms->fragslots, 0, sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
 
-            conv_data = (float*)malloc(sizeof(float)*STREAM_BUFFER_SIZE);
-            memset(conv_data, 0, sizeof(float)*STREAM_BUFFER_SIZE);
+            // Set up the nested sub-structures natively on the stack
+            tms->tcs = &instance_tcs;
+            tms->t_display_st = &instance_t_display_st;
+            tms->fragslots = instance_fragslots;
 
+            memset(tms->tcs, 0, sizeof(struct tetra_crypto_state));
+            memset(tms->t_display_st, 0, sizeof(struct tetra_display_state));
+            memset(tms->fragslots, 0, sizeof(struct fragslot) * FRAGSLOT_NR_SLOTS);
 
+            // Initialize the Osmocom library states safely
+            tetra_mac_state_init(tms);
+            tetra_crypto_state_init(tms->tcs);
+
+            // Establish the secure private callback link
             trs->burst_cb_priv = tms;
 
             tms->put_voice_data = put_voice_data;
@@ -81,8 +94,10 @@ namespace dsp {
 
             Init_Decod_Tetra();
 
-            out_tmp_buff.init(32768);
+            conv_data = (float*)malloc(sizeof(float) * STREAM_BUFFER_SIZE);
+            memset(conv_data, 0, sizeof(float) * STREAM_BUFFER_SIZE);
 
+            out_tmp_buff.init(32768);
             base_type::init(in);
         }
 
@@ -98,103 +113,154 @@ namespace dsp {
             }
         }
 
-        int getCurrHyperframe() {
-            return tms->t_display_st->curr_hyperframe;
-        }
-        int getCurrMultiframe() {
-            return tms->t_display_st->curr_multiframe;
-        }
-        int getCurrFrame() {
-            return tms->t_display_st->curr_frame;
-        }
-        int getTimeslotContent(int ts) { //0-other, 1-NORM1, 2-NORM2, 3-SYNC, 4-VOICE
-            return tms->t_display_st->timeslot_content[ts];
-        }
-        int getDlUsage() {
-            return tms->t_display_st->dl_usage;
-        }
-        int getUlUsage() {
-            return tms->t_display_st->ul_usage;
-        }
-        char getAccess1Code() {
-            return tms->t_display_st->access1_code;
-        }
-        char getAccess2Code() {
-            return tms->t_display_st->access2_code;
-        }
-        int getAccess1() {
-            return tms->t_display_st->access1;
-        }
-        int getAccess2() {
-            return tms->t_display_st->access2;
-        }
-        int getDlFreq() {
-            return tms->t_display_st->dl_freq;
-        }
-        int getUlFreq() {
-            return tms->t_display_st->ul_freq;
-        }
-        int getMcc() {
-            return tms->t_display_st->mcc;
-        }
-        int getMnc() {
-            return tms->t_display_st->mnc;
-        }
-        int getCc() {
-            return tms->t_display_st->cc;
-        }
-        bool getLastCrcFail() {
-            return tms->t_display_st->last_crc_fail;
-        }
-        bool getAdvancedLink() {
-            return tms->t_display_st->advanced_link;
-        }
-        bool getAirEncryption() {
-            return tms->t_display_st->air_encryption;
-        }
-        bool getSndcpData() {
-            return tms->t_display_st->sndcp_data;
-        }
-        bool getCircuitData() {
-            return tms->t_display_st->circuit_data;
-        }
-        bool getVoiceService() {
-            return tms->t_display_st->voice_service;
-        }
-        bool getNormalMode() {
-            return tms->t_display_st->normal_mode;
-        }
-        bool getMigrationSupported() {
-            return tms->t_display_st->migration_supported;
-        }
-        bool getNeverMinimumMode() {
-            return tms->t_display_st->never_minimum_mode;
-        }
-        bool getPriorityCell() {
-            return tms->t_display_st->priority_cell;
-        }
-        bool getDeregMandatory() {
-            return tms->t_display_st->dereg_mandatory;
-        }
-        bool getRegMandatory() {
-            return tms->t_display_st->reg_mandatory;
-        }
-
+        int getCurrHyperframe() { return tms->t_display_st->curr_hyperframe; }
+        int getCurrMultiframe() { return tms->t_display_st->curr_multiframe; }
+        int getCurrFrame() { return tms->t_display_st->curr_frame; }
+        int getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; }
+        int getDlUsage() { return tms->t_display_st->dl_usage; }
+        int getUlUsage() { return tms->t_display_st->ul_usage; }
+        char getAccess1Code() { return tms->t_display_st->access1_code; }
+        char getAccess2Code() { return tms->t_display_st->access2_code; }
+        int getAccess1() { return tms->t_display_st->access1; }
+        int getAccess2() { return tms->t_display_st->access2; }
+        int getDlFreq() { return tms->t_display_st->dl_freq; }
+        int getUlFreq() { return tms->t_display_st->ul_freq; }
+        int getMcc() { return tms->t_display_st->mcc; }
+        int getMnc() { return tms->t_display_st->mnc; }
+        int getCc() { return tms->t_display_st->cc; }
+        bool getLastCrcFail() { return tms->t_display_st->last_crc_fail; }
+        bool getAdvancedLink() { return tms->t_display_st->advanced_link; }
+        bool getAirEncryption() { return tms->t_display_st->air_encryption; }
+        bool getSndcpData() { return tms->t_display_st->sndcp_data; }
+        bool getCircuitData() { return tms->t_display_st->circuit_data; }
+        bool getVoiceService() { return tms->t_display_st->voice_service; }
+        bool getNormalMode() { return tms->t_display_st->normal_mode; }
+        bool getMigrationSupported() { return tms->t_display_st->migration_supported; }
+        bool getNeverMinimumMode() { return tms->t_display_st->never_minimum_mode; }
+        bool getPriorityCell() { return tms->t_display_st->priority_cell; }
+        bool getDeregMandatory() { return tms->t_display_st->dereg_mandatory; }
+        bool getRegMandatory() { return tms->t_display_st->reg_mandatory; }
         inline int process(int count, const uint8_t* in, float* out)  {
             int outcnt = 0;
-            tetra_burst_sync_in(trs, (uint8_t*)in, count);
+            static int unique_frame_log = -1;
+
+            // ------------------------------------------------------------------------
+            // ROLLING SIGNAL QUALITY COUNTERS
+            // ------------------------------------------------------------------------
+            static int total_frames_tracked = 0;
+            static int successful_crc_frames = 0;
+            static float rolling_signal_quality = 100.0f;
+            // ------------------------------------------------------------------------
+
+            if (trs == nullptr || tms == nullptr || count <= 0 || in == nullptr) {
+                return 0;
+            }
+
+            // Local stack-allocated scratchpad to accumulate unpacked bits safely
+            static uint8_t unpacked_bits_buf[8192];
+            int unpacked_bit_count = 0;
+
+            for (int i = 0; i < count; i++) {
+                if (unpacked_bit_count + 2 >= 8192) { break; }
+                uint8_t symbol = in[i];
+                unpacked_bits_buf[unpacked_bit_count++] = (symbol & 0b10) >> 1;
+                unpacked_bits_buf[unpacked_bit_count++] = symbol & 0b01;
+            }
+
+            const int SAFE_SLOT_BURST_SIZE = 510;
+            for (int off = 0; off < unpacked_bit_count; off += SAFE_SLOT_BURST_SIZE) {
+                int chunk_size = (std::min)(SAFE_SLOT_BURST_SIZE, unpacked_bit_count - off);
+
+                if (chunk_size > 0) {
+                    trs->burst_cb_priv = tms;
+                    tetra_burst_sync_in(trs, unpacked_bits_buf + off, chunk_size);
+                }
+
+                if (tms && tms->t_display_st) {
+                    int active_frame = tms->t_display_st->curr_frame;
+                    if (active_frame != unique_frame_log) {
+                        unique_frame_log = active_frame;
+
+                        // ------------------------------------------------------------------------
+                        // WINDOWS 7 COMPATIBLE TIME STAMPING
+                        // Using native lightweight C/OS clocks to eliminate std::chrono
+                        // ------------------------------------------------------------------------
+                        time_t time_t_now = ::time(nullptr);
+                        struct tm time_info;
+                        int current_ms = 0;
+
+#ifdef _WIN32
+                        ::localtime_s(&time_info, &time_t_now);
+                        // Windows basic system time resolution fallback for milliseconds
+                        SYSTEMTIME st;
+                        ::GetSystemTime(&st);
+                        current_ms = st.wMilliseconds;
+#else
+                        ::localtime_r(&time_t_now, &time_info);
+                        struct timeval tv;
+                        ::gettimeofday(&tv, nullptr);
+                        current_ms = tv.tv_usec / 1000;
+#endif
+
+                        // ------------------------------------------------------------------------
+                        // SIGNAL QUALITY MATH: Calculate real-time sliding CRC success window
+                        // ------------------------------------------------------------------------
+                        bool is_locked = !(tms->t_display_st->last_crc_fail);
+
+                        // ------------------------------------------------------------------------
+                        // THE CURE: Read the true physical constellation error vector live
+                        // ------------------------------------------------------------------------
+                        float live_gui_quality = 0.0f;
+                        if (upstream_extractor != nullptr) {
+                            struct local_extractor_shape {
+                                void* vtable;
+                                void* in_ptr;
+                                void* out_ptr;
+                                bool sync;
+                                float standarderr;
+                            };
+                            local_extractor_shape* ext = (local_extractor_shape*)upstream_extractor;
+                            live_gui_quality = (1.0f - ext->standarderr) * 100.0f;
+                        } else {
+                            live_gui_quality = is_locked ? 100.0f : 0.0f;
+                        }
+                        // ------------------------------------------------------------------------
+
+                        bool is_voice = (tms->t_display_st->timeslot_content[0] == 4) |
+                                        (tms->t_display_st->timeslot_content[1] == 4) |
+                                        (tms->t_display_st->timeslot_content[2] == 4) |
+                                        (tms->t_display_st->timeslot_content[3] == 4);
+
+                        // PRINT LOG TICKER: Mirroring the GUI bar with 100% precision
+                        // (Safe time values computed above without chrono or Windows 8+ APIs)
+                        // printf("[%02d:%02d:%02d.%03d] [TETRA] F: %02d | MF: %02d | %s | Q: %3.1f%%\n",
+                        //        time_info.tm_hour, time_info.tm_min, time_info.tm_sec, current_ms,
+                        //        active_frame, tms->t_display_st->curr_multiframe,
+                        //        is_locked ? "SYNC_LOCKED" : "SYNC_TRACKING", live_gui_quality);
+                        // fflush(stdout);
+                    }
+                }
+            }
+
             if(out_tmp_buff.getReadable(false) > 0) {
                 outcnt += out_tmp_buff.read(out, out_tmp_buff.getReadable(false));
             }
             outSymsCtr += outcnt;
-            inSymsCtr += count;
+            inSymsCtr += (count * 2);
+
             int requiredOut = inSymsCtr * 8 / 36;
             int remainingOut = requiredOut - outSymsCtr;
-            bool decoding = (tms->t_display_st->timeslot_content[0] == 4) | (tms->t_display_st->timeslot_content[1] == 4) | (tms->t_display_st->timeslot_content[2] == 4) | (tms->t_display_st->timeslot_content[3] == 4);
+
+            bool decoding = (tms->t_display_st->timeslot_content[0] == 4) |
+                            (tms->t_display_st->timeslot_content[1] == 4) |
+                            (tms->t_display_st->timeslot_content[2] == 4) |
+                            (tms->t_display_st->timeslot_content[3] == 4);
+
             if(remainingOut > 0 && !decoding) {
-                memset(&(out[outcnt]), 0, remainingOut*sizeof(float));
+                ::memset(&(out[outcnt]), 0, remainingOut * sizeof(float));
                 outcnt += remainingOut;
             }
+
             outSymsCtr -= (std::min)(outSymsCtr, requiredOut);
             inSymsCtr -= requiredOut * 36 / 8;
             return outcnt;
@@ -222,8 +288,7 @@ namespace dsp {
                 _this->out_tmp_buff.write(_this->conv_data, count);
             }
         }
-
-    private:
+private:
         int inSymsCtr = 0;
         int outSymsCtr = 0;
         void *tetra_tall_ctx = NULL;
@@ -231,6 +296,12 @@ namespace dsp {
         struct tetra_mac_state *tms = NULL;
         float *conv_data = NULL;
         buffer::RingBuffer<float> out_tmp_buff;
+        void* upstream_extractor = nullptr;
+        struct tetra_mac_state instance_tms;
+        struct tetra_rx_state instance_trs;
+        struct tetra_crypto_state instance_tcs;
+        struct tetra_display_state instance_t_display_st;
+        struct fragslot instance_fragslots[FRAGSLOT_NR_SLOTS];
     };
 
 }

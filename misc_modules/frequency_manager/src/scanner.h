@@ -16,6 +16,11 @@ public:
     Scanner(FrequencyManagerModule* module);
     ~Scanner();
 
+    bool isScanning() const { return scanning; }
+    std::string getCurrentStation() const { return currentStation; }
+    void startScanner() { start(); }
+    void stopScanner() { stop(); }
+
     void onPlayStateChange(bool playing);
 
     void setBookmarks(const std::vector<std::string>& bookmarks, const std::map<std::string, FrequencyBookmark>& bookmarksMap);

@@ -3,7 +3,8 @@
 #include <thread>
 #include <string>
 #include <mutex>
-#include <condition_variable>
+#include <memory>
+#include <atomic>
 
 using nlohmann::json;
 
@@ -22,15 +23,13 @@ public:
     json conf;
 
 private:
-    void autoSaveWorker();
+    struct SaveJob;
 
     std::string path = "";
-    volatile bool changed = false;
-    volatile bool autoSaveEnabled = false;
-    std::thread autoSaveThread;
+    bool changed = false;
+    std::atomic<bool> autoSaveEnabled = false;
+    std::shared_ptr<SaveJob> saveJob;
     std::mutex mtx;
 
-    std::mutex termMtx;
-    std::condition_variable termCond;
-    volatile bool termFlag = false;
+    friend class ConfigSaveWorker;
 };

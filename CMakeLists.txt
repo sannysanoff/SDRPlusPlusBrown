@@ -68,7 +68,6 @@ option(OPT_BUILD_M17_DECODER "Build the M17 decoder module (Dependencies: codec2
 option(OPT_BUILD_CH_EXTRAVHF_DECODER "Build the extra VHF decoder module" ON)
 option(OPT_BUILD_CH_TETRA_DEMODULATOR "Build the tetra demodulator" ON)
 option(OPT_BUILD_FT8_DECODER "Build the FT8 decoder module" ON)
-option(OPT_BUILD_DSDCC_DECODER "Build the DSDCC decoder module" OFF)
 option(OPT_BUILD_METEOR_DEMODULATOR "Build the meteor demodulator module (no dependencies required)" ON)
 option(OPT_BUILD_PAGER_DECODER "Build the pager decoder module (no dependencies required)" ON)
 option(OPT_BUILD_RADIO "Main audio modulation decoder (AM, FM, SSB, etc...)" ON)
@@ -120,6 +119,10 @@ else()
     endif ()
 endif()
 set(SDRPP_MODULE_COMPILER_FLAGS ${SDRPP_COMPILER_FLAGS})
+
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES WINVER=0x0601 _WIN32_WINNT=0x0601)
+endif()
 
 # Set a default install prefix
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -317,6 +320,9 @@ if (NOT ANDROID)
     endif (OPT_BUILD_NEW_PORTAUDIO_SINK)
 endif ()
 
+# Null audio sink (always built, no deps)
+add_subdirectory("sink_modules/null_audio_sink")
+
 
 # Decoders
 if (OPT_BUILD_ATV_DECODER)
@@ -350,10 +356,6 @@ endif (OPT_BUILD_CH_TETRA_DEMODULATOR)
 if (OPT_BUILD_FT8_DECODER)
     add_subdirectory("decoder_modules/ft8_decoder")
 endif (OPT_BUILD_FT8_DECODER)
-
-if (OPT_BUILD_DSDCC_DECODER)
-    add_subdirectory("decoder_modules/dsdcc_decoder")
-endif (OPT_BUILD_DSDCC_DECODER)
 
 if (OPT_BUILD_METEOR_DEMODULATOR)
 add_subdirectory("decoder_modules/meteor_demodulator")
@@ -451,6 +453,10 @@ if(APPLE)
     list(APPEND SDRPP_LIBS "-framework AVFoundation")
     list(APPEND SDRPP_LIBS "-framework Accelerate")
     set_source_files_properties("src/macos_init.m" PROPERTIES COMPILE_FLAGS "-std=c99")
+endif()
+
+if(NOT APPLE AND NOT WIN32 AND NOT ANDROID)
+    list(APPEND SDRPP_LIBS orc-0.4)
 endif()
 
 

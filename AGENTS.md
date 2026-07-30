@@ -163,7 +163,61 @@ This applies to all branches including `master` and feature branches.
 - You MAY prepare commits for review
 - Wait for explicit user approval before pushing
 
+## Building Locally (macOS / ARM64)
+
+**CMake Configuration:**
+
+```bash
+cd /Users/san/Fun/SDRPlusPlus/cmake-build-debug
+cmake .. \
+    -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -G "Unix Makefiles" \
+    -DOPT_BUILD_PLUTOSDR_SOURCE=OFF \
+    -DCMAKE_INSTALL_PREFIX=/Users/san/Fun/SDRPlusPlus/root_dev/inst \
+    -DOPT_BUILD_CH_EXTRAVHF_DECODER:BOOL=ON
+```
+
+**Build & Install:**
+
+```bash
+make -j$(nproc)
+make install
+```
+
+> **⚠️ Must run `make install` after any source change to redeploy `.dylib`/`.so` modules into `root_dev/inst/`. Without `make install`, `sdrpp` loads stale modules from the build directory or an old install location, making it impossible to test runtime fixes (e.g., stream teardown hangs).
+
+## Debugging
+
+See [AGENTS-debugging.md](./AGENTS-debugging.md) for detailed debugging and remote control capabilities.
+
+## Windows Build Caveats
+
+### MSVC `min`/`max` macro clash
+
+`<Windows.h>` defines `min` and `max` as preprocessor macros that break `std::min(...)` and `std::max(...)` with `error C2589: '(': illegal token on right side of '::'`.
+
+Fix by parenthesizing the call:
+```cpp
+// Before (breaks on MSVC):
+int x = std::min(a, b);
+// After:
+int x = (std::min)(a, b);
+```
+
+Search for unguarded uses with `grep 'std::\(min\|max\)('`.
+
+### VS 2026 drops Windows 7/8 runtime support
+
+Since June 2026, GitHub Actions `windows-latest` and `windows-2025` images ship **VS 2026** (MSVC 14.51), whose redistributable no longer supports Windows 7/8/8.1. The minimum target is Windows 10.
+
+To build binaries compatible with Windows 7, pin the runner to `windows-2022` in CI:
+```yaml
+runs-on: windows-2022
+```
+
 ## General Notes
 * The build process can be lengthy due to the number of dependencies and modules.
 * The CI scripts in `.github/workflows/build_all.yml` and `docker_builds/` are good references for platform-specific dependencies and build commands.
 * Many warnings may appear during compilation (e.g., from IT++, libmp3lame, deprecated C++ features). For this exercise, they were non-fatal for the selected build configuration. Investigation may be needed if they cause issues with specific functionalities.
+
+IMPORTANT!!! Never change layout and formatting of C/C++ code unrelated to the task you're doing. NO braces edits in unrelated code, no spaces evenly distributed in array initializations. In existing C++ code, each position matter, NEVER change unless you fix bug related to that line. NEVER add changes to source that just alter code layout!

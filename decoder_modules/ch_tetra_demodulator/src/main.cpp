@@ -32,16 +32,16 @@
 
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
-#define VFO_SAMPLERATE 36000
-#define VFO_BANDWIDTH 30000
-#define CLOCK_RECOVERY_BW 0.00628f
-#define CLOCK_RECOVERY_DAMPN_F 0.707f
-#define CLOCK_RECOVERY_REL_LIM 0.02f
-#define RRC_TAP_COUNT 65
-#define RRC_ALPHA 0.35f
-#define AGC_RATE 0.02f
-#define COSTAS_LOOP_BANDWIDTH 0.01f
-#define FLL_LOOP_BANDWIDTH 0.006f
+#define VFO_SAMPLERATE 72000
+#define VFO_BANDWIDTH 45000
+#define CLOCK_RECOVERY_BW 0.025f         // Changed from 0.00628f
+#define CLOCK_RECOVERY_DAMPN_F 0.707f    // Kept (Critically Damped is perfect)
+#define CLOCK_RECOVERY_REL_LIM 0.05f     // Changed from 0.02f
+#define RRC_TAP_COUNT 65                 // Kept (Filter depth is fine)
+#define RRC_ALPHA 0.35f                  // Kept (Strict TETRA standard)
+#define AGC_RATE 0.05f                   // Changed from 0.02f
+#define COSTAS_LOOP_BANDWIDTH 0.04f      // Changed from 0.01f
+#define FLL_LOOP_BANDWIDTH 0.02f         // Changed from 0.006f
 
 SDRPP_MOD_INFO {
     /* Name:            */ "ch_tetra_demodulator",
@@ -90,9 +90,17 @@ public:
         symbolExtractor.init(&demodStream);
         bitsUnpacker.init(&symbolExtractor.out);
 
-        demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
+        // Initialize demodSink with NULL input - set dynamically in setMode()
+        // to avoid two readers on bitsUnpacker.out simultaneously
+        demodSink.init(nullptr, _demodSinkHandler, this);
 
-        osmotetradecoder.init(&bitsUnpacker.out);
+        // ------------------------------------------------------------------------
+        // NATIVE VALUE BINDING: Pass the symbolExtractor pointer to the decoder
+        // ------------------------------------------------------------------------
+        osmotetradecoder.init(&symbolExtractor.out);
+        osmotetradecoder.setExtractor(&symbolExtractor); // Feed the extractor address
+        // ------------------------------------------------------------------------
+
         resamp.init(&osmotetradecoder.out, 8000.0, audioSampleRate);
         outconv.init(&resamp.out);
 
@@ -108,7 +116,6 @@ public:
         constDiagReshaper.start();
         constDiagSink.start();
         symbolExtractor.start();
-        bitsUnpacker.start();
         setMode();
         resamp.start();
         outconv.start();
@@ -131,40 +138,101 @@ public:
     void postInit() {}
 
     void enable() {
-        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
+        if (enabled) { return; }
+
+        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
+        if (!vfo) {
+            flog::error("TETRA: createVFO failed (name already in use?)");
+            return;
+        }
+
+        float recov_bandwidth = CLOCK_RECOVERY_BW;
+        float recov_dampningFactor = CLOCK_RECOVERY_DAMPN_F;
+        float recov_denominator = (1.0f + 2.0*recov_dampningFactor*recov_bandwidth + recov_bandwidth*recov_bandwidth);
+        float recov_mu = (4.0f * recov_dampningFactor * recov_bandwidth) / recov_denominator;
+        float recov_omega = (4.0f * recov_bandwidth * recov_bandwidth) / recov_denominator;
+
         mainDemodulator.setInput(vfo->output);
-        mainDemodulator.start();
-        constDiagSplitter.start();
-        constDiagReshaper.start();
-        constDiagSink.start();
+        constDiagSplitter.setInput(&mainDemodulator.out);
+        constDiagReshaper.setInput(&constDiagStream);
+        symbolExtractor.setInput(&demodStream);
+
+        // Start blocks from downstream to upstream.
+        // resamp/outconv/stream are NOT stopped in disable(), so they idle
+        // and resume automatically when upstream data flows again.
         symbolExtractor.start();
-        bitsUnpacker.start();
-        setMode();
-        resamp.start();
-        outconv.start();
-        stream.start();
+        constDiagSink.start();
+        constDiagReshaper.start();
+        constDiagSplitter.start();
+        mainDemodulator.start();
 
         enabled = true;
+        setMode();
     }
 
     void disable() {
+        if (!enabled) { return; }
+
+        // Stop upstream first to drain data flow into the chain
         mainDemodulator.stop();
         constDiagSplitter.stop();
         constDiagReshaper.stop();
         constDiagSink.stop();
         symbolExtractor.stop();
-        bitsUnpacker.stop();
+
+        // Stop both mode endpoints and the optional unpacker path.
         osmotetradecoder.stop();
+        osmotetradecoder.setInput(nullptr);
         demodSink.stop();
-        resamp.stop();
-        outconv.stop();
-        stream.stop();
+        demodSink.setInput(nullptr);
+        bitsUnpacker.stop();
+
+        // DON'T stop resamp/outconv/stream - the SinkManager merger has a detached
+        // reader thread on outconv.out. Calling doStop() on outconv would stopWriter()
+        // on outconv.out, killing the merger reader permanently. Let them idle:
+        // when upstream is stopped, they block on read() with no data. On re-enable,
+        // upstream restarts and they resume naturally.
+
         sigpath::vfoManager.deleteVFO(vfo);
         enabled = false;
     }
 
     bool isEnabled() {
         return enabled;
+    }
+
+    // Automation channel
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "get_status") {
+            int dec_st = osmotetradecoder.getRxState();
+            std::string lockState = (dec_st == 0) ? "unlocked" : ((dec_st == 2) ? "locked" : "know_next_start");
+            std::string status = "{\"decoder_state\": \"" + lockState + "\", "
+                "\"sync\": " + std::string(symbolExtractor.sync ? "true" : "false") + ", "
+                "\"signal_quality\": " + std::to_string(1.0f - symbolExtractor.standarderr) + ", "
+                "\"mode\": " + std::to_string(decoder_mode);
+            if (decoder_mode == 0 && enabled) {
+                status += ", \"hyperframe\": " + std::to_string(osmotetradecoder.getCurrHyperframe());
+                status += ", \"multiframe\": " + std::to_string(osmotetradecoder.getCurrMultiframe());
+                status += ", \"frame\": " + std::to_string(osmotetradecoder.getCurrFrame());
+                status += ", \"mcc\": " + std::to_string(osmotetradecoder.getMcc());
+                status += ", \"mnc\": " + std::to_string(osmotetradecoder.getMnc());
+                status += std::string(", \"voice_service\": ") + (osmotetradecoder.getVoiceService() ? "true" : "false");
+            }
+            status += "}";
+            return status;
+        }
+        if (cmd == "set_mode") {
+            try {
+                int mode = std::stoi(args);
+                if (mode == 0 || mode == 1) {
+                    decoder_mode = mode;
+                    setMode();
+                    return "{\"status\": \"ok\", \"mode\": " + std::to_string(mode) + "}";
+                }
+            } catch (...) {}
+            return "{\"error\": \"invalid mode: " + args + "\"}";
+        }
+        return "{\"error\": \"unknown command: " + cmd + "\"}";
     }
 
 private:
@@ -183,13 +251,22 @@ private:
     }
 
     void setMode() {
+        // Keep symbolExtractor.out single-consumer: osmo-tetra reads dibits directly,
+        // NETSYMS uses the unpacked bit stream.
+        osmotetradecoder.stop();
+        osmotetradecoder.setInput(nullptr);
+        demodSink.stop();
+        demodSink.setInput(nullptr);
+        bitsUnpacker.stop();
+
         if(decoder_mode == 0) {
-            //osmo-tetra
-            demodSink.stop();
+            // osmo-tetra mode consumes dibits from symbolExtractor.out.
+            osmotetradecoder.setInput(&symbolExtractor.out);
             osmotetradecoder.start();
         } else {
-            //network syms
-            osmotetradecoder.stop();
+            bitsUnpacker.start();
+            //network syms mode: use demodSink
+            demodSink.setInput(&bitsUnpacker.out);
             demodSink.start();
         }
         config.acquire();

@@ -6,6 +6,7 @@ import android.app.NativeActivity
 import android.app.PendingIntent
 import android.app.PendingIntent.FLAG_MUTABLE
 import android.bluetooth.BluetoothSocket.TYPE_SCO
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -261,11 +262,15 @@ class MainActivity : NativeActivity(), SensorEventListener {
                 testFile.delete()
             } else {
                 Log.w("SDR++", "PERM: Requesting ext storage.")
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                val uri: Uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
-                startActivityForResult(intent, PERMISSION_REQUEST_CODE+2);
-                return;
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    val uri: Uri = Uri.fromParts("package", packageName, null)
+                    intent.data = uri
+                    startActivityForResult(intent, PERMISSION_REQUEST_CODE+2);
+                    return;
+                } catch (e: ActivityNotFoundException) {
+                    Log.w("SDR++", "PERM: MANAGE_APP_ALL_FILES_ACCESS_PERMISSION not available, skipping");
+                }
             }
             permissionsPassed.add(PERMISSION_REQUEST_CODE+2);
 

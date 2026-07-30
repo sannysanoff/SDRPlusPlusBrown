@@ -17,6 +17,10 @@
 #include "gui/style.h"
 #include <dsp/clock_recovery/fd.h>
 #include <dsp/clock_recovery/mm.h>
+#include <chrono>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -39,6 +43,20 @@ namespace demod {
     // YSF = 17 kHz
     class DSD : public Demodulator {
     public:
+        struct DebugStatus {
+            bool available = false;
+            bool sync = false;
+            bool dmr = false;
+            bool voice = false;
+            bool mbe_decoding = false;
+            uint8_t color_code = 0;
+            uint8_t slot0_burst = 0;
+            uint8_t slot1_burst = 0;
+            std::string slot0_type = "";
+            std::string slot1_type = "";
+            std::string mbe_errorbar = "";
+        };
+
         DSD() {}
 
         DSD(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, double audioSR) {
@@ -47,11 +65,13 @@ namespace demod {
 
         ~DSD() {
             stop();
+            unregisterInstance();
             dsp::taps::free(rrcTaps);
         }
 
         void init(std::string name, ConfigManager* config, dsp::stream<dsp::complex_t>* input, double bandwidth, double audioSR) {
             this->name = name;
+            registerInstance();
 
             // Define structure
 
@@ -77,6 +97,70 @@ namespace demod {
             decoder.init(&slicer.out);
             outputConv.init(&decoder.out);
             outputMts.init(&outputConv.out);
+        }
+
+        DebugStatus getDebugStatus() {
+            DebugStatus st;
+            st.available = true;
+            dsp::NewDSD::Frame_status fr_st = decoder.getFrameSyncStatus();
+            dsp::NewDSD::MBE_status mbe_st = decoder.getMBEStatus();
+            dsp::NewDSD::DMR_status dmr_st = decoder.getDMRStatus();
+            st.sync = fr_st.sync;
+            st.dmr = (fr_st.lasttype == dsp::NewDSD::Frame_status::LAST_DMR);
+            st.mbe_decoding = mbe_st.mbe_status_decoding;
+            st.voice = st.dmr && st.sync && st.mbe_decoding;
+            st.color_code = dmr_st.dmr_status_cc;
+            st.slot0_burst = dmr_st.dmr_status_s0_lastburstt;
+            st.slot1_burst = dmr_st.dmr_status_s1_lastburstt;
+            st.slot0_type = dmr_st.dmr_status_s0_lasttype;
+            st.slot1_type = dmr_st.dmr_status_s1_lasttype;
+            st.mbe_errorbar = mbe_st.mbe_status_errorbar;
+            return st;
+        }
+
+        static bool getStatusForRadio(const std::string& radioName, DebugStatus& out) {
+            std::lock_guard<std::mutex> lock(registryMtx);
+            auto it = instances.find(radioName);
+            if (it == instances.end() || !it->second) {
+                return false;
+            }
+            out = it->second->getDebugStatus();
+            return true;
+        }
+
+        static bool waitForDMRSyncVoice(const std::string& radioName, int stableMs, int timeoutMs, DebugStatus& out, int& waitedMs) {
+            auto start = std::chrono::steady_clock::now();
+            auto lastLoop = start;
+            int accumulatedVoiceMs = 0;
+            waitedMs = 0;
+
+            while (true) {
+                DebugStatus cur;
+                if (!getStatusForRadio(radioName, cur)) {
+                    out = DebugStatus{};
+                    waitedMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+                    return false;
+                }
+
+                out = cur;
+                auto now = std::chrono::steady_clock::now();
+                int stepMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - lastLoop).count();
+                lastLoop = now;
+                if (cur.voice) {
+                    accumulatedVoiceMs += stepMs;
+                    if (accumulatedVoiceMs >= stableMs) {
+                        waitedMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+                        return true;
+                    }
+                }
+
+                waitedMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+                if (waitedMs >= timeoutMs) {
+                    if (accumulatedVoiceMs >= stableMs) { return true; }
+                    return false;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
         }
 
         void start() {
@@ -206,7 +290,23 @@ namespace demod {
         dsp::stream<dsp::stereo_t>* getOutput() { return &outputMts.out; }
 
     private:
+        void registerInstance() {
+            std::lock_guard<std::mutex> lock(registryMtx);
+            instances[name] = this;
+        }
+
+        void unregisterInstance() {
+            std::lock_guard<std::mutex> lock(registryMtx);
+            auto it = instances.find(name);
+            if (it != instances.end() && it->second == this) {
+                instances.erase(it);
+            }
+        }
+
         float bw = 12500.0;
+
+        inline static std::mutex registryMtx;
+        inline static std::unordered_map<std::string, DSD*> instances;
 
         dsp::demod::Quadrature quadDemod;
         dsp::correction::DCBlocker<float> dcBlock;

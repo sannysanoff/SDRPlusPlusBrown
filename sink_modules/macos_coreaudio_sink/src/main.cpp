@@ -10,6 +10,13 @@
 #include <core.h>
 #include <AudioToolbox/AudioToolbox.h>
 
+// --- NATIVE MAC SYSTEM THREAD HEADERS ---
+#include <mach/mach_init.h>
+#include <mach/thread_act.h>
+#include <mach/mach_time.h>
+#include <pthread.h>
+#include <sched.h>
+
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
 SDRPP_MOD_INFO{
@@ -31,6 +38,12 @@ public:
         std::string sampleRatesTxt;
         bool isInput = false;
     };
+    // --- PRODUCTION-GRADE LOCK-FREE DECOUPLING BUFFER ---
+    static const int RING_BUFFER_SIZE = 65536;
+    dsp::stereo_t ringBuffer[RING_BUFFER_SIZE];
+    std::atomic<int> writeIndex{0};
+    std::atomic<int> readIndex{0};
+    // ----------------------------------------------------
 
     dsp::stream<dsp::stereo_t> microphone = "coreaudio_sink.microphone";
     AudioUnit inputUnit = nullptr;
@@ -42,10 +55,12 @@ public:
         config.acquire();
         _stream = stream;
         _streamName = streamName;
-        // Get available devices
-        enumerateDevices();
+        // Avoid full device enumeration during startup. Some macOS virtual/proxy
+        // devices can block CoreAudio property queries before the HTTP debug
+        // server is ready.
+        enumerateDefaultDevices();
 
-        if (!config.conf.contains(_streamName)) {
+        if (!config.conf.contains(_streamName) || !config.conf[_streamName].is_object()) {
             config.conf[_streamName] = json({});
         }
         if (config.conf[_streamName].contains("useMic")) {
@@ -64,10 +79,19 @@ public:
         s2m.init(_stream->sinkOut);
         stereoPacker.init(_stream->sinkOut, 8192);
 
+        playStateHandler.handler = playStateChangeHandler;
+        playStateHandler.ctx = this;
+        gui::mainWindow.onPlayStateChange.bindHandler(&playStateHandler);
+
         // Load config
         config.acquire();
-        if (!config.conf.contains(_streamName)) {
+        if (!config.conf.contains(_streamName) || !config.conf[_streamName].is_object()) {
+            config.conf[_streamName] = json({});
+        }
+        if (!config.conf[_streamName].contains("device") || !config.conf[_streamName]["device"].is_string()) {
             config.conf[_streamName]["device"] = "";
+        }
+        if (!config.conf[_streamName].contains("devices") || !config.conf[_streamName]["devices"].is_object()) {
             config.conf[_streamName]["devices"] = json({});
         }
         std::string device = config.conf[_streamName]["device"];
@@ -78,10 +102,11 @@ public:
 
     ~CoreAudioSink() {
         stop();
+        gui::mainWindow.onPlayStateChange.unbindHandler(&playStateHandler);
     }
 
     void start() {
-        if (running) { return; }
+        if (running || !gui::mainWindow.isPlaying()) { return; }
         running = doStart();
     }
 
@@ -115,6 +140,12 @@ public:
 
         // Load sample rate from config
         config.acquire();
+        if (!config.conf.contains(_streamName) || !config.conf[_streamName].is_object()) {
+            config.conf[_streamName] = json({});
+        }
+        if (!config.conf[_streamName].contains("devices") || !config.conf[_streamName]["devices"].is_object()) {
+            config.conf[_streamName]["devices"] = json({});
+        }
         if (!config.conf[_streamName]["devices"].contains(dev.name)) {
             config.conf[_streamName]["devices"][dev.name] = dev.sampleRates[0];
         }
@@ -247,12 +278,10 @@ private:
     bool doStart() {
         if (devId < 0 || devId >= devices.size()) { return false; }
         
-        auto& dev = devices[devId];
-        
         // Create output audio unit for the selected device
         AudioComponentDescription desc = {
             .componentType = kAudioUnitType_Output,
-            .componentSubType = kAudioUnitSubType_HALOutput,  // Use HAL for specific device
+            .componentSubType = kAudioUnitSubType_DefaultOutput,
             .componentManufacturer = kAudioUnitManufacturer_Apple,
             .componentFlags = 0,
             .componentFlagsMask = 0
@@ -271,23 +300,6 @@ private:
 
         // Create the audio unit first
         OSStatus status = AudioComponentInstanceNew(comp, &audioUnit);
-        if (status != noErr) {
-            flog::error("Could not create audio unit instance");
-            return false;
-        }
-
-        // Now set the selected device ID
-        status = AudioUnitSetProperty(audioUnit,
-                                    kAudioOutputUnitProperty_CurrentDevice,
-                                    kAudioUnitScope_Global,
-                                    0,
-                                    &dev.id,
-                                    sizeof(dev.id));
-        if (status != noErr) {
-            flog::error("Could not set audio unit device");
-            AudioComponentInstanceDispose(audioUnit);
-            return false;
-        }
         if (status != noErr) {
             flog::error("Could not create audio unit instance");
             return false;
@@ -334,23 +346,25 @@ private:
             return false;
         }
 
-        // Initialize audio unit
-        status = AudioUnitInitialize(audioUnit);
-        if (status != noErr) {
-            flog::error("Could not initialize audio unit");
-            return false;
-        }
-
-        // Set buffer frame size for lower latency
+        // Define global buffer frame size cushion early
         UInt32 bufferFrameSize = 4096;
+
+        // Set maximum frames per slice BEFORE initialization
         status = AudioUnitSetProperty(audioUnit,
-                                    kAudioDevicePropertyBufferFrameSize,
+                                    kAudioUnitProperty_MaximumFramesPerSlice,
                                     kAudioUnitScope_Global,
                                     0,
                                     &bufferFrameSize,
                                     sizeof(bufferFrameSize));
         if (status != noErr) {
-            flog::warn("Could not set buffer frame size, using default");
+            flog::warn("Could not set MaximumFramesPerSlice on output unit");
+        }
+
+        // Initialize audio unit now that frames are allocated
+        status = AudioUnitInitialize(audioUnit);
+        if (status != noErr) {
+            flog::error("Could not initialize audio unit");
+            return false;
         }
 
         // Start audio unit
@@ -478,6 +492,10 @@ private:
             sigpath::sinkManager.defaultInputAudio.start();
         }
 
+        // Reset lock-free memory indexing positions ahead of execution
+        writeIndex.store(0, std::memory_order_relaxed);
+        readIndex.store(0, std::memory_order_relaxed);
+
         // Set packer buffer size to match audio unit buffer size
         stereoPacker.setSampleCount(bufferFrameSize);
         stereoPacker.start();
@@ -492,33 +510,47 @@ private:
                                 AudioBufferList* ioData) {
         CoreAudioSink* _this = (CoreAudioSink*)inRefCon;
 
+        // Strict boundary check against our maximum hardware slice limit
+        UInt32 safeFrames = (inNumberFrames > 4096) ? 4096 : inNumberFrames;
+
+        // Pristine fixed-size stack allocation. Zero heap locks, zero VLA risk.
+        float stackBuffer[4096];
+
         AudioBufferList bufferList;
         bufferList.mNumberBuffers = 1;
-        bufferList.mBuffers[0].mDataByteSize = inNumberFrames * sizeof(float);
-        bufferList.mBuffers[0].mData = malloc(inNumberFrames * sizeof(float));
+        bufferList.mBuffers[0].mDataByteSize = safeFrames * sizeof(float);
+        bufferList.mBuffers[0].mData = stackBuffer;
         bufferList.mBuffers[0].mNumberChannels = 1;
 
         OSStatus status = AudioUnitRender(_this->inputUnit,
                                         ioActionFlags,
                                         inTimeStamp,
                                         inBusNumber,
-                                        inNumberFrames,
+                                        safeFrames,
                                         &bufferList);
         if (status != noErr) {
-            free(bufferList.mBuffers[0].mData);
             return status;
         }
 
         float* input = (float*)bufferList.mBuffers[0].mData;
         auto out = (dsp::stereo_t*)_this->microphone.writeBuf;
-        for (UInt32 i = 0; i < inNumberFrames; i++) {
+        for (UInt32 i = 0; i < safeFrames; i++) {
             out[i].l = input[i];
             out[i].r = input[i];
         }
-        _this->microphone.swap(inNumberFrames);
+        _this->microphone.swap(safeFrames);
 
-        free(bufferList.mBuffers[0].mData);
         return noErr;
+    }
+
+    static void playStateChangeHandler(bool newState, void* ctx) {
+        CoreAudioSink* _this = (CoreAudioSink*)ctx;
+        if (newState) {
+            _this->start();
+        }
+        else {
+            _this->stop();
+        }
     }
 
     void doStop() {
@@ -577,9 +609,38 @@ private:
                                  AudioBufferList* ioData) {
         CoreAudioSink* _this = (CoreAudioSink*)inRefCon;
 
-        // Get pointers to output buffers
+        if (!ioData || ioData->mNumberBuffers < 1 || !ioData->mBuffers[0].mData) {
+            return noErr;
+        }
+
+        // --- ONE-TIME REAL-TIME KERNEL THREAD ELEVATION ---
+        static thread_local bool threadElevated = false;
+        if (!threadElevated) {
+            struct sched_param param;
+            param.sched_priority = 99;
+            pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+
+            mach_timebase_info_data_t timebaseInfo;
+            mach_timebase_info(&timebaseInfo);
+
+            thread_time_constraint_policy_data_t policy;
+            policy.period = (uint32_t)((1000000.0 * timebaseInfo.denom) / timebaseInfo.numer);
+            policy.computation = (uint32_t)((500000.0 * timebaseInfo.denom) / timebaseInfo.numer);
+            policy.constraint = (uint32_t)((800000.0 * timebaseInfo.denom) / timebaseInfo.numer);
+            policy.preemptible = true;
+
+            thread_policy_set(mach_thread_self(), THREAD_TIME_CONSTRAINT_POLICY,
+                              (thread_policy_t)&policy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+
+            threadElevated = true;
+        }
+        // --------------------------------------------------
+
         float* left = (float*)ioData->mBuffers[0].mData;
-        float* right = (float*)ioData->mBuffers[1].mData;
+        float* right = left;
+        if (ioData->mNumberBuffers > 1 && ioData->mBuffers[1].mData) {
+            right = (float*)ioData->mBuffers[1].mData;
+        }
 
         if (!gui::mainWindow.isPlaying()) {
             memset(left, 0, inNumberFrames * sizeof(float));
@@ -587,40 +648,45 @@ private:
             return noErr;
         }
 
-
-        memset(left, 0, inNumberFrames * sizeof(float));
-        memset(right, 0, inNumberFrames * sizeof(float));
-
-        // Read audio data from packer
-        int count = 0;
+        // 1. NON-BLOCKING PASS: Empty the blocking stereoPacker immediately into our atomic ring buffer
         if (_this->stereoPacker.out.isDataReady()) {
-            count = _this->stereoPacker.out.read();
-            if (count <= 0) {
-                return noErr;
+            int count = _this->stereoPacker.out.read();
+            if (count > 0 && _this->stereoPacker.out.readBuf != nullptr) {
+                int w = _this->writeIndex.load(std::memory_order_relaxed);
+                for (int i = 0; i < count; i++) {
+                    _this->ringBuffer[w] = _this->stereoPacker.out.readBuf[i];
+                    w = (w + 1) % RING_BUFFER_SIZE;
+                }
+                _this->writeIndex.store(w, std::memory_order_release);
+                _this->stereoPacker.out.flush();
             }
         }
-        _this->stereoBuffer.resize(_this->stereoBuffer.size() + count);
 
-        // replace with loop
-        for (int i = 0; i < count; i++) {
-            _this->stereoBuffer[i] = _this->stereoPacker.out.readBuf[i];
+        // 2. ATOMIC EVALUATION: Determine how many samples are safely available to play
+        int w = _this->writeIndex.load(std::memory_order_acquire);
+        int r = _this->readIndex.load(std::memory_order_relaxed);
+
+        int available = (w >= r) ? (w - r) : (RING_BUFFER_SIZE - r + w);
+        int limit = std::min<int>((int)inNumberFrames, available);
+
+        // 3. ZERO-LOCK READ: Extract samples directly from atomic slots to output hardware
+        for (int i = 0; i < limit; i++) {
+            left[i] = _this->ringBuffer[r].l;
+            right[i] = _this->ringBuffer[r].r;
+            r = (r + 1) % RING_BUFFER_SIZE;
         }
+        _this->readIndex.store(r, std::memory_order_release);
 
-        int limit = std::min<uint32_t>(inNumberFrames, _this->stereoBuffer.size());
-
-        // Copy data to output buffers
-        for (UInt32 i = 0; i < limit; i++) {
-            left[i] = _this->stereoBuffer[i].l;
-            right[i] = _this->stereoBuffer[i].r;
-        }
-        if (limit < inNumberFrames) {
+        // 4. UNDERFLOW RECOVERY: Fill missing audio segments with pure silence cushion
+        if (limit < (int)inNumberFrames) {
             _this->underflow = 1;
+            int remainder = inNumberFrames - limit;
+            memset(left + limit, 0, remainder * sizeof(float));
+            memset(right + limit, 0, remainder * sizeof(float));
         } else {
             _this->underflow = 0;
         }
 
-        _this->stereoBuffer.erase(_this->stereoBuffer.begin(), _this->stereoBuffer.begin() + limit);
-        _this->stereoPacker.out.flush();
         return noErr;
     }
 
@@ -725,6 +791,90 @@ private:
         delete[] deviceIDs;
     }
 
+    bool addDevice(AudioDeviceID id, bool isInput) {
+        if (id == kAudioObjectUnknown) { return false; }
+
+        AudioDevice device;
+        device.id = id;
+        device.isInput = isInput;
+
+        AudioObjectPropertyAddress prop = {
+            .mSelector = kAudioObjectPropertyName,
+            .mScope = kAudioObjectPropertyScopeGlobal,
+            .mElement = kAudioObjectPropertyElementMain
+        };
+
+        CFStringRef name = NULL;
+        UInt32 size = sizeof(name);
+        OSStatus status = AudioObjectGetPropertyData(device.id, &prop, 0, NULL, &size, &name);
+        if (status == noErr && name) {
+            char buffer[256];
+            CFStringGetCString(name, buffer, 256, kCFStringEncodingUTF8);
+            device.name = buffer;
+            CFRelease(name);
+        }
+        if (device.name.empty()) { return false; }
+
+        if (!isInput) {
+            prop.mSelector = kAudioDevicePropertyAvailableNominalSampleRates;
+            status = AudioObjectGetPropertyDataSize(device.id, &prop, 0, NULL, &size);
+            if (status == noErr && size > 0) {
+                AudioValueRange* ranges = (AudioValueRange*)malloc(size);
+                status = AudioObjectGetPropertyData(device.id, &prop, 0, NULL, &size, ranges);
+                if (status == noErr) {
+                    UInt32 rangeCount = size / sizeof(AudioValueRange);
+                    for (UInt32 j = 0; j < rangeCount; j++) {
+                        double min = ranges[j].mMinimum;
+                        double max = ranges[j].mMaximum;
+                        if (min <= 44100 && max >= 44100) device.sampleRates.push_back(44100);
+                        if (min <= 48000 && max >= 48000) device.sampleRates.push_back(48000);
+                        if (min <= 96000 && max >= 96000) device.sampleRates.push_back(96000);
+                        if (min <= 192000 && max >= 192000) device.sampleRates.push_back(192000);
+                    }
+                }
+                free(ranges);
+            }
+            if (device.sampleRates.empty()) {
+                device.sampleRates.push_back(44100);
+                device.sampleRates.push_back(48000);
+            }
+            std::sort(device.sampleRates.begin(), device.sampleRates.end());
+            device.sampleRates.erase(std::unique(device.sampleRates.begin(), device.sampleRates.end()), device.sampleRates.end());
+            for (auto sr : device.sampleRates) {
+                device.sampleRatesTxt += std::to_string((int)sr);
+                device.sampleRatesTxt += '\0';
+            }
+        }
+
+        devices.push_back(device);
+        return true;
+    }
+
+    void enumerateDefaultDevices() {
+        devices.clear();
+
+        AudioObjectPropertyAddress prop = {
+            .mSelector = kAudioHardwarePropertyDefaultOutputDevice,
+            .mScope = kAudioObjectPropertyScopeGlobal,
+            .mElement = kAudioObjectPropertyElementMain
+        };
+
+        AudioDeviceID id = kAudioObjectUnknown;
+        UInt32 size = sizeof(id);
+        OSStatus status = AudioObjectGetPropertyData(kAudioObjectSystemObject, &prop, 0, NULL, &size, &id);
+        if (status == noErr) {
+            addDevice(id, false);
+        }
+
+        prop.mSelector = kAudioHardwarePropertyDefaultInputDevice;
+        id = kAudioObjectUnknown;
+        size = sizeof(id);
+        status = AudioObjectGetPropertyData(kAudioObjectSystemObject, &prop, 0, NULL, &size, &id);
+        if (status == noErr) {
+            addDevice(id, true);
+        }
+    }
+
     SinkManager::Stream* _stream;
     dsp::convert::StereoToMono s2m;
     dsp::buffer::Packer<dsp::stereo_t> stereoPacker;
@@ -735,6 +885,7 @@ private:
     int devId = -1;
     bool running = false;
     int underflow = 0; // 1 = small underflow, 2 = full underflow
+    EventHandler<bool> playStateHandler;
 
     std::vector<AudioDevice> devices;
     double sampleRate = 48000;

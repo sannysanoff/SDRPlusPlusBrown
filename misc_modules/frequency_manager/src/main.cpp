@@ -102,6 +102,143 @@ public:
         return enabled;
     }
 
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "get_lists") {
+            json lists = json::array();
+            for (const auto& listName : listNames) {
+                lists.push_back(listName);
+            }
+            return json{{"lists", lists}}.dump();
+        }
+        if (cmd == "get_current_list") {
+            return json{{"current_list", selectedListName}}.dump();
+        }
+        if (cmd == "set_current_list") {
+            if (std::find(listNames.begin(), listNames.end(), args) != listNames.end()) {
+                loadByName(args);
+                config.acquire();
+                config.conf["selectedList"] = selectedListName;
+                config.release(true);
+                return json{{"status", "ok"}, {"current_list", selectedListName}}.dump();
+            }
+            return json{{"error", "list not found: " + args}}.dump();
+        }
+        if (cmd == "get_bookmarks") {
+            json bms = json::array();
+            auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+            for (const auto& [name, bm] : bookmarks) {
+                json bookmark;
+                bookmark["name"] = name;
+                bookmark["frequency"] = bm.frequency;
+                bookmark["bandwidth"] = bm.bandwidth;
+                if (bm.modeIndex < 0) {
+                    bookmark["mode"] = "Unspecified";
+                } else if (radio) {
+                    DemodID demodId = radio->getDemodByIndex(bm.modeIndex);
+                    bookmark["mode"] = demodModeList.count(demodId) ?
+                        demodModeList[demodId] : "Unknown";
+                } else {
+                    bookmark["mode"] = "Unknown";
+                }
+                bookmark["mode_index"] = bm.modeIndex;
+                bms.push_back(bookmark);
+            }
+            return json{{"bookmarks", bms}, {"list", selectedListName}}.dump();
+        }
+        if (cmd == "add_bookmark") {
+            size_t pos1 = args.find('|');
+            if (pos1 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            size_t pos2 = args.find('|', pos1 + 1);
+            if (pos2 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            size_t pos3 = args.find('|', pos2 + 1);
+            if (pos3 == std::string::npos) {
+                return json{{"error", "invalid format. Use: name|frequency|bandwidth|mode"}}.dump();
+            }
+            std::string bmName = args.substr(0, pos1);
+            std::string freqStr = args.substr(pos1 + 1, pos2 - pos1 - 1);
+            std::string bwStr = args.substr(pos2 + 1, pos3 - pos2 - 1);
+            std::string modeStr = args.substr(pos3 + 1);
+            if (bmName.empty()) {
+                return json{{"error", "bookmark name cannot be empty"}}.dump();
+            }
+            if (bookmarks.find(bmName) != bookmarks.end()) {
+                return json{{"error", "bookmark already exists: " + bmName}}.dump();
+            }
+            try {
+                double frequency = std::stod(freqStr);
+                double bandwidth = std::stod(bwStr);
+                int modeIndex = 0;
+                auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+                if (radio) {
+                    updateModeList(radio);
+                }
+                try {
+                    modeIndex = std::stoi(modeStr);
+                } catch (...) {
+                    if (demodModeListRev.find(modeStr) != demodModeListRev.end()) {
+                        modeIndex = demodModeListRev[modeStr];
+                    } else {
+                        return json{{"error", "unknown mode: " + modeStr}}.dump();
+                    }
+                }
+                FrequencyBookmark fbm;
+                fbm.frequency = frequency;
+                fbm.bandwidth = bandwidth;
+                fbm.modeIndex = modeIndex;
+                fbm.selected = false;
+                bookmarks[bmName] = fbm;
+                saveByName(selectedListName);
+                return json{{"status", "ok"}, {"name", bmName}, {"frequency", frequency}, {"bandwidth", bandwidth}, {"mode_index", modeIndex}}.dump();
+            } catch (const std::exception& e) {
+                return json{{"error", std::string("parse error: ") + e.what()}}.dump();
+            }
+        }
+        if (cmd == "remove_bookmark") {
+            if (args.empty()) {
+                return json{{"error", "bookmark name required"}}.dump();
+            }
+            auto it = bookmarks.find(args);
+            if (it == bookmarks.end()) {
+                return json{{"error", "bookmark not found: " + args}}.dump();
+            }
+            bookmarks.erase(it);
+            saveByName(selectedListName);
+            return json{{"status", "ok"}, {"removed", args}}.dump();
+        }
+        if (cmd == "apply_bookmark") {
+            if (args.empty()) {
+                return json{{"error", "bookmark name required"}}.dump();
+            }
+            auto it = bookmarks.find(args);
+            if (it == bookmarks.end()) {
+                return json{{"error", "bookmark not found: " + args}}.dump();
+            }
+            FrequencyBookmark& bm = it->second;
+            applyBookmark(bm, gui::waterfall.selectedVFO);
+            bm.selected = false;
+            return json{{"status", "ok"}, {"applied", args}, {"frequency", bm.frequency}, {"bandwidth", bm.bandwidth}, {"vfo", gui::waterfall.selectedVFO.empty() ? "center" : gui::waterfall.selectedVFO}}.dump();
+        }
+        if (cmd == "get_scanner_status") {
+            return json{{"scanning", scanner.isScanning()}, {"current_station", scanner.getCurrentStation()}, {"bookmark_count", (int)bookmarks.size()}}.dump();
+        }
+        if (cmd == "start_scanner") {
+            if (bookmarks.empty()) {
+                return json{{"error", "no bookmarks to scan"}}.dump();
+            }
+            scanner.startScanner();
+            return json{{"status", "ok"}, {"scanning", true}}.dump();
+        }
+        if (cmd == "stop_scanner") {
+            scanner.stopScanner();
+            return json{{"status", "ok"}, {"scanning", false}}.dump();
+        }
+        return json{{"error", "unknown command: " + cmd}}.dump();
+    }
+
 private:
     bool bookmarkEditDialog() {
         bool open = true;
@@ -536,6 +673,9 @@ private:
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str());
+//		std::string modeStr = (radio != nullptr && bm.modeIndex >= 0) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)] : "DIGITAL";
+//		ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), modeStr.c_str());
+
                 ImVec2 max = ImGui::GetCursorPos();
             }
             ImGui::EndTable();

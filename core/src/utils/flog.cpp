@@ -22,6 +22,25 @@ namespace flog {
     std::vector<LogRec> logRecords;
     int performAdhocFileLogging = -1;
     static const char *adhocLogFileName = "/tmp/sdrpp.adhoc.log";
+    static bool memoryLogEnabled =
+#ifdef __ANDROID__
+        true;
+#else
+        false;
+#endif
+
+    void setMemoryLogEnabled(bool enabled) {
+        std::lock_guard<std::mutex> lck(outMtx);
+        memoryLogEnabled = enabled;
+        if (!memoryLogEnabled) {
+            logRecords.clear();
+        }
+    }
+
+    bool isMemoryLogEnabled() {
+        std::lock_guard<std::mutex> lck(outMtx);
+        return memoryLogEnabled;
+    }
 
     const char* TYPE_STR[_TYPE_COUNT] = {
         "DEBUG",
@@ -192,6 +211,7 @@ namespace flog {
             // Print format string
             fprintf(outStream, COLOR_WHITE "[%02d/%02d/%02d %02d:%02d:%02d.%03d] [%s%s" COLOR_WHITE "] %s\n",
                     nowc->tm_mday, nowc->tm_mon + 1, nowc->tm_year + 1900, nowc->tm_hour, nowc->tm_min, nowc->tm_sec, (int)(msec % 1000), TYPE_COLORS[type], TYPE_STR[type], out.c_str());
+            fflush(outStream);
 #endif
 
             if (performAdhocFileLogging == -1) {
@@ -208,9 +228,12 @@ namespace flog {
                 FILE *f = fopen(adhocLogFileName,"at");
                 fprintf(f, "[%02d/%02d/%02d %02d:%02d:%02d.%03d] [%s" "] %s\n",
                     nowc->tm_mday, nowc->tm_mon + 1, nowc->tm_year + 1900, nowc->tm_hour, nowc->tm_min, nowc->tm_sec, (int)(msec % 1000), TYPE_STR[type], out.c_str());
+                fflush(f);
                 fclose(f);
             }
-            logRecords.emplace_back(LogRec{msec, type, out});
+            if (memoryLogEnabled) {
+                logRecords.emplace_back(LogRec{msec, type, out});
+            }
         }
     }
 

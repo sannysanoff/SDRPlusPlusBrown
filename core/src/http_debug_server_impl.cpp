@@ -1,0 +1,838 @@
+// Must include EmbeddableWebServer.h FIRST, before anything else that might set EWS_HEADER_ONLY
+#include "EmbeddableWebServer.h"
+
+#include "http_debug_server.h"
+#include <utils/flog.h>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <atomic>
+#include <filesystem>
+#include <unordered_map>
+#include <map>
+#include <set>
+#include <cstdarg>
+#include <core.h>
+#include <signal_path/signal_path.h>
+
+#ifdef __cplusplus
+#include "imgui.h"
+#include "imgui_internal.h"
+#endif
+
+// Wrapper functions to expose EWS functionality
+Server* serverInitWrapper() {
+    Server* srv = (Server*)calloc(1, sizeof(Server));
+    serverInit(srv);
+    return srv;
+}
+
+void serverDeInitWrapper(Server* server) {
+    serverDeInit(server);
+}
+
+void serverStopWrapper(Server* server) {
+    serverStop(server);
+}
+
+int acceptConnectionsWrapper(Server* server, uint16_t port) {
+    return acceptConnectionsUntilStoppedFromEverywhereIPv4(server, port);
+}
+
+// Define httpdebug namespace functions here
+namespace httpdebug {
+
+    std::vector<WidgetInfo> widgetRegistry;
+
+    void registerWidget(ImGuiID id, ImGuiItemStatusFlags flags, const ImRect& rect) {
+        if (id == 0) return;
+        WidgetInfo info;
+        info.id = id;
+        info.label = "";
+        info.flags = flags;
+        info.rect = rect;
+        widgetRegistry.push_back(info);
+    }
+
+    void clearWidgetRegistry() {
+        widgetRegistry.clear();
+    }
+
+    std::vector<WidgetInfo>& getWidgetRegistry() {
+        return widgetRegistry;
+    }
+
+}
+
+// Called from ImGui::ItemAdd to register widgets for the debug layout
+namespace ImGui {
+    void sdrcppRegisterWidget(ImGuiID widgetId, ImGuiItemStatusFlags flags, const ImRect& rect) {
+        httpdebug::registerWidget(widgetId, flags, rect);
+    }
+}
+
+namespace httpdebug {
+
+    void startHttpServer(int port) {
+        if (port <= 0) {
+            flog::info("HTTP debug server disabled");
+            return;
+        }
+
+        httpServer = serverInitWrapper();
+
+        flog::info("Starting HTTP debug server on port {}", port);
+
+        ewsThread = new std::thread([port]() {
+            httpServerListening.store(true, std::memory_order_release);
+            acceptConnectionsWrapper(httpServer, (uint16_t)port);
+        });
+    }
+
+    void stopHttpServer() {
+        if (httpServer) {
+            serverStopWrapper(httpServer);
+            if (ewsThread && ewsThread->joinable()) {
+                ewsThread->join();
+            }
+            serverDeInitWrapper(httpServer);
+            free(httpServer);
+            httpServer = nullptr;
+        }
+    }
+
+    void signalReady() {
+        serverReady.store(true, std::memory_order_release);
+    }
+
+    bool isReady() {
+        return serverReady.load(std::memory_order_acquire);
+    }
+
+    void waitForDebugCommand(const std::string& readyFile) {
+        if (readyFile.empty()) {
+            return;
+        }
+
+        while (!std::filesystem::exists(readyFile)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        flog::info("Debug command received, continuing...");
+    }
+
+    void signalMainLoopStarted() {
+        mainLoopStarted.store(true, std::memory_order_release);
+    }
+
+    void stopApp() {
+        shouldExit.store(true, std::memory_order_release);
+    }
+
+#ifdef __cplusplus
+
+    void queueClick(float x, float y) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::Click, x, y, 0, "", 0 });
+    }
+
+    void queueKeyPress(int key) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::KeyPress, 0, 0, key, "", 0 });
+    }
+
+    void queueTypeText(const std::string& text) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::TypeText, 0, 0, 0, text, 0 });
+    }
+
+    void queueMouseMove(float x, float y) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::MouseMove, x, y, 0, "", 0 });
+    }
+
+    void queueFocus(ImGuiID id) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::Focus, 0, 0, 0, "", id });
+    }
+
+    bool popAction(ImGuiAction& out) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        if (pendingActions.empty()) return false;
+        out = pendingActions.front();
+        pendingActions.erase(pendingActions.begin());
+        return true;
+    }
+
+    std::string getAllWindowsJson() {
+        std::string result = "{\"windows\": [";
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+        bool first = true;
+        for (ImGuiWindow* window : ctx->Windows) {
+            if (!first) result += ", ";
+            result += "{";
+            result += "\"name\": \"" + std::string(window->Name) + "\", ";
+            result += "\"id\": " + std::to_string(window->ID) + ", ";
+            result += "\"x\": " + std::to_string(window->Pos.x) + ", ";
+            result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
+            result += "\"w\": " + std::to_string(window->Size.x) + ", ";
+            result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            first = false;
+        }
+        result += "]}";
+        return result;
+    }
+
+    std::string getFullLayoutJson() {
+        std::string result = "{\"layout\": {";
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+
+        result += "\"windows\": [";
+        bool firstWin = true;
+        for (ImGuiWindow* window : ctx->Windows) {
+            if (!firstWin) result += ", ";
+            result += "{";
+            result += "\"name\": \"" + std::string(window->Name) + "\", ";
+            result += "\"id\": " + std::to_string(window->ID) + ", ";
+            result += "\"x\": " + std::to_string(window->Pos.x) + ", ";
+            result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
+            result += "\"w\": " + std::to_string(window->Size.x) + ", ";
+            result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            firstWin = false;
+        }
+        result += "], ";
+
+        result += "\"viewport\": {\"w\": " + std::to_string(ctx->IO.DisplaySize.x) + ", \"h\": " + std::to_string(ctx->IO.DisplaySize.y) + "}";
+        result += "}}";
+        return result;
+    }
+
+    std::string getSimpleLayoutJson() {
+        std::string result = "{\"elements\": [";
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+        bool first = true;
+
+        // Windows
+        for (ImGuiWindow* window : ctx->Windows) {
+            if (!first) result += ", ";
+            result += "{";
+            result += "\"type\": \"window\", ";
+            result += "\"name\": \"" + std::string(window->Name) + "\", ";
+            result += "\"id\": " + std::to_string(window->ID) + ", ";
+            result += "\"x\": " + std::to_string(window->Pos.x) + ", ";
+            result += "\"y\": " + std::to_string(window->Pos.y) + ", ";
+            result += "\"w\": " + std::to_string(window->Size.x) + ", ";
+            result += "\"h\": " + std::to_string(window->Size.y);
+            result += "}";
+            first = false;
+        }
+
+        // Open popups/menus
+        for (int i = 0; i < ctx->OpenPopupStack.Size; i++) {
+            ImGuiPopupData& popup = ctx->OpenPopupStack[i];
+            if (popup.Window) {
+                if (!first) result += ", ";
+                result += "{";
+                result += "\"type\": \"popup\", ";
+                result += "\"name\": \"" + std::string(popup.Window->Name) + "\", ";
+                result += "\"id\": " + std::to_string(popup.PopupId) + ", ";
+                result += "\"x\": " + std::to_string(popup.Window->Pos.x) + ", ";
+                result += "\"y\": " + std::to_string(popup.Window->Pos.y) + ", ";
+                result += "\"w\": " + std::to_string(popup.Window->Size.x) + ", ";
+                result += "\"h\": " + std::to_string(popup.Window->Size.y);
+                result += "}";
+                first = false;
+            }
+        }
+
+        // Widgets from registry
+        std::map<ImGuiID, WidgetInfo> uniqueWidgets;
+        for (const auto& w : widgetRegistry) {
+            if (w.id != 0) {
+                uniqueWidgets[w.id] = w;
+            }
+        }
+        for (const auto& it : uniqueWidgets) {
+            const WidgetInfo& w = it.second;
+            if (!first) result += ", ";
+            result += "{";
+            result += "\"type\": \"widget\", ";
+            result += "\"name\": \"" + w.label + "\", ";
+            result += "\"id\": " + std::to_string(w.id) + ", ";
+            result += "\"x\": " + std::to_string(w.rect.Min.x) + ", ";
+            result += "\"y\": " + std::to_string(w.rect.Min.y) + ", ";
+            result += "\"w\": " + std::to_string(w.rect.Max.x - w.rect.Min.x) + ", ";
+            result += "\"h\": " + std::to_string(w.rect.Max.y - w.rect.Min.y);
+            result += "}";
+            first = false;
+        }
+
+        result += "], \"viewport\": {";
+        result += "\"w\": " + std::to_string(ctx->IO.DisplaySize.x) + ", ";
+        result += "\"h\": " + std::to_string(ctx->IO.DisplaySize.y);
+        result += "}}";
+        return result;
+    }
+
+    void queueClickById(ImGuiID id) {
+        std::lock_guard<std::mutex> lock(actionsMutex);
+        pendingActions.push_back({ ImGuiAction::ClickById, 0, 0, 0, "", id });
+    }
+
+#endif // __cplusplus
+
+} // namespace httpdebug
+
+namespace httpdebug {
+    namespace procfs {
+        struct Endpoint {
+            std::string path;
+            ReadFunc read;
+            WriteFunc write;
+            Type type;
+        };
+
+        inline std::vector<Endpoint> endpoints;
+        inline std::mutex endpointsMutex;
+
+        struct PendingRequest {
+            std::string path;
+            std::string method;
+            std::string body;
+            int responseId;
+        };
+
+        inline std::vector<PendingRequest> pendingRequests;
+        inline std::mutex pendingMutex;
+
+        inline std::map<int, ProcResponse> responses;
+        inline std::mutex responseMutex;
+
+        int registerEndpoint(const std::string& path, ReadFunc read, WriteFunc write, Type type) {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            endpoints.push_back({ path, read, write, type });
+            return endpoints.size();
+        }
+
+        void unregister(const std::string& path) {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            endpoints.erase(
+                std::remove_if(endpoints.begin(), endpoints.end(),
+                               [&](const Endpoint& e) { return e.path == path; }),
+                endpoints.end());
+        }
+
+        std::vector<std::string> list() {
+            std::lock_guard<std::mutex> lock(endpointsMutex);
+            std::vector<std::string> result;
+            for (const auto& e : endpoints) {
+                result.push_back(e.path);
+            }
+            return result;
+        }
+
+        void queueRequest(const std::string& path, const std::string& method, const std::string& body, int responseId) {
+            std::lock_guard<std::mutex> lock(pendingMutex);
+            pendingRequests.push_back({ path, method, body, responseId });
+        }
+
+        bool getResponse(int responseId, ProcResponse& res) {
+            std::lock_guard<std::mutex> lock(responseMutex);
+            auto it = responses.find(responseId);
+            if (it != responses.end()) {
+                res = it->second;
+                responses.erase(it);
+                return true;
+            }
+            return false;
+        }
+
+        void processQueue() {
+            std::vector<PendingRequest> toProcess;
+            {
+                std::lock_guard<std::mutex> lock(pendingMutex);
+                toProcess = std::move(pendingRequests);
+                pendingRequests.clear();
+            }
+
+            for (const auto& req : toProcess) {
+                ProcResponse res{ 404, "not found", "text/plain" };
+
+                std::lock_guard<std::mutex> lock(endpointsMutex);
+                for (const auto& e : endpoints) {
+                    if (e.path == req.path) {
+                        if (req.method == "GET" && e.read) {
+                            res = { 200, e.read(), "text/plain" };
+                        }
+                        else if ((req.method == "POST" || req.method == "PUT") && e.write) {
+                            e.write(req.body);
+                            res = { 200, "ok", "text/plain" };
+                        }
+                        else {
+                            res = { 400, "operation not supported", "text/plain" };
+                        }
+                        break;
+                    }
+                }
+
+                std::lock_guard<std::mutex> lock2(responseMutex);
+                responses[req.responseId] = res;
+            }
+        }
+
+    } // namespace procfs
+} // namespace httpdebug
+
+// Implement createResponseForRequest here
+struct Response* createResponseForRequest(const struct Request* request, struct Connection* connection) {
+    if (strcmp(request->path, "/log") != 0) {
+        std::string reqLine = std::string(request->method) + " " + request->pathDecoded;
+        if (request->body.length > 0 && request->body.contents) {
+            reqLine += " body=";
+            reqLine += std::string(request->body.contents, request->body.length);
+        }
+        flog::info("HTTP debug: {}", reqLine);
+    }
+
+    if (strcmp(request->path, "/status") == 0 || strcmp(request->path, "/") == 0) {
+        return responseAllocJSONWithFormat(
+            "{\"ready\": %s, \"httpListening\": %s, \"mainLoopStarted\": %s}",
+            httpdebug::serverReady.load() ? "true" : "false",
+            httpdebug::httpServerListening.load() ? "true" : "false",
+            httpdebug::mainLoopStarted.load() ? "true" : "false");
+    }
+
+#ifdef __cplusplus
+    if (strcmp(request->path, "/windows") == 0) {
+        return responseAllocJSON(httpdebug::getAllWindowsJson().c_str());
+    }
+
+    if (strcmp(request->path, "/click") == 0) {
+        char* xParam = strdupDecodeGETParam("x=", request, "0");
+        char* yParam = strdupDecodeGETParam("y=", request, "0");
+        float x = (float)atof(xParam);
+        float y = (float)atof(yParam);
+        httpdebug::queueClick(x, y);
+        free(xParam);
+        free(yParam);
+        return responseAllocJSON("{\"action\": \"click\"}");
+    }
+
+    if (strcmp(request->path, "/mouse") == 0) {
+        char* xParam = strdupDecodeGETParam("x=", request, "0");
+        char* yParam = strdupDecodeGETParam("y=", request, "0");
+        float x = (float)atof(xParam);
+        float y = (float)atof(yParam);
+        httpdebug::queueMouseMove(x, y);
+        free(xParam);
+        free(yParam);
+        return responseAllocJSON("{\"action\": \"mouse_move\"}");
+    }
+
+    if (strcmp(request->path, "/key") == 0) {
+        char* keyParam = strdupDecodeGETParam("key=", request, "0");
+        int key = atoi(keyParam);
+        httpdebug::queueKeyPress(key);
+        free(keyParam);
+        return responseAllocJSON("{\"action\": \"key_press\"}");
+    }
+
+    if (strcmp(request->path, "/type") == 0) {
+        char* textParam = strdupDecodeGETParam("text=", request, "");
+        httpdebug::queueTypeText(std::string(textParam));
+        free(textParam);
+        return responseAllocJSON("{\"action\": \"type\"}");
+    }
+
+    if (strcmp(request->path, "/stop") == 0 || strcmp(request->path, "/exit") == 0) {
+        httpdebug::stopApp();
+        return responseAllocJSON("{\"status\": \"exiting\"}");
+    }
+
+    if (strcmp(request->path, "/layout") == 0) {
+        return responseAllocJSON(httpdebug::getSimpleLayoutJson().c_str());
+    }
+
+    if (strcmp(request->path, "/clickid") == 0) {
+        char* idParam = strdupDecodeGETParam("id=", request, "0");
+        ImGuiID id = (ImGuiID)atoi(idParam);
+        httpdebug::queueClickById(id);
+        free(idParam);
+        return responseAllocJSON("{\"action\": \"click_id\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/start") == 0) {
+        httpdebug::requestSdrStart();
+        return responseAllocJSON("{\"action\": \"sdr_start\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/stop") == 0) {
+        httpdebug::requestSdrStop();
+        return responseAllocJSON("{\"action\": \"sdr_stop\"}");
+    }
+
+    if (strcmp(request->path, "/sdr/status") == 0) {
+        return responseAllocJSONWithFormat(
+            "{\"playing\": %s}",
+            httpdebug::isSdrPlaying() ? "true" : "false");
+    }
+
+    // List available sink providers: GET /sinks
+    if (strcmp(request->path, "/sinks") == 0) {
+        std::string json = "{\"sinks\": [";
+        auto names = sigpath::sinkManager.getSinkProviderNames();
+        for (size_t i = 0; i < names.size(); i++) {
+            if (i > 0) json += ", ";
+            json += "\"" + names[i] + "\"";
+        }
+        json += "]}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    // List streams and their current sinks: GET /streams
+    if (strcmp(request->path, "/streams") == 0) {
+        std::string json = "{\"streams\": [";
+        bool first = true;
+        for (auto& [name, stream] : sigpath::sinkManager.streams) {
+            if (!first) json += ", ";
+            json += "{\"name\": \"" + name +
+                    "\", \"sink\": \"" + sigpath::sinkManager.getStreamSinkName(name) +
+                    "\", \"running\": " + (sigpath::sinkManager.isStreamRunning(name) ? "true" : "false") + "}";
+            first = false;
+        }
+        json += "]}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    // Set sink for a specific stream: POST /sink/select with body {"stream":"Radio","sink":"NullAudioSink"}
+    if (strcmp(request->path, "/sink/select") == 0) {
+        std::string streamName = "Radio";
+        std::string sinkName = "None";
+        if (request->body.length > 0 && request->body.contents) {
+            std::string body(request->body.contents, request->body.length);
+            try {
+                json j = json::parse(body);
+                if (j.contains("stream")) streamName = j["stream"];
+                if (j.contains("sink")) sinkName = j["sink"];
+            } catch (...) {
+                return responseAllocJSON("{\"error\": \"invalid JSON body\"}");
+            }
+        }
+        if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
+            return responseAllocJSONWithFormat(
+                "{\"error\": \"stream '%s' not found\"}", streamName.c_str());
+        }
+        sigpath::sinkManager.setStreamSink(streamName, sinkName);
+        return responseAllocJSONWithFormat(
+            "{\"status\": \"ok\", \"stream\": \"%s\", \"sink\": \"%s\"}",
+            streamName.c_str(), sinkName.c_str());
+    }
+
+    // Generic VFO control: /vfo/set_offset?name=TETRA%20Demodulator&offset=-686597
+    if (strncmp(request->path, "/vfo/set_offset", 15) == 0) {
+        char* nameParam = strdupDecodeGETParam("name=", request, "");
+        char* offsetParam = strdupDecodeGETParam("offset=", request, "0");
+        double offset = atof(offsetParam);
+        std::string name(nameParam);
+        if (name.empty()) {
+            free(nameParam);
+            free(offsetParam);
+            return responseAllocJSON("{\"error\": \"name parameter required\"}");
+        }
+        sigpath::vfoManager.setCenterOffset(name, offset);
+        free(nameParam);
+        free(offsetParam);
+        return responseAllocJSONWithFormat(
+            "{\"status\": \"ok\", \"vfo\": \"%s\", \"offset_hz\": %f}",
+            name.c_str(), offset);
+    }
+
+    if (strcmp(request->path, "/modules") == 0) {
+        std::string json = "{";
+        bool first = true;
+        for (auto& [name, inst] : core::moduleManager.instances) {
+            if (!first) json += ", ";
+            std::string modName = inst.module.info ? inst.module.info->name : "unknown";
+            bool enabled = inst.instance->isEnabled();
+            json += "\"" + name + "\": {\"module\": \"" + modName + "\", \"enabled\": " + (enabled ? "true" : "false") + "}";
+            first = false;
+        }
+        json += "}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    // /module/<instance_name>/enable or /module/<instance_name>/disable
+    {
+        std::string reqPath(request->path);
+        std::string enableSuffix = "/enable";
+        std::string disableSuffix = "/disable";
+        std::string enabledSuffix = "/enabled";
+        bool isEnable = false, isDisable = false, isQueryEnabled = false;
+        if (reqPath.size() > 8 && reqPath.substr(0, 8) == "/module/") {
+            std::string remainder = reqPath.substr(8);
+            if (remainder.size() > enableSuffix.size() && remainder.substr(remainder.size() - enableSuffix.size()) == enableSuffix) {
+                isEnable = true;
+            } else if (remainder.size() > disableSuffix.size() && remainder.substr(remainder.size() - disableSuffix.size()) == disableSuffix) {
+                isDisable = true;
+            } else if (remainder.size() > enabledSuffix.size() && remainder.substr(remainder.size() - enabledSuffix.size()) == enabledSuffix) {
+                isQueryEnabled = true;
+            }
+            if (isEnable || isDisable || isQueryEnabled) {
+                std::string instanceName = remainder.substr(0, remainder.size() - (isEnable ? enableSuffix.size() : isDisable ? disableSuffix.size() : enabledSuffix.size()));
+                std::string decoded;
+                for (size_t i = 0; i < instanceName.size(); i++) {
+                    if (instanceName[i] == '%' && i + 2 < instanceName.size()) {
+                        char hex[3] = { instanceName[i+1], instanceName[i+2], 0 };
+                        decoded += (char)strtol(hex, nullptr, 16);
+                        i += 2;
+                    } else if (instanceName[i] == '+') {
+                        decoded += ' ';
+                    } else {
+                        decoded += instanceName[i];
+                    }
+                }
+                instanceName = decoded;
+
+                auto& instances = core::moduleManager.instances;
+                auto it = instances.find(instanceName);
+                if (it == instances.end()) {
+                    return responseAllocJSONWithFormat(
+                        "{\"error\": \"instance '%s' not found\"}",
+                        instanceName.c_str());
+                }
+
+                if (isQueryEnabled) {
+                    bool enabled = it->second.instance->isEnabled();
+                    return responseAllocJSONWithFormat(
+                        "{\"instance\": \"%s\", \"enabled\": %s}",
+                        instanceName.c_str(), enabled ? "true" : "false");
+                }
+
+                if (isEnable) {
+                    if (it->second.instance->isEnabled()) {
+                        return responseAllocJSONWithFormat(
+                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true, \"note\": \"already enabled\"}",
+                            instanceName.c_str());
+                    }
+                    it->second.instance->enable();
+                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = true;
+                    return responseAllocJSONWithFormat(
+                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true}",
+                        instanceName.c_str());
+                }
+
+                if (isDisable) {
+                    if (!it->second.instance->isEnabled()) {
+                        return responseAllocJSONWithFormat(
+                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false, \"note\": \"already disabled\"}",
+                            instanceName.c_str());
+                    }
+                    it->second.instance->disable();
+                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = false;
+                    return responseAllocJSONWithFormat(
+                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false}",
+                        instanceName.c_str());
+                }
+            }
+        }
+    }
+
+    // Generic module command routing via /module/<instance_name>/command
+    if (strncmp(request->path, "/module/", 8) == 0) {
+        std::string reqPath(request->path);
+        size_t cmdPos = reqPath.find("/command", 8);
+        if (cmdPos != std::string::npos) {
+            std::string instanceName = reqPath.substr(8, cmdPos - 8);
+            // URL decode instance name
+            std::string decoded;
+            for (size_t i = 0; i < instanceName.size(); i++) {
+                if (instanceName[i] == '%' && i + 2 < instanceName.size()) {
+                    char hex[3] = { instanceName[i+1], instanceName[i+2], 0 };
+                    decoded += (char)strtol(hex, nullptr, 16);
+                    i += 2;
+                } else if (instanceName[i] == '+') {
+                    decoded += ' ';
+                } else {
+                    decoded += instanceName[i];
+                }
+            }
+            instanceName = decoded;
+
+            auto& instances = core::moduleManager.instances;
+            auto it = instances.find(instanceName);
+            if (it == instances.end()) {
+                return responseAllocJSONWithFormat(
+                    "{\"error\": \"instance '%s' not found\"}",
+                    instanceName.c_str());
+            }
+
+            std::string cmd = "command";
+            std::string args = "";
+
+            if (strlen(request->method) > 0 && (strcmp(request->method, "POST") == 0 || strcmp(request->method, "PUT") == 0)) {
+                // Parse body as JSON: {"cmd": "...", "args": "..."}
+                if (request->body.length > 0 && request->body.contents) {
+                    std::string body(request->body.contents, request->body.length);
+                    try {
+                        json j = json::parse(body);
+                        if (j.contains("cmd")) cmd = j["cmd"];
+                        if (j.contains("args")) args = j["args"];
+                    } catch (...) {
+                        cmd = body; // Fallback: whole body is the command
+                    }
+                }
+            } else {
+                // GET: read query params
+                char* cmdParam = strdupDecodeGETParam("cmd=", request, "command");
+                cmd = cmdParam;
+                free(cmdParam);
+                char* argsParam = strdupDecodeGETParam("args=", request, "");
+                args = argsParam;
+                free(argsParam);
+            }
+
+            std::string result = it->second.instance->handleDebugCommand(cmd, args);
+            return responseAllocJSON(result.c_str());
+        }
+    }
+
+    if (strncmp(request->path, "/proc", 5) == 0) {
+        std::string fullPath(request->pathDecoded);
+        if (fullPath == "/proc") {
+            auto list = httpdebug::procfs::list();
+            std::string json = "[";
+            for (size_t i = 0; i < list.size(); i++) {
+                if (i > 0) json += ", ";
+                json += "\"" + list[i] + "\"";
+            }
+            json += "]";
+            return responseAllocJSON(json.c_str());
+        }
+
+        std::string path = fullPath.substr(5);
+
+        int responseId = rand();
+        std::string method = "GET";
+        std::string body = "";
+
+        if (strlen(request->method) > 0) {
+            method = request->method;
+        }
+
+        if (request->body.length > 0 && request->body.contents) {
+            body = std::string(request->body.contents, request->body.length);
+        }
+
+        httpdebug::procfs::queueRequest(path, method, body, responseId);
+
+        for (int i = 0; i < 100; i++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            httpdebug::procfs::ProcResponse res;
+            if (httpdebug::procfs::getResponse(responseId, res)) {
+                if (res.statusCode == 200) {
+                    return responseAllocJSON(res.body.c_str());
+                }
+                else {
+                    return responseAllocJSON(res.body.c_str());
+                }
+            }
+        }
+
+        return responseAllocJSON("{\"error\": \"timeout\"}");
+    }
+
+    if (strncmp(request->path, "/ls", 3) == 0 || strncmp(request->pathDecoded, "/ls", 3) == 0) {
+        std::lock_guard<std::mutex> lock(httpdebug::procfs::endpointsMutex);
+        std::string json = "[";
+        for (size_t i = 0; i < httpdebug::procfs::endpoints.size(); i++) {
+            const auto& e = httpdebug::procfs::endpoints[i];
+            if (i > 0) json += ", ";
+            std::string typeStr = "unknown";
+            switch (e.type) {
+            case httpdebug::procfs::Type::Bool:
+                typeStr = "bool";
+                break;
+            case httpdebug::procfs::Type::Int:
+                typeStr = "int";
+                break;
+            case httpdebug::procfs::Type::Float:
+                typeStr = "float";
+                break;
+            case httpdebug::procfs::Type::String:
+                typeStr = "string";
+                break;
+            default:
+                typeStr = "unknown";
+                break;
+            }
+            std::string value = e.read ? e.read() : "";
+            std::string valueEscaped;
+            for (char c : value) {
+                if (c == '"')
+                    valueEscaped += "\\\"";
+                else if (c == '\\')
+                    valueEscaped += "\\\\";
+                else
+                    valueEscaped += c;
+            }
+            std::string pathEscaped;
+            for (char c : e.path) {
+                if (c == '"')
+                    pathEscaped += "\\\"";
+                else if (c == '\\')
+                    pathEscaped += "\\\\";
+                else
+                    pathEscaped += c;
+            }
+            json += "{\"path\": \"" + pathEscaped + "\", \"value\": \"" + valueEscaped + "\", \"type\": \"" + typeStr + "\", \"writable\": " + (e.write ? "true" : "false") + "}";
+        }
+        json += "]";
+        return responseAllocJSON(json.c_str());
+    }
+#endif
+
+    if (strcmp(request->path, "/log") == 0) {
+        if (!flog::isMemoryLogEnabled()) {
+            return responseAllocJSON("{\"error\":\"memory log buffer disabled\"}");
+        }
+        std::string content;
+        {
+            std::lock_guard<std::mutex> lock(flog::outMtx);
+            for (const auto& rec : flog::logRecords) {
+                content += rec.message;
+                content += '\n';
+            }
+            flog::logRecords.clear();
+        }
+
+        std::string escaped;
+        escaped.reserve(content.size() + 16);
+        for (unsigned char c : content) {
+            switch (c) {
+                case '"':  escaped += "\\\""; break;
+                case '\\': escaped += "\\\\"; break;
+                case '\n': escaped += "\\n"; break;
+                case '\r': escaped += "\\r"; break;
+                case '\t': escaped += "\\t"; break;
+                case '\b': escaped += "\\b"; break;
+                case '\f': escaped += "\\f"; break;
+                default:
+                    if (c < 0x20) {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        escaped += buf;
+                    }
+                    else {
+                        escaped += (char)c;
+                    }
+                    break;
+            }
+        }
+        std::string json = std::string("{\"log\": \"") + escaped + "\"}";
+        return responseAllocJSON(json.c_str());
+    }
+
+    return responseAlloc404NotFoundHTML(request->path);
+}
