@@ -31,6 +31,7 @@ Scanner::Scanner(FrequencyManagerModule* module) : module(module) {
         config.conf["scanner"]["noiseFloor"] = +3.0f;
         config.conf["scanner"]["signalMarginDb"] = 4.0f;
         config.conf["scanner"]["squelchEnabled"] = false;
+        config.conf["scanner"]["carrierHoldMode"] = false;
         config.release(true);
         config.acquire();
     }
@@ -40,6 +41,12 @@ Scanner::Scanner(FrequencyManagerModule* module) : module(module) {
     noiseFloor = config.conf["scanner"]["noiseFloor"];
     signalMarginDb = config.conf["scanner"]["signalMarginDb"];
     squelchEnabled = config.conf["scanner"]["squelchEnabled"];
+    if (config.conf["scanner"].contains("carrierHoldMode")) {
+        carrierHoldMode = config.conf["scanner"]["carrierHoldMode"];
+    } else {
+        carrierHoldMode = false;
+        config.conf["scanner"]["carrierHoldMode"] = false;
+    }
     config.release();
 }
 
@@ -98,7 +105,7 @@ void Scanner::render() {
         }
 
         // Listen time input
-        ImGui::LeftLabel("Listen Time (s)");
+        ImGui::LeftLabel(carrierHoldMode ? "Hang Time (s)" : "Listen Time (s)");
         ImGui::SetNextItemWidth(100);
         if (ImGui::InputFloat("##scanner_listen", &listenTimeSec, 0.1f, 1.0f, "%.1f")) {
             auto& config = getFrequencyManagerConfig();
@@ -142,6 +149,16 @@ void Scanner::render() {
             auto& config = getFrequencyManagerConfig();
             config.acquire();
             config.conf["scanner"]["squelchEnabled"] = squelchEnabled;
+            config.release(true);
+        }
+
+        ImGui::SameLine();
+
+        // Carrier Hold checkbox
+        if (ImGui::Checkbox("Carrier Hold", &carrierHoldMode)) {
+            auto& config = getFrequencyManagerConfig();
+            config.acquire();
+            config.conf["scanner"]["carrierHoldMode"] = carrierHoldMode;
             config.release(true);
         }
 
@@ -236,6 +253,16 @@ void Scanner::update(float deltaTime) {
     }
 
     if (signalDetected) {
+        if (carrierHoldMode) {
+            // Keep tracking level while "locked"
+            if (!signalHistory.empty()) {
+                float avgSignalLevel = signalHistorySum / signalHistory.size();
+                if (avgSignalLevel > (noiseFloor + signalMarginDb)) {
+                    timeSinceLastSwitch = 0.0f; // Carrier still present, reset hold
+                }
+            }
+        }
+
         // If we've detected a signal and time is up, continue scanning
         if (timeSinceLastSwitch >= listenTimeSec * 1000.0f) {
             nextStation();

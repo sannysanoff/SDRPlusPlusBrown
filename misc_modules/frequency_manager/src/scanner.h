@@ -52,6 +52,7 @@ private:
     int signalLevelCount = 0;
     bool inSignalDetection = false;
     bool squelchEnabled = false;
+    bool carrierHoldMode = false;
     
     // For "Use Current" button
     struct SignalSample {

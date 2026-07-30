@@ -873,6 +873,7 @@ MOD_EXPORT void _INIT_() {
     def["scanner"]["noiseFloor"] = -120.0f;
     def["scanner"]["signalMarginDb"] = 6.0f;
     def["scanner"]["squelchEnabled"] = false;
+    def["scanner"]["carrierHoldMode"] = false;
 
     config.setPath(std::string(core::getRoot()) + "/frequency_manager_config.json");
     config.load(def);
