@@ -141,6 +141,8 @@ public:
                     bookmark["mode"] = "Unknown";
                 }
                 bookmark["mode_index"] = bm.modeIndex;
+                bookmark["vfo"] = bm.vfoName;
+                bookmark["vfo_available"] = bm.vfoName.empty() || sigpath::vfoManager.vfoExists(bm.vfoName);
                 bms.push_back(bookmark);
             }
             return json{{"bookmarks", bms}, {"list", selectedListName}}.dump();
@@ -190,6 +192,7 @@ public:
                 fbm.bandwidth = bandwidth;
                 fbm.modeIndex = modeIndex;
                 fbm.selected = false;
+                fbm.vfoName = gui::waterfall.selectedVFO;
                 bookmarks[bmName] = fbm;
                 saveByName(selectedListName);
                 return json{{"status", "ok"}, {"name", bmName}, {"frequency", frequency}, {"bandwidth", bandwidth}, {"mode_index", modeIndex}}.dump();
@@ -218,9 +221,10 @@ public:
                 return json{{"error", "bookmark not found: " + args}}.dump();
             }
             FrequencyBookmark& bm = it->second;
+            std::string targetVfo = bm.vfoName.empty() ? gui::waterfall.selectedVFO : bm.vfoName;
             applyBookmark(bm, gui::waterfall.selectedVFO);
             bm.selected = false;
-            return json{{"status", "ok"}, {"applied", args}, {"frequency", bm.frequency}, {"bandwidth", bm.bandwidth}, {"vfo", gui::waterfall.selectedVFO.empty() ? "center" : gui::waterfall.selectedVFO}}.dump();
+            return json{{"status", "ok"}, {"applied", args}, {"frequency", bm.frequency}, {"bandwidth", bm.bandwidth}, {"vfo", targetVfo.empty() ? "center" : targetVfo}}.dump();
         }
         if (cmd == "get_scanner_status") {
             return json{{"scanning", scanner.isScanning()}, {"current_station", scanner.getCurrentStation()}, {"bookmark_count", (int)bookmarks.size()}}.dump();
@@ -414,7 +418,8 @@ private:
                 wbm.bookmark.frequency = config.conf["lists"][listName]["bookmarks"][bookmarkName]["frequency"];
                 wbm.bookmark.bandwidth = config.conf["lists"][listName]["bookmarks"][bookmarkName]["bandwidth"];
                 int mode = config.conf["lists"][listName]["bookmarks"][bookmarkName]["mode"];
-                wbm.bookmark.modeIndex = radio->getDemodIndex(mode);
+                wbm.bookmark.modeIndex = (radio != nullptr) ? radio->getDemodIndex(mode) : -1;
+                wbm.bookmark.vfoName = config.conf["lists"][listName]["bookmarks"][bookmarkName].value("vfo", "");
                 wbm.bookmark.selected = false;
                 wbm.notValidAfter = 0;
                 wbm.extraInfo = "";
@@ -456,7 +461,8 @@ private:
             FrequencyBookmark fbm;
             fbm.frequency = bm["frequency"];
             fbm.bandwidth = bm["bandwidth"];
-            fbm.modeIndex = radio->getDemodIndex(bm["mode"]);
+            fbm.modeIndex = (radio != nullptr) ? radio->getDemodIndex(bm["mode"]) : -1;
+            fbm.vfoName = bm.value("vfo", "");
             fbm.selected = false;
             bookmarks[bmName] = fbm;
         }
@@ -467,6 +473,7 @@ private:
         demodModeList.clear();
         demodModeListRev.clear();
         demodModeListTxt = "";
+        if (radio == nullptr) { return; } // VFO without RadioModuleInterface (e.g. TETRA Demodulator)
         for (auto m : radio->radioModes) {
             demodModeList[m.second] = m.first;
             demodModeListRev[m.first] = m.second;
@@ -482,9 +489,10 @@ private:
         for (auto [bmName, bm] : bookmarks) {
             config.conf["lists"][listName]["bookmarks"][bmName]["frequency"] = bm.frequency;
             config.conf["lists"][listName]["bookmarks"][bmName]["bandwidth"] = bm.bandwidth;
-            DemodID demodId = radio->getDemodByIndex(bm.modeIndex);
+            DemodID demodId = (radio != nullptr) ? radio->getDemodByIndex(bm.modeIndex) : (DemodID)-1;
             flog::info("bm.modeIndex={}, demodId={}", (int)bm.modeIndex, (int)demodId);
             config.conf["lists"][listName]["bookmarks"][bmName]["mode"] = demodId;
+            config.conf["lists"][listName]["bookmarks"][bmName]["vfo"] = bm.vfoName;
         }
         refreshWaterfallBookmarks(false);
         config.release(true);
@@ -598,7 +606,8 @@ private:
                 _this->editedBookmark.frequency = gui::waterfall.getCenterFrequency() + sigpath::vfoManager.getOffset(gui::waterfall.selectedVFO);
                 _this->editedBookmark.bandwidth = sigpath::vfoManager.getBandwidth(gui::waterfall.selectedVFO);
             }
-            _this->editedBookmark.modeIndex = radio->getDemodIndex(radio->getSelectedDemodId());
+            _this->editedBookmark.modeIndex = (radio != nullptr) ? radio->getDemodIndex(radio->getSelectedDemodId()) : -1;
+            _this->editedBookmark.vfoName = gui::waterfall.selectedVFO;
             _this->editedBookmark.selected = false;
 
 
@@ -654,10 +663,12 @@ private:
             ImGui::TableSetupScrollFreeze(2, 1);
             ImGui::TableHeadersRow();
             for (auto& [name, bm] : _this->bookmarks) {
+                bool vfoMissing = !bm.vfoName.empty() && !sigpath::vfoManager.vfoExists(bm.vfoName);
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImVec2 min = ImGui::GetCursorPos();
 
+                if (vfoMissing) { style::beginDisabled(); }
                 if (ImGui::Selectable((name + "##_freq_mgr_bkm_name_" + _this->name).c_str(), &bm.selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_SelectOnClick)) {
                     // if shift or control isn't pressed, deselect all others
                     if (!ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl) {
@@ -667,12 +678,24 @@ private:
                         }
                     }
                 }
+                if (vfoMissing) {
+                    style::endDisabled();
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Radio \"%s\" is not available", bm.vfoName.c_str());
+                    }
+                }
                 if (ImGui::TableGetHoveredColumn() >= 0 && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                     applyBookmark(bm, gui::waterfall.selectedVFO);
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str());
+                if (vfoMissing) {
+                    ImGui::Text("%s ", utils::formatFreq(bm.frequency).c_str());
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "X");
+                } else {
+                    ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), (radio != nullptr) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str() : "");
+                }
 //		std::string modeStr = (radio != nullptr && bm.modeIndex >= 0) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)] : "DIGITAL";
 //		ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), modeStr.c_str());
 
@@ -791,6 +814,8 @@ private:
 
             if (bm.notValidAfter && ctm > bm.notValidAfter) { continue; }
 
+            bool vfoMissing = !bm.bookmark.vfoName.empty() && !sigpath::vfoManager.vfoExists(bm.bookmark.vfoName);
+
             double centerXpos = args.min.x + std::round((bm.bookmark.frequency - args.lowFreq) * args.freqToPixelRatio);
 
             ImVec2 nameSize = ImGui::CalcTextSize(bm.bookmarkName.c_str());
@@ -824,11 +849,19 @@ again:
                 if (clampedRectMin.y < args.min.y || clampedRectMax.y >= args.max.y) {
                     continue; // dont draw at all.
                 }
-                args.window->DrawList->AddRectFilled(clampedRectMin, clampedRectMax, bm.worked ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 255, 0, 255));
+                args.window->DrawList->AddRectFilled(clampedRectMin, clampedRectMax, bm.worked ? IM_COL32(0, 255, 0, 255) : (vfoMissing ? IM_COL32(255, 80, 80, 255) : IM_COL32(255, 255, 0, 255)));
                 _this->rects.emplace_back(Drawn { newRect, index } );
             }
             if (rectMin.x >= args.min.x && rectMax.x <= args.max.x) {
-                args.window->DrawList->AddText(ImVec2(centerXpos - (nameSize.x / 2), rectMin.y), IM_COL32(0, 0, 0, 255), bm.bookmarkName.c_str());
+                if (vfoMissing) {
+                    // Red cross over the label: the radio this bookmark belongs to is gone
+                    ImVec2 crossCenter = ImVec2(centerXpos, rectMin.y + (nameSize.y / 2.0f));
+                    float crossHalf = nameSize.y * 0.35f;
+                    args.window->DrawList->AddLine(ImVec2(crossCenter.x - crossHalf, crossCenter.y - crossHalf), ImVec2(crossCenter.x + crossHalf, crossCenter.y + crossHalf), IM_COL32(255, 0, 0, 255), 2.0f);
+                    args.window->DrawList->AddLine(ImVec2(crossCenter.x - crossHalf, crossCenter.y + crossHalf), ImVec2(crossCenter.x + crossHalf, crossCenter.y - crossHalf), IM_COL32(255, 0, 0, 255), 2.0f);
+                } else {
+                    args.window->DrawList->AddText(ImVec2(centerXpos - (nameSize.x / 2), rectMin.y), IM_COL32(0, 0, 0, 255), bm.bookmarkName.c_str());
+                }
             }
             if (bm.bookmark.frequency >= args.lowFreq && bm.bookmark.frequency <= args.highFreq) {
                 args.window->DrawList->AddLine(ImVec2(centerXpos, args.min.y), ImVec2(centerXpos, args.max.y), bm.worked ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 255, 0, 255));
@@ -891,7 +924,11 @@ again:
         ImGui::Text("List: %s", hoveredBookmark.listName.c_str());
         ImGui::Text("Frequency: %s", utils::formatFreq(hoveredBookmark.bookmark.frequency).c_str());
         ImGui::Text("Bandwidth: %s", utils::formatFreq(hoveredBookmark.bookmark.bandwidth).c_str());
-        ImGui::Text("Mode: %s", demodModeList[radio->getDemodByIndex(hoveredBookmark.bookmark.modeIndex)].c_str());
+        if (!hoveredBookmark.bookmark.vfoName.empty() && !sigpath::vfoManager.vfoExists(hoveredBookmark.bookmark.vfoName)) {
+            ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "Radio \"%s\" is not available", hoveredBookmark.bookmark.vfoName.c_str());
+        } else {
+            ImGui::Text("Mode: %s", (radio != nullptr) ? demodModeList[radio->getDemodByIndex(hoveredBookmark.bookmark.modeIndex)].c_str() : "");
+        }
         ImGui::EndTooltip();
     }
 
@@ -927,7 +964,8 @@ again:
             FrequencyBookmark fbm;
             fbm.frequency = bm["frequency"];
             fbm.bandwidth = bm["bandwidth"];
-            fbm.modeIndex = radio->getDemodIndex(bm["mode"]);
+            fbm.modeIndex = (radio != nullptr) ? radio->getDemodIndex(bm["mode"]) : -1;
+            fbm.vfoName = bm.value("vfo", "");
             fbm.selected = false;
             bookmarks[_name] = fbm;
         }
@@ -977,24 +1015,28 @@ again:
 };
 
 void applyBookmark(FrequencyBookmark bm, std::string vfoName) {
-    if (vfoName == "") {
+    // A bookmark may remember the radio/VFO it was saved for. If it does, apply
+    // to that radio instead of whatever VFO is currently selected.
+    std::string targetVfo = bm.vfoName.empty() ? vfoName : bm.vfoName;
+    if (targetVfo == "") {
         // TODO: Replace with proper tune call
         gui::waterfall.setCenterFrequency(bm.frequency);
         gui::waterfall.centerFreqMoved = true;
+        return;
     }
-    else {
-        for(auto x: core::moduleManager.instances) {
-            ModuleManager::Instance *pInstance = x.second.instance;
-            auto radio = (RadioModuleInterface *)pInstance->getInterface("RadioModuleInterface");
-            if (radio && x.first == vfoName) {
-                int mode = radio->getDemodByIndex(bm.modeIndex);
-                float bandwidth = bm.bandwidth;
-                core::modComManager.callInterface(vfoName, RADIO_IFACE_CMD_SET_MODE, &mode, NULL);
-                core::modComManager.callInterface(vfoName, RADIO_IFACE_CMD_SET_BANDWIDTH, &bandwidth, NULL);
-            }
+    // Radio no longer exists (module not loaded): bookmark is disabled, do nothing
+    if (!sigpath::vfoManager.vfoExists(targetVfo)) { return; }
+    for(auto x: core::moduleManager.instances) {
+        ModuleManager::Instance *pInstance = x.second.instance;
+        auto radio = (RadioModuleInterface *)pInstance->getInterface("RadioModuleInterface");
+        if (radio && x.first == targetVfo) {
+            int mode = radio->getDemodByIndex(bm.modeIndex);
+            float bandwidth = bm.bandwidth;
+            core::modComManager.callInterface(targetVfo, RADIO_IFACE_CMD_SET_MODE, &mode, NULL);
+            core::modComManager.callInterface(targetVfo, RADIO_IFACE_CMD_SET_BANDWIDTH, &bandwidth, NULL);
         }
-        tuner::tune(tuner::TUNER_MODE_NORMAL, vfoName, bm.frequency);
     }
+    tuner::tune(tuner::TUNER_MODE_NORMAL, targetVfo, bm.frequency);
 }
 
 

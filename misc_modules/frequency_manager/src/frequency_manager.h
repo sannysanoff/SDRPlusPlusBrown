@@ -8,6 +8,7 @@ struct FrequencyBookmark {
     double bandwidth;
     int modeIndex;
     bool selected;
+    std::string vfoName; // VFO/radio this bookmark belongs to; empty = legacy (apply to currently selected VFO)
 };
 
 struct WaterfallBookmark {
