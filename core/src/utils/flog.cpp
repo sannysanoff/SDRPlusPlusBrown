@@ -202,6 +202,7 @@ namespace flog {
             // Switch back to default color and print rest of log string
             SetConsoleTextAttribute(conHndl, bg | COLOR_WHITE);
             fprintf(outStream, "] %s\n", out.c_str());
+            fflush(outStream);
 #elif defined(__ANDROID__)
             // Print format string
             __android_log_print(ANDROID_LOG_WARN, FLOG_ANDROID_TAG, "%s\n", out.c_str());
