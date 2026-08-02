@@ -180,18 +180,27 @@ public:
                 try {
                     openPath(args);
                 } catch (const std::exception& e) {
-                    return "{\"error\": \"" + std::string(e.what()) + "\"}";
+                    json err;
+                    err["error"] = std::string(e.what());
+                    return err.dump();
                 }
             }
-            return "{\"status\": \"ok\", \"filename\": \"" + args + "\"}";
+            json ok;
+            ok["status"] = "ok";
+            ok["filename"] = args;
+            return ok.dump();
         }
         if (cmd == "get_filename" || cmd == "get_path") {
             config.acquire();
             std::string path = config.conf["path"];
             config.release();
-            return "{\"filename\": \"" + path + "\"}";
+            json resp;
+            resp["filename"] = path;
+            return resp.dump();
         }
-        return "{\"error\": \"unknown command: " + cmd + "\"}";
+        json err;
+        err["error"] = "unknown command: " + cmd;
+        return err.dump();
     }
 
 #ifndef BUILD_TESTS
