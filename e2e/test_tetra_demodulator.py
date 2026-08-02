@@ -133,7 +133,7 @@ def test_tetra_demodulator():
             stats.test_fail("test_tetra_demodulator", f"Mode switch failed, still mode {resp.get('mode')}")
             return False
         
-        stats.info("✓ Successfully switched to network syms mode")
+        stats.info("[OK] Successfully switched to network syms mode")
         
         # Switch back to osmo-tetra mode
         resp = ctx.module_cmd("TETRA Demodulator", "set_mode", "0")
@@ -153,7 +153,7 @@ def test_tetra_demodulator():
             stats.test_fail("test_tetra_demodulator", f"Mode switch back failed, still mode {resp.get('mode')}")
             return False
         
-        stats.info("✓ Successfully switched back to osmo-tetra mode")
+        stats.info("[OK] Successfully switched back to osmo-tetra mode")
         
         # Step 4: Verify the module remains responsive (not blocked)
         # The fact that we got here means the module is working
