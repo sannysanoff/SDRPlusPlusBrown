@@ -266,6 +266,17 @@ def wait_for_server(base_url: str, timeout: float = DEFAULT_STARTUP_TIMEOUT) -> 
     return False
 
 
+def wait_for_playing(ctx: "SDRPPTestContext", timeout: float = 30.0) -> bool:
+    """Wait for SDR++ to enter the playing state (polls /sdr/status)."""
+    start = time.time()
+    while time.time() - start < timeout:
+        resp = http_get(ctx.base_url, "/sdr/status")
+        if resp.get("playing"):
+            return True
+        ctx.sleep(0.5)
+    return False
+
+
 def kill_existing_sdrpp(http_port: int) -> None:
     """Kill any existing SDR++ instance using the specified HTTP port."""
     if os.name == "nt":

@@ -3,12 +3,12 @@
 import os
 import sys
 
-from e2e_common import SDRPPTestContext, get_base_config, http_get, http_post, stats, STATS_MODE
+from e2e_common import SDRPPTestContext, get_base_config, http_get, http_post, stats, STATS_MODE, wait_for_playing
 
 
-TEST_FILE = "/Users/san/recordings/baseband_144553405Hz_17-40-40_15-05-2024---tarlink--dmr---.wav"
-TEST_FREQ = 144553405.0
-DMR_OFFSET_HZ = -253405
+TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings", "dmr_sample.wav")
+TEST_FREQ = 0.0
+DMR_OFFSET_HZ = 0
 
 
 def test_wait_for_dmr_voice_status():
@@ -20,7 +20,7 @@ def test_wait_for_dmr_voice_status():
 
     main_config = get_base_config()
     main_config["frequency"] = TEST_FREQ
-    main_config["sampleRate"] = 752000.0
+    main_config["sampleRate"] = 16000.0
     main_config["source"] = "file_source"
     main_config["moduleInstances"]["File Source"] = {"module": "file_source", "enabled": True}
     main_config["moduleInstances"]["Recorder"] = {"module": "recorder", "enabled": True}
@@ -66,6 +66,10 @@ def test_wait_for_dmr_voice_status():
         resp = http_get(ctx.base_url, "/sdr/start")
         if resp.get("action") != "sdr_start":
             stats.test_fail("test_wait_for_dmr_voice_status", f"sdr start failed: {resp}")
+            return False
+
+        if not wait_for_playing(ctx, 30.0):
+            stats.test_fail("test_wait_for_dmr_voice_status", "SDR++ did not reach playing state within 30s")
             return False
 
         resp = ctx.module_cmd("Extra V/UHF", "wait_dmr_sync_voice", "Radio,2000,10000", timeout=15.0)

@@ -38,10 +38,9 @@ def read_iq(path, start_s, stop_s):
 def write_iq(path, iq, fs):
     iq = np.asarray(iq, dtype=np.complex64)
     peak = np.max(np.abs(iq)) or 1.0
-    xq = np.clip(iq / peak * 0.95, -1, 1)
-    iq16 = np.empty(2 * len(xq), dtype=np.int16)
-    iq16[0::2] = (xq.real * 32767).astype(np.int16)
-    iq16[1::2] = (xq.imag * 32767).astype(np.int16)
+    iq16 = np.empty(2 * len(iq), dtype=np.int16)
+    iq16[0::2] = np.clip(iq.real * 32767, -32768, 32767).astype(np.int16)
+    iq16[1::2] = np.clip(iq.imag * 32767, -32768, 32767).astype(np.int16)
     with wave.open(path, "wb") as w:
         w.setnchannels(2)
         w.setsampwidth(2)
