@@ -21,7 +21,7 @@ from e2e_common import (
 
 
 TEST_FILE = "/Users/san/recordings/baseband_144553405Hz_17-40-40_15-05-2024---tarlink--dmr---.wav"
-CARRIER_FREQ = 144553405.0
+CARRIER_FREQ = 144300000.0
 SAMPLE_RATE = 752000.0
 
 
