@@ -120,6 +120,12 @@ def test_dmr_record():
                   {"stream": "Radio", "sink": "NullAudioSink"})
         ctx.sleep(0.3)
 
+        # Step 4b: Put the Radio VFO at 0 Hz (sample signal is at DC)
+        resp = http_get(ctx.base_url, "/vfo/set_offset?name=Radio&offset=0")
+        if resp.get("status") != "ok":
+            stats.test_fail("test_dmr_record", f"vfo set_offset failed: {resp}")
+            return False
+
         # Step 5: Start playback
         resp = http_get(ctx.base_url, "/sdr/start")
         if resp.get("action") != "sdr_start":
