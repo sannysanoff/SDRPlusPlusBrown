@@ -268,7 +268,15 @@ def wait_for_server(base_url: str, timeout: float = DEFAULT_STARTUP_TIMEOUT) -> 
 
 def kill_existing_sdrpp(http_port: int) -> None:
     """Kill any existing SDR++ instance using the specified HTTP port."""
-    subprocess.run(["pkill", "-f", f"sdrpp.*--http.*{http_port}"], capture_output=True)
+    if os.name == "nt":
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"Get-CimInstance Win32_Process -Filter \"Name='sdrpp.exe'\" | "
+             f"Where-Object {{ $_.CommandLine -match '--http.*{http_port}' }} | "
+             f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"],
+            capture_output=True)
+    else:
+        subprocess.run(["pkill", "-f", f"sdrpp.*--http.*{http_port}"], capture_output=True)
     time.sleep(0.5)
 
 
@@ -280,13 +288,19 @@ def get_base_config(build_dir: str = DEFAULT_BUILD_DIR, root_dev: str = DEFAULT_
     """Get base SDR++ configuration with common settings.
     
     Paths are set explicitly to ensure SDR++ can find modules and resources.
+    Supports Linux (inst/lib/sdrpp/plugins), macOS, and Windows (flat
+    modules/ + res/ next to the binary) layouts.
     """
     modules_dir = os.path.join(root_dev, "inst/lib/sdrpp/plugins")
     if not os.path.isdir(modules_dir):
         modules_dir = os.path.join(root_dev, "inst/lib/sdrpp_brown/plugins")
+    if not os.path.isdir(modules_dir):
+        modules_dir = os.path.join(build_dir, "modules")
     res_dir = os.path.join(root_dev, "inst/share/sdrpp")
     if not os.path.isdir(res_dir):
         res_dir = os.path.join(root_dev, "inst/share/sdrpp_brown")
+    if not os.path.isdir(res_dir):
+        res_dir = os.path.join(build_dir, "res")
     return {
         "frequency": 7100000.0,
         "sampleRate": 48000.0,
