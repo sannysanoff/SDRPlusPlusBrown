@@ -439,6 +439,7 @@ int sdrpp_main(int argc, char* argv[]) {
 
 #ifdef _WIN32
     setlocale(LC_ALL, ".65001"); // Set locale to UTF-8
+    setlocale(LC_NUMERIC, "C"); // Keep '.' decimal separator so std::to_string/printf produce valid JSON
 #endif
     flog::info("SDR++Brown! v" VERSION_STR);
 
