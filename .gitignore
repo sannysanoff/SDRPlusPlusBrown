@@ -36,3 +36,30 @@ qemu/
 *.log
 __pycache__/
 *.pyc
+
+# Stray root-level generated files
+/*.patch
+/*.svg
+
+# Stray Node.js files (project doesn't use Node)
+package.json
+package-lock.json
+
+# Personal notes
+e2e_testing_changes.md
+
+# Android local machine config
+local.properties
+
+# Android debug keystores (sensitive)
+debug*.keystore
+
+# Gradle wrapper binary (reproducible from properties)
+gradle-wrapper.jar
+
+# Separate nested project (has own .git)
+tools/
+
+# Editor/compiler caches
+.cache/
+.tempdir/

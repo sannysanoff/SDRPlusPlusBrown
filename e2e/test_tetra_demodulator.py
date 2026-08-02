@@ -26,7 +26,7 @@ from e2e_common import (
 
 def get_test_file_path():
     """Get the path to the test recording file."""
-    default_path = "/Users/san/recordings/baseband_468811597Hz_18-53-50_29-12-2025___tetra.wav"
+    default_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings", "tetra_sample.wav")
     return os.environ.get("E2E_TEST_FILE", default_path)
 
 
@@ -64,10 +64,10 @@ def test_tetra_demodulator():
     }
     
     # Set frequency to match the TETRA carrier frequency in the recording
-    main_config["frequency"] = 468122000.0
+    main_config["frequency"] = 0.0
     
     # Set sample rate appropriate for TETRA (36000 Hz as per TETRA module)
-    main_config["sampleRate"] = 36000.0
+    main_config["sampleRate"] = 32000.0
     
     with SDRPPTestContext() as ctx:
         ctx.write_configs(main_config)

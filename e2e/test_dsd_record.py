@@ -17,12 +17,13 @@ import struct
 import json
 from e2e_common import (
     SDRPPTestContext, get_base_config, http_post, http_get, stats, STATS_MODE,
+    wait_for_playing,
 )
 
 
-TEST_FILE = "/Users/san/recordings/baseband_144553405Hz_17-40-40_15-05-2024---tarlink--dmr---.wav"
-CARRIER_FREQ = 144553405.0
-SAMPLE_RATE = 752000.0
+TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings", "dmr_sample.wav")
+CARRIER_FREQ = 0.0
+SAMPLE_RATE = 16000.0
 
 
 def check_wav_has_signal(path, min_samples=1000):
@@ -82,6 +83,9 @@ def test_dmr_record():
     }
 
     with SDRPPTestContext(startup_timeout=30.0) as ctx:
+        recordings_dir = os.path.join(ctx.temp_dir, "recordings")
+        os.makedirs(recordings_dir, exist_ok=True)
+        recorder_config["Recorder"]["recPath"] = recordings_dir
         ctx.write_configs(main_config, recorder_config=recorder_config)
 
         if not ctx.start():
@@ -117,8 +121,15 @@ def test_dmr_record():
         ctx.sleep(0.3)
 
         # Step 5: Start playback
-        http_post(ctx.base_url, "/sdr/start")
-        stats.info("Playback started")
+        resp = http_get(ctx.base_url, "/sdr/start")
+        if resp.get("action") != "sdr_start":
+            stats.test_fail("test_dmr_record", f"sdr start failed: {resp}")
+            return False
+        stats.info("Playback start requested, waiting for playing state...")
+        if not wait_for_playing(ctx, 30.0):
+            stats.test_fail("test_dmr_record", "SDR++ did not reach playing state within 30s")
+            return False
+        stats.info("Playback is playing")
         ctx.sleep(2.0)
 
         # Step 6: Monitor DSD decoding via audio flow (DSD sync indicator)
