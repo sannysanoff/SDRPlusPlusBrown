@@ -56,6 +56,7 @@ debug*.keystore
 
 # Gradle wrapper binary (reproducible from properties)
 gradle-wrapper.jar
+gradle-wrapper.properties
 
 # Separate nested project (has own .git)
 tools/

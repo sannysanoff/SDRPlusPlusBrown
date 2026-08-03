@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "windows-mcp": {
+      "type": "remote",
+      "url": "http://192.168.0.80:8200/mcp",
+      "enabled": true
+    }
+  }
+}

@@ -257,6 +257,25 @@ Start-Process "$rt\sdrpp.exe" -WorkingDirectory $rt -RedirectStandardOutput "$rt
 Get-Process sdrpp | Select Id,MainWindowTitle,Responding   # window should appear with title "SDR++Brown v..."
 ```
 
+> **IMPORTANT — redeploying a rebuilt module DLL:** an MCP `PowerShell` call that does
+> `Copy-Item <dll> $rt\modules; Stop-Process sdrpp; Start-Process sdrpp` is WRONG. The old
+> process holds the DLL locked, so `Copy-Item` **silently fails** (file in use) and the running
+> app keeps the OLD module. Order MUST be separate commands:
+> 1. `Stop-Process` (kill) → verify `Get-Process sdrpp` returns nothing.
+> 2. `Copy-Item` the rebuilt DLLs into `$rt` / `$rt\modules` → verify `LastWriteTime` updated.
+> 3. `Start-Process` the app.
+> Always confirm the DLL timestamp on disk matches the fresh build output.
+
+> **IMPORTANT — the window title timestamp is a lie:** `(Built at 10:30:01, Aug 2 2026)` is
+> baked into `sdrpp.exe` at link time. Rebuilding only modules (core, file_source, ...) does NOT
+> change it, so a running app with that title can still be running the NEW modules. To verify
+> freshness, check the module DLL timestamps (`ls $rt\modules\*.dll`), not the title.
+
+> **MCP `Start-Process` "timeout" is normal:** launching sdrpp via `Start-Process -PassThru` often
+> returns `MCP error -32001 (timed out)` even though the app started fine (the redirected stdout
+> handle keeps the MCP session busy). Don't re-launch — just check `Get-Process sdrpp` in a fresh
+> call.
+
 - Expected stderr noise: `missing _INFO_ symbol` for `fftw3f.dll`/`itpp.dll`/`portaudio.dll`/`zstd.dll`
   and `Module 'X' doesn't exist` — these are *copied support DLLs*, not modules; harmless.
 - **Log truncation on crash is a red herring:** on Windows `flog` didn't `fflush` stdout, so the
@@ -298,7 +317,11 @@ python test_frequency_manager_tetra.py
   `test_radio_modes.py`, `test_frequency_manager.py`, `test_frequency_manager_tetra.py`
   (22/22 as of Aug 2026).
 - `.wav`-based tests (`test_dmr_wait_status.py`, `test_dsd_record.py`, `test_tetra_demodulator.py`)
-  need `/Users/san/recordings/*.wav`; they hard-fail on missing file by design.
+  use repo-relative samples `e2e/recordings/dmr_sample.wav` + `tetra_sample.wav` (committed).
+  Run them the same way (set the three `E2E_*` env vars, then `python test_<name>.py`).
+- These tests use `File Source` → `set_filename` over HTTP. `file_source` must return properly
+  JSON-escaped responses (fixed via `json::dump()`), else a Windows path `C:\dev\...` fails with
+  `Invalid \escape` in the harness.
 
 ### How the harness works (so a failure makes sense)
 
@@ -377,3 +400,7 @@ patches apply cleanly. Workflow per fix:
 | Crash log line cut off mid-write | Windows `flog` wasn't flushing; `fflush` fix is in `core/src/utils/flog.cpp` |
 | HTTP debug returns `150000,000000` (comma) | `setlocale(LC_NUMERIC, "C")` in `core.cpp` (keep `.65001` for Russian text) |
 | `-ma` procdump fills the disk (~2 GB) | Use default mini dump; check `Get-PSDrive C` free space first |
+| Rebuilt module not in effect (old behavior) | Kill app BEFORE `Copy-Item` the DLL — running process locks it and copy silently fails; verify DLL `LastWriteTime` |
+| Window title still "Built at 10:30:01" | Timestamp baked into exe at link time; check module DLL timestamps instead |
+| `Start-Process` MCP call "times out" | App usually started fine (stdout handle keeps session busy); verify with `Get-Process sdrpp`, don't relaunch |
+| `set_filename` returns `Invalid \escape` | `file_source` built JSON by string concat; fixed via `json::dump()` — Windows paths need `\\` escaping |
