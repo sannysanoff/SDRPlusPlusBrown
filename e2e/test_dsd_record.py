@@ -201,10 +201,9 @@ def test_dmr_record():
                     f"Audio captured with signal: max_amplitude={abs_max}, nonzero_samples={nonzero}")
                 return True
             else:
-                stats.test_pass("test_dmr_record",
-                    f"WAV file saved but no audio signal (dsd_active={dsd_active})")
-                stats.info("Note: 0 samples on NullAudioSink is pre-existing headless-mode behavior")
-                return True
+                stats.test_fail("test_dmr_record",
+                    f"WAV file saved but no audio signal: max_amplitude={abs_max}, nonzero_samples={nonzero}")
+                return False
         else:
             stats.test_fail("test_dmr_record", "No WAV file found in recordings directory")
             return False
