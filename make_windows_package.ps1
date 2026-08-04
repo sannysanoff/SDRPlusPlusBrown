@@ -77,6 +77,12 @@ cp $build_dir/source_modules/spyserver_source/$RELDIR/spyserver_source.dll sdrpp
 
 cp $build_dir/source_modules/kiwisdr_source/$RELDIR/kiwisdr_source.dll sdrpp_windows_x64/modules/
 
+cp $build_dir/source_modules/usrp_source/$RELDIR/usrp_source.dll sdrpp_windows_x64/modules/
+cp 'C:/Program Files/uhd/bin/uhd.dll' sdrpp_windows_x64/ -ErrorAction SilentlyContinue
+# Boost is linked statically into UHD by default on MSVC; copy any dynamic
+# boost DLLs if present (dynamic linking) next to uhd.dll or from vcpkg bin.
+Get-ChildItem 'C:/Program Files/uhd/bin/boost_*.dll' -ErrorAction SilentlyContinue | ForEach-Object { cp $_.FullName sdrpp_windows_x64/ }
+Get-ChildItem 'C:/vcpkg/installed/x64-windows/bin/boost_*.dll' -ErrorAction SilentlyContinue | ForEach-Object { cp $_.FullName sdrpp_windows_x64/ }
 
 # Copy sink modules
 cp $build_dir/sink_modules/audio_sink/$RELDIR/audio_sink.dll sdrpp_windows_x64/modules/

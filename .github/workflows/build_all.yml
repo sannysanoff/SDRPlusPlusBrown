@@ -64,7 +64,23 @@ jobs:
           run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
 
         - name: Install vcpkg dependencies
-          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows
+          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows boost:x64-windows
+
+        - name: Install python modules (UHD codegen)
+          run: python -m pip install mako requests
+
+        - name: Download UHD source
+          run: Invoke-WebRequest -Uri "https://github.com/EttusResearch/uhd/archive/refs/tags/v3.15.0.0.tar.gz" -OutFile ${{runner.workspace}}/uhd.tar.gz
+
+        - name: Build UHD 3.15.0.0
+          run: |
+            7z x ${{runner.workspace}}/uhd.tar.gz -o${{runner.workspace}}\uhd_src
+            cd ${{runner.workspace}}\uhd_src\uhd-3.15.0.0\host
+            mkdir build
+            cd build
+            cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_INSTALL_PREFIX="C:/Program Files/uhd" -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_UTILS=OFF -DENABLE_PYTHON_API=OFF -DENABLE_DOXYGEN=OFF -DENABLE_MAN_PAGES=OFF
+            cmake --build . --config Release
+            cmake --install . --config Release
 
         - name: Install rtaudio
           run: git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake .. ; cmake --build . --config Release ; cmake --install .
@@ -83,7 +99,7 @@ jobs:
 
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF
+          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF -DOPT_BUILD_USRP_SOURCE=ON -DUHD_DIR="C:/Program Files/uhd"
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -105,6 +121,7 @@ jobs:
 
 
     build_macos_intel:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: macos-15-intel
 
       steps:
@@ -174,6 +191,7 @@ jobs:
 
 
     build_macos_arm:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: macos-15
 
         steps:
@@ -243,6 +261,7 @@ jobs:
 
 
     build_debian_bullseye_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -270,6 +289,7 @@ jobs:
 
 
     build_debian_bookworm:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -295,6 +315,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_amd64:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: ubuntu-latest
 
       steps:
@@ -321,6 +342,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_aarch64:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: ubuntu-22.04-arm
 
       steps:
@@ -347,6 +369,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -373,6 +396,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -399,6 +423,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -425,6 +450,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -451,6 +477,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -477,6 +504,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -503,6 +531,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -528,6 +557,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -554,6 +584,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb -R ${{github.repository}} --clobber
 
     build_android:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
