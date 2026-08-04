@@ -346,7 +346,7 @@ jobs:
           if: env.CACHE_UHD != 'restored'
           uses: ./.github/actions/build-uhd-macos
           with:
-            python-executable: ${{ steps.setup-python.outputs.pythonLocation }}/bin/python3
+            python-executable: ${{ env.pythonLocation }}/bin/python3
 
         - name: Upload dependency cache
           if: always() && github.event_name == 'push' && env.CACHE_UHD == 'missing'
@@ -480,7 +480,7 @@ jobs:
           if: env.CACHE_UHD != 'restored'
           uses: ./.github/actions/build-uhd-macos
           with:
-            python-executable: ${{ steps.setup-python.outputs.pythonLocation }}/bin/python3
+            python-executable: ${{ env.pythonLocation }}/bin/python3
 
         - name: Upload dependency cache
           if: always() && github.event_name == 'push' && env.CACHE_UHD == 'missing'
