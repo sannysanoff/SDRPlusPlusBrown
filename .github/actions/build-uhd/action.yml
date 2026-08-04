@@ -1,0 +1,95 @@
+name: 'Build UHD 3.15.0.0 from source'
+description: 'Downloads, patches and builds UHD 3.15.0.0 against Boost 1.91 (vcpkg), installing to C:/Program Files/uhd. Skips the build when a cached UHD install already exists (restored from the build-cache release). Requires the repo checkout and a prior `vcpkg install boost:x64-windows libusb:x64-windows` step in the same job.'
+
+inputs:
+  vcpkg-toolchain:
+    description: 'Path to the vcpkg toolchain file (defaults to the standard C:/vcpkg location used on windows runners).'
+    required: false
+    default: 'C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+  uhd-version:
+    description: 'UHD release tag to build (must match the patch file).'
+    required: false
+    default: '3.15.0.0'
+  python-executable:
+    description: 'Python interpreter used by the UHD codegen (must have distutils + mako + requests). Defaults to the self-contained 3.11 restored from the build-cache release.'
+    required: false
+    default: 'C:/dev/py311_uhd/python.exe'
+
+runs:
+  using: 'composite'
+  steps:
+    - id: check-uhd
+      name: Check for existing UHD install
+      shell: pwsh
+      run: |
+        $uhdDll = "C:/Program Files/uhd/bin/uhd.dll"
+        if (Test-Path $uhdDll) {
+          "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "UHD already installed at $uhdDll - skipping build."
+        } else {
+          "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        }
+
+    - id: python-setup
+      name: Prepare python for UHD codegen
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: pwsh
+      run: |
+        $py = "${{ inputs.python-executable }}"
+        if (Test-Path $py) {
+          Write-Host "Using cached Python 3.11 at $py"
+          & $py -c "import mako, requests; print('mako + requests available')"
+        } else {
+          python -m pip install mako requests
+          $py = (Get-Command python).Source
+        }
+        "py-exe=$py" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Download UHD source
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: pwsh
+      run: |
+        $ver = "${{ inputs.uhd-version }}"
+        $tgz = "${{ runner.workspace }}/uhd.tar.gz"
+        Invoke-WebRequest -Uri "https://github.com/EttusResearch/uhd/archive/refs/tags/v$ver.tar.gz" -OutFile $tgz
+        if (-not (Test-Path $tgz)) { throw "UHD tarball download failed: $tgz" }
+
+    - name: Extract UHD source
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: pwsh
+      run: |
+        $ver = "${{ inputs.uhd-version }}"
+        $srcdir = "${{ runner.workspace }}\uhd_src"
+        if (Test-Path $srcdir) { Remove-Item $srcdir -Recurse -Force }
+        tar -xf "${{ runner.workspace }}/uhd.tar.gz" -C "${{ runner.workspace }}"
+        Move-Item "${{ runner.workspace }}\uhd-$ver" $srcdir -Force
+
+    - name: Apply Boost 1.91 compatibility patch
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: pwsh
+      working-directory: ${{ runner.workspace }}\uhd_src
+      run: |
+        # UHD 3.15 predates Boost 1.87; this patch migrates bundled rpclib and
+        # UHD sources to the Boost 1.91 APIs (io_context, resolver, etc.)
+        $patch = "${{ github.action_path }}/uhd-boost191.patch"
+        $tmp = "${{ runner.workspace }}/uhd-boost191-lf.patch"
+        [System.IO.File]::WriteAllText($tmp, ([System.IO.File]::ReadAllText($patch) -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))
+        git apply --whitespace=nowarn $tmp
+
+    - name: Build UHD 3.15.0.0
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: pwsh
+      working-directory: ${{ runner.workspace }}\uhd_src\host
+      run: |
+        New-Item -ItemType Directory build -Force | Out-Null
+        Set-Location build
+        cmake .. -G "Visual Studio 17 2022" -A x64 `
+          "-DCMAKE_TOOLCHAIN_FILE=${{ inputs.vcpkg-toolchain }}" `
+          "-DPYTHON_EXECUTABLE=${{ steps.python-setup.outputs.py-exe }}" `
+          "-DCMAKE_INSTALL_PREFIX=C:/Program Files/uhd" `
+          "-DCMAKE_CXX_FLAGS=/EHsc -DBOOST_BIND_GLOBAL_PLACEHOLDERS" `
+          "-DBOOST_ALL_DYN_LINK=ON" `
+          -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_UTILS=OFF `
+          -DENABLE_PYTHON_API=OFF -DENABLE_DOXYGEN=OFF -DENABLE_MAN_PAGES=OFF
+        cmake --build . --config Release --parallel 4
+        cmake --install . --config Release

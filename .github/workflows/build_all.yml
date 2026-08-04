@@ -22,6 +22,69 @@ jobs:
         - name: Create Build Environment
           run: cmake -E make_directory ${{runner.workspace}}/build
 
+        - name: Download dependency cache
+          shell: pwsh
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: |
+            New-Item -ItemType Directory ${{runner.workspace}}/cache -Force | Out-Null
+            $null = gh release view build-cache --repo $env:GITHUB_REPOSITORY 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              $null = gh release download build-cache `
+                --repo $env:GITHUB_REPOSITORY `
+                --pattern "*.zip" `
+                --dir ${{runner.workspace}}/cache 2>&1
+              if ($LASTEXITCODE -ne 0) { Write-Host "cache download failed, building from source" }
+            } else {
+              Write-Host "no build-cache release found, building from source"
+            }
+            Write-Host "cache:"; Get-ChildItem ${{runner.workspace}}/cache -ErrorAction SilentlyContinue | Select-Object Name,Length
+            exit 0
+
+        - name: Restore vcpkg binary cache
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/vcpkg-cache.zip"
+            if (Test-Path $zip) {
+              Expand-Archive $zip -DestinationPath C:/ -Force
+              "CACHE_VCPKG=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "vcpkg binary cache restored - vcpkg install will reuse it incrementally"
+            } else {
+              "CACHE_VCPKG=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "vcpkg binary cache missing - building boost + friends from source"
+            }
+            $uhdZip = "${{runner.workspace}}/cache/uhd-3.15.0.0-x64.zip"
+            if (Test-Path $uhdZip) {
+              Expand-Archive $uhdZip -DestinationPath "C:/Program Files" -Force
+              "CACHE_UHD=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "UHD restored to C:/Program Files/uhd"
+            } else {
+              "CACHE_UHD=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "UHD cache missing - build-uhd action will compile from source"
+            }
+            $pyZip = "${{runner.workspace}}/cache/uhd-python311-codegen.zip"
+            if (Test-Path $pyZip) {
+              Expand-Archive $pyZip -DestinationPath C:/dev -Force
+              "CACHE_PY=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "Python 3.11 restored to C:/dev/py311_uhd"
+            } else {
+              "CACHE_PY=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "Python cache missing - will use setup-python 3.11"
+            }
+
+        - name: Restore MinGW toolchain
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/mingw64-codec2.zip"
+            if (Test-Path $zip) {
+              & 7z x $zip -oC:/ -y *> $null
+              "CACHE_MINGW=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "MinGW toolchain restored to C:/msys64 - skipping pacman"
+            } else {
+              "CACHE_MINGW=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "MinGW cache missing - pacman will install toolchain"
+            }
+
         - name: Download PothosSDR
           run: Invoke-WebRequest -Uri "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2020.01.26-vc14-x64.exe" -OutFile ${{runner.workspace}}/pothos.exe
 
@@ -34,7 +97,7 @@ jobs:
         - name: Patch Pothos with earlier libusb version
           working-directory: ${{runner.workspace}}
           run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
- 
+
         - name: Download librtlsdr
           run: Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20240623.zip" -OutFile ${{runner.workspace}}/rtl-sdr.zip
 
@@ -52,6 +115,7 @@ jobs:
           run: git clone https://github.com/drowe67/codec2
 
         - name: Prepare MinGW
+          if: env.CACHE_MINGW != 'restored'
           run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja"
 
         - name: Prepare build for codec2
@@ -63,8 +127,98 @@ jobs:
         - name: Install codec2
           run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
 
-        - name: Install vcpkg dependencies
-          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows
+        - name: Install vcpkg dependencies (release x64 only, binary-cached)
+          shell: pwsh
+          env:
+            VCPKG_BINARY_SOURCES: "files,C:/vcpkg-cache,readwrite"
+          run: |
+            try {
+              git -C C:/vcpkg fetch origin 39344dff01c5a5a0134caf2624cdd492f05d30ea 2>$null
+              git -C C:/vcpkg checkout 39344dff01c5a5a0134caf2624cdd492f05d30ea
+              C:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+              Write-Host "vcpkg pinned to cache-producing revision 39344dff01"
+            } catch {
+              Write-Host "vcpkg pin failed (best effort); using runner default"
+            }
+            $trip = "C:/vcpkg/triplets/x64-windows.cmake"
+            if (-not (Select-String -Path $trip -Pattern "VCPKG_BUILD_TYPE" -Quiet)) {
+              Add-Content -Path $trip -Value "set(VCPKG_BUILD_TYPE release)"
+              Write-Host "x64-windows triplet forced to release-only (no debug build)"
+            }
+            $snap = 0
+            if (Test-Path C:/vcpkg-cache) {
+              $snap = (Get-ChildItem C:/vcpkg-cache -Recurse -File | Measure-Object -Property Length -Sum).Sum
+            }
+            vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows boost:x64-windows
+            $now = 0
+            if (Test-Path C:/vcpkg-cache) {
+              $now = (Get-ChildItem C:/vcpkg-cache -Recurse -File | Measure-Object -Property Length -Sum).Sum
+            }
+            "CACHE_VCPKG_CHANGED=" + (($now -ne $snap) -or ($snap -eq 0)) | Out-File -FilePath $env:GITHUB_ENV -Append
+
+        - name: Setup Python 3.11 (UHD codegen)
+          if: env.CACHE_UHD != 'restored'
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.11'
+
+        - name: Build UHD 3.15.0.0
+          if: env.CACHE_UHD != 'restored'
+          uses: ./.github/actions/build-uhd
+
+        - name: Upload dependency cache
+          if: always() && github.event_name == 'push' && (env.CACHE_VCPKG_CHANGED == 'True' || env.CACHE_UHD == 'missing' || env.CACHE_PY == 'missing' || env.CACHE_MINGW == 'missing')
+          shell: pwsh
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: |
+            $7z = "C:\Program Files\7-Zip\7z.exe"
+            $cache = "${{runner.workspace}}/cache"
+            if (Test-Path C:/vcpkg-cache) {
+              & $7z a -tzip -mmt4 -mx5 "$cache/vcpkg-cache.zip" C:/vcpkg-cache *> "$cache/zip_cache.log"
+              Write-Host "zipped vcpkg binary cache"
+            }
+            if (Test-Path "C:/Program Files/uhd") {
+              & $7z a -tzip -mmt4 -mx5 "$cache/uhd-3.15.0.0-x64.zip" "C:/Program Files/uhd" *> "$cache/zip_uhd.log"
+              Write-Host "zipped UHD install"
+            }
+            if (Test-Path "C:/msys64/msys2_shell.cmd") {
+              & C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman -Scc --noconfirm"
+              Push-Location C:/
+              & $7z a -tzip -mmt4 -mx5 "$cache/mingw64-codec2.zip" msys64 *> "$cache/zip_mingw.log"
+              Pop-Location
+              Write-Host "zipped full MinGW tree (pacman cache cleaned)"
+            }
+            $pyDir = "C:/dev/py311_uhd"
+            $hasDistutils = python -c "import distutils" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              if (-not (Test-Path "$pyDir/python.exe")) {
+                $pref = python -c "import sys; print(sys.exec_prefix)"
+                New-Item -ItemType Directory C:/dev -Force | Out-Null
+                Copy-Item $pref $pyDir -Recurse -Force
+                Write-Host "copied python $pref -> $pyDir"
+              }
+            } else {
+              Write-Host "current python has no distutils - skipping python cache"
+            }
+            if (Test-Path "$pyDir/python.exe") {
+              & $7z a -tzip -mmt4 -mx5 "$cache/uhd-python311-codegen.zip" $pyDir *> "$cache/zip_py.log"
+              Write-Host "zipped python codegen env"
+            }
+            gh release view build-cache --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              gh release create build-cache --repo $env:GITHUB_REPOSITORY --title "Windows build cache" --notes "CI-built incremental dependency cache (vcpkg binary cache, UHD 3.15, python 3.11)." 2>$null
+            }
+            $toUpload = @()
+            foreach ($z in @("vcpkg-cache.zip","mingw64-codec2.zip","uhd-3.15.0.0-x64.zip","uhd-python311-codegen.zip")) {
+              if (Test-Path "$cache/$z") { $toUpload += "$cache/$z" } else { Write-Host "skip upload of missing $z" }
+            }
+            if ($toUpload.Count -gt 0) {
+              gh release upload build-cache --repo $env:GITHUB_REPOSITORY --clobber @($toUpload)
+              Write-Host "dependency cache uploaded to build-cache release"
+            } else {
+              Write-Host "nothing to upload"
+            }
 
         - name: Install rtaudio
           run: git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake .. ; cmake --build . --config Release ; cmake --install .
@@ -83,7 +237,7 @@ jobs:
 
         - name: Prepare CMake
           working-directory: ${{runner.workspace}}/build
-          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF
+          run: cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_MPEG_ADTS_SINK=OFF -DOPT_BUILD_USRP_SOURCE=ON -DUHD_DIR="C:/Program Files/uhd"
 
         - name: Build
           working-directory: ${{runner.workspace}}/build
@@ -102,9 +256,8 @@ jobs:
         - name: Update Nightly
           if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
-
-
     build_macos_intel:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: macos-15-intel
 
       steps:
@@ -174,6 +327,7 @@ jobs:
 
 
     build_macos_arm:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: macos-15
 
         steps:
@@ -243,6 +397,7 @@ jobs:
 
 
     build_debian_bullseye_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -270,6 +425,7 @@ jobs:
 
 
     build_debian_bookworm:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -295,6 +451,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bookworm_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_amd64:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: ubuntu-latest
 
       steps:
@@ -321,6 +478,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_jammy_aarch64:
+      if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: ubuntu-22.04-arm
 
       steps:
@@ -347,6 +505,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_jammy_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -373,6 +532,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_trixie_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -399,6 +559,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_trixie_aarch64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -425,6 +586,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_amd64.deb -R ${{github.repository}} --clobber
 
     build_debian_sid_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -451,6 +613,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_sid_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_amd64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -477,6 +640,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_focal_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -503,6 +667,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_focal_aarch64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:
@@ -528,6 +693,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_amd64.deb -R ${{github.repository}} --clobber
 
     build_ubuntu_noble_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-24.04-arm
 
         steps:
@@ -554,6 +720,7 @@ jobs:
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_noble_aarch64.deb -R ${{github.repository}} --clobber
 
     build_android:
+        if: ${{ !contains(github.ref_name, 'windows') }}
         runs-on: ubuntu-latest
 
         steps:

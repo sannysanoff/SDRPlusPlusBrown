@@ -1,0 +1,962 @@
+diff --git a/host/include/uhd/transport/nirio/rpc/rpc_client.hpp b/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
+index 80ba203..f146dd5 100644
+--- a/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
++++ b/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
+@@ -67,7 +67,7 @@ private:
+     }
+ 
+     // Services
+-    boost::asio::io_service _io_service;
++    boost::asio::io_context _io_service;
+     boost::scoped_ptr<boost::thread> _io_service_thread;
+     boost::asio::ip::tcp::socket _socket;
+     // Handshake info
+diff --git a/host/lib/convert/convert_fc32_item32.cpp b/host/lib/convert/convert_fc32_item32.cpp
+index b119fd8..3e03fbd 100644
+--- a/host/lib/convert/convert_fc32_item32.cpp
++++ b/host/lib/convert/convert_fc32_item32.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2013 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/deps/rpclib/include/rpc/detail/async_writer.h b/host/lib/deps/rpclib/include/rpc/detail/async_writer.h
+index 1e17f12..c140fc4 100644
+--- a/host/lib/deps/rpclib/include/rpc/detail/async_writer.h
++++ b/host/lib/deps/rpclib/include/rpc/detail/async_writer.h
+@@ -19,9 +19,9 @@ namespace detail {
+ //! \brief Common logic for classes that have a write queue with async writing.
+ class async_writer : public std::enable_shared_from_this<async_writer> {
+ public:
+-    async_writer(boost::asio::io_service *io,
++    async_writer(boost::asio::io_context *io,
+                  boost::asio::ip::tcp::socket socket)
+-        : socket_(std::move(socket)), write_strand_(*io), exit_(false) {}
++        : socket_(std::move(socket)), write_strand_(io->get_executor()), exit_(false) {}
+ 
+     void do_write() {
+         if (exit_) {
+@@ -33,7 +33,7 @@ public:
+         // since it will still be in the queue physically until then.
+         boost::asio::async_write(
+             socket_, boost::asio::buffer(item.data(), item.size()),
+-            write_strand_.wrap(
++            boost::asio::bind_executor(write_strand_, 
+                 [this, self](boost::system::error_code ec, std::size_t transferred) {
+                     (void)transferred;
+                     if (!ec) {
+@@ -69,7 +69,7 @@ public:
+ 
+ protected:
+     boost::asio::ip::tcp::socket socket_;
+-    boost::asio::io_service::strand write_strand_;
++    boost::asio::strand<boost::asio::io_context::executor_type> write_strand_;
+     std::atomic_bool exit_{false};
+     bool exited_ = false;
+     std::mutex m_exit_;
+diff --git a/host/lib/deps/rpclib/include/rpc/detail/server_session.h b/host/lib/deps/rpclib/include/rpc/detail/server_session.h
+index 754c087..79794c8 100644
+--- a/host/lib/deps/rpclib/include/rpc/detail/server_session.h
++++ b/host/lib/deps/rpclib/include/rpc/detail/server_session.h
+@@ -22,7 +22,7 @@ namespace detail {
+ 
+ class server_session : public async_writer {
+ public:
+-    server_session(server *srv, boost::asio::io_service *io,
++    server_session(server *srv, boost::asio::io_context *io,
+                    boost::asio::ip::tcp::socket socket,
+                    std::shared_ptr<dispatcher> disp, bool suppress_exceptions);
+     void start();
+@@ -34,8 +34,8 @@ private:
+ 
+ private:
+     server* parent_;
+-    boost::asio::io_service *io_;
+-    boost::asio::io_service::strand read_strand_;
++    boost::asio::io_context *io_;
++    boost::asio::strand<boost::asio::io_context::executor_type> read_strand_;
+     std::shared_ptr<dispatcher> disp_;
+     RPCLIB_MSGPACK::unpacker pac_;
+     RPCLIB_MSGPACK::sbuffer output_buf_;
+diff --git a/host/lib/deps/rpclib/lib/rpc/client.cc b/host/lib/deps/rpclib/lib/rpc/client.cc
+index 1b366e4..fd9c554 100644
+--- a/host/lib/deps/rpclib/lib/rpc/client.cc
++++ b/host/lib/deps/rpclib/lib/rpc/client.cc
+@@ -29,7 +29,7 @@ struct client::impl {
+     impl(client *parent, std::string const &addr, uint16_t port)
+         : parent_(parent),
+           io_(),
+-          strand_(io_),
++          strand_(io_.get_executor()),
+           call_idx_(0),
+           addr_(addr),
+           port_(port),
+@@ -41,11 +41,11 @@ struct client::impl {
+         pac_.reserve_buffer(default_buffer_size);
+     }
+ 
+-    void do_connect(tcp::resolver::iterator endpoint_iterator) {
++    void do_connect(tcp::resolver::results_type endpoints) {
+         LOG_INFO("Initiating connection.");
+         boost::asio::async_connect(
+-            writer_->socket_, endpoint_iterator,
+-            [this](boost::system::error_code ec, tcp::resolver::iterator) {
++            writer_->socket_, endpoints,
++            [this](boost::system::error_code ec, tcp::endpoint) {
+                 std::unique_lock<std::mutex> lock(mut_connection_finished_);
+                 if (!ec) {
+                     LOG_INFO("Client connected to {}:{}", addr_, port_);
+@@ -92,7 +92,7 @@ struct client::impl {
+                             std::get<1>(current_call)
+                                 .set_exception(std::current_exception());
+                         }
+-                        strand_.post(
++                        boost::asio::post(strand_, 
+                             [this, id]() { ongoing_calls_.erase(id); });
+                     }
+ 
+@@ -135,8 +135,8 @@ struct client::impl {
+         std::pair<std::string, std::promise<RPCLIB_MSGPACK::object_handle>>;
+ 
+     client *parent_;
+-    boost::asio::io_service io_;
+-    boost::asio::io_service::strand strand_;
++    boost::asio::io_context io_;
++    boost::asio::strand<boost::asio::io_context::executor_type> strand_;
+     std::atomic<int> call_idx_; /// The index of the last call made
+     std::unordered_map<uint32_t, call_t> ongoing_calls_;
+     std::string addr_;
+@@ -156,7 +156,7 @@ client::client(std::string const &addr, uint16_t port)
+     : pimpl(new client::impl(this, addr, port)) {
+     tcp::resolver resolver(pimpl->io_);
+     auto endpoint_it =
+-        resolver.resolve({pimpl->addr_, std::to_string(pimpl->port_)});
++        resolver.resolve(pimpl->addr_, std::to_string(pimpl->port_));
+     pimpl->do_connect(endpoint_it);
+     std::thread io_thread([this]() {
+         RPCLIB_CREATE_LOG_CHANNEL(client)
+@@ -181,7 +181,7 @@ int client::get_next_call_idx() {
+ void client::post(std::shared_ptr<RPCLIB_MSGPACK::sbuffer> buffer, int idx,
+                   std::string const &func_name,
+                   std::shared_ptr<rsp_promise> p) {
+-    pimpl->strand_.post([=]() {
++    boost::asio::post(pimpl->strand_, [=]() {
+         pimpl->ongoing_calls_.insert(
+             std::make_pair(idx, std::make_pair(func_name, std::move(*p))));
+         pimpl->write(std::move(*buffer));
+@@ -189,7 +189,7 @@ void client::post(std::shared_ptr<RPCLIB_MSGPACK::sbuffer> buffer, int idx,
+ }
+ 
+ void client::post(RPCLIB_MSGPACK::sbuffer *buffer) {
+-    pimpl->strand_.post([=]() {
++    boost::asio::post(pimpl->strand_, [=]() {
+         pimpl->write(std::move(*buffer));
+         delete buffer;
+     });
+diff --git a/host/lib/deps/rpclib/lib/rpc/detail/server_session.cc b/host/lib/deps/rpclib/lib/rpc/detail/server_session.cc
+index 3f1ed48..91943b9 100644
+--- a/host/lib/deps/rpclib/lib/rpc/detail/server_session.cc
++++ b/host/lib/deps/rpclib/lib/rpc/detail/server_session.cc
+@@ -13,14 +13,14 @@ namespace detail {
+ 
+ static constexpr std::size_t default_buffer_size = rpc::constants::DEFAULT_BUFFER_SIZE;
+ 
+-server_session::server_session(server *srv, boost::asio::io_service *io,
++server_session::server_session(server *srv, boost::asio::io_context *io,
+                                boost::asio::ip::tcp::socket socket,
+                                std::shared_ptr<dispatcher> disp,
+                                bool suppress_exceptions)
+     : async_writer(io, std::move(socket)),
+       parent_(srv),
+       io_(io),
+-      read_strand_(*io),
++      read_strand_(io->get_executor()),
+       disp_(disp),
+       pac_(),
+       suppress_exceptions_(suppress_exceptions) {
+@@ -33,7 +33,7 @@ void server_session::start() { do_read(); }
+ void server_session::close() {
+     LOG_INFO("Closing session.");
+     exit_ = true;
+-    write_strand_.post([this]() { socket_.close(); });
++    boost::asio::post(write_strand_, [this]() { socket_.close(); });
+ }
+ 
+ void server_session::do_read() {
+@@ -43,7 +43,7 @@ void server_session::do_read() {
+         boost::asio::buffer(pac_.buffer(), default_buffer_size),
+         // I don't think max_read_bytes needs to be captured explicitly
+         // (since it's constexpr), but MSVC insists.
+-        read_strand_.wrap([this, self, max_read_bytes](boost::system::error_code ec,
++        boost::asio::bind_executor(read_strand_, [this, self, max_read_bytes](boost::system::error_code ec,
+                                                        std::size_t length) {
+             if (!ec) {
+                 pac_.buffer_consumed(length);
+@@ -54,7 +54,7 @@ void server_session::do_read() {
+ 
+                     // any worker thread can take this call
+                     auto z = std::shared_ptr<RPCLIB_MSGPACK::zone>(result.zone().release());
+-                    io_->post([
++                    boost::asio::post(*io_, [
+                         this, msg, z
+                     ]() {
+                         this_handler().clear();
+@@ -87,10 +87,10 @@ void server_session::do_read() {
+                         if (!resp.is_empty()) {
+ #ifdef _MSC_VER
+                             // doesn't compile otherwise.
+-                            write_strand_.post(
++                            boost::asio::post(write_strand_, 
+                                 [=]() { write(resp.get_data()); });
+ #else
+-                            write_strand_.post(
++                            boost::asio::post(write_strand_, 
+                                 [this, resp, z]() { write(resp.get_data()); });
+ #endif
+                         }
+@@ -99,14 +99,14 @@ void server_session::do_read() {
+                             LOG_WARN("Session exit requested from a handler.");
+                             // posting through the strand so this comes after
+                             // the previous write
+-                            write_strand_.post([this]() { exit_ = true; });
++                            boost::asio::post(write_strand_, [this]() { exit_ = true; });
+                         }
+ 
+                         if (this_server().stopping_) {
+                             LOG_WARN("Server exit requested from a handler.");
+                             // posting through the strand so this comes after
+                             // the previous write
+-                            write_strand_.post(
++                            boost::asio::post(write_strand_, 
+                                 [this]() { parent_->close_sessions(); });
+                         }
+                     });
+diff --git a/host/lib/deps/rpclib/lib/rpc/server.cc b/host/lib/deps/rpclib/lib/rpc/server.cc
+index 4facb93..48d4061 100644
+--- a/host/lib/deps/rpclib/lib/rpc/server.cc
++++ b/host/lib/deps/rpclib/lib/rpc/server.cc
+@@ -25,7 +25,7 @@ struct server::impl {
+         : parent_(parent),
+           io_(),
+           acceptor_(io_,
+-                    tcp::endpoint(ip::address::from_string(address), port)),
++                    tcp::endpoint(boost::asio::ip::make_address(address), port)),
+           socket_(io_),
+           suppress_exceptions_(false) {}
+ 
+@@ -66,7 +66,7 @@ struct server::impl {
+     }
+ 
+     server *parent_;
+-    io_service io_;
++    io_context io_;
+     ip::tcp::acceptor acceptor_;
+     ip::tcp::socket socket_;
+     rpc::detail::thread_group loop_workers_;
+diff --git a/host/lib/rfnoc/dma_fifo_block_ctrl_impl.cpp b/host/lib/rfnoc/dma_fifo_block_ctrl_impl.cpp
+index a80e2ef..1394411 100644
+--- a/host/lib/rfnoc/dma_fifo_block_ctrl_impl.cpp
++++ b/host/lib/rfnoc/dma_fifo_block_ctrl_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2016 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/rfnoc/legacy_compat.cpp b/host/lib/rfnoc/legacy_compat.cpp
+index 91de361..d34d8a9 100644
+--- a/host/lib/rfnoc/legacy_compat.cpp
++++ b/host/lib/rfnoc/legacy_compat.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2016 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/transport/dpdk_zero_copy.cpp b/host/lib/transport/dpdk_zero_copy.cpp
+index a6a1587..f023a19 100644
+--- a/host/lib/transport/dpdk_zero_copy.cpp
++++ b/host/lib/transport/dpdk_zero_copy.cpp
+@@ -16,6 +16,8 @@
+ #include <sys/syslog.h>
+ #include <arpa/inet.h>
+ 
++
++#include <array>
+ namespace uhd { namespace transport {
+ 
+ namespace {
+diff --git a/host/lib/transport/if_addrs.cpp b/host/lib/transport/if_addrs.cpp
+index a1cb690..4c43c95 100644
+--- a/host/lib/transport/if_addrs.cpp
++++ b/host/lib/transport/if_addrs.cpp
+@@ -50,8 +50,8 @@ std::vector<uhd::transport::if_addrs_t> uhd::transport::get_if_addrs(void)
+                        == boost::asio::ip::address_v4(0)) {
+                 // manually calculate broadcast address
+                 // https://svn.boost.org/trac/boost/ticket/5198
+-                const uint32_t addr  = sockaddr_to_ip_addr(iter->ifa_addr).to_ulong();
+-                const uint32_t mask  = sockaddr_to_ip_addr(iter->ifa_netmask).to_ulong();
++                const uint32_t addr  = sockaddr_to_ip_addr(iter->ifa_addr).to_uint();
++                const uint32_t mask  = sockaddr_to_ip_addr(iter->ifa_netmask).to_uint();
+                 const uint32_t bcast = (addr & mask) | ~mask;
+                 if_addr.bcast        = boost::asio::ip::address_v4(bcast).to_string();
+             }
+diff --git a/host/lib/transport/libusb1_base.cpp b/host/lib/transport/libusb1_base.cpp
+index d383b0a..202fef2 100644
+--- a/host/lib/transport/libusb1_base.cpp
++++ b/host/lib/transport/libusb1_base.cpp
+@@ -18,6 +18,7 @@
+ #include <iostream>
+ #include <mutex>
+ 
++
+ using namespace uhd;
+ using namespace uhd::transport;
+ 
+diff --git a/host/lib/transport/libusb1_base.hpp b/host/lib/transport/libusb1_base.hpp
+index deb535e..c09662c 100644
+--- a/host/lib/transport/libusb1_base.hpp
++++ b/host/lib/transport/libusb1_base.hpp
+@@ -10,6 +10,9 @@
+ 
+ #include <uhd/config.hpp>
+ #include <uhd/transport/usb_device_handle.hpp>
++#ifdef _WIN32
++#include <winsock2.h>
++#endif
+ #include <libusb.h>
+ #include <boost/shared_ptr.hpp>
+ #include <uhd/utils/noncopyable.hpp>
+diff --git a/host/lib/transport/nirio/rpc/rpc_client.cpp b/host/lib/transport/nirio/rpc/rpc_client.cpp
+index 53d336e..04ac5d2 100644
+--- a/host/lib/transport/nirio/rpc/rpc_client.cpp
++++ b/host/lib/transport/nirio/rpc/rpc_client.cpp
+@@ -42,10 +42,10 @@ rpc_client::rpc_client (
+         //- address_configured: Only return addresses if a non-loopback address is configured for the system.
+         //- numeric_host: No name resolution should be attempted for host
+         //- numeric_service: No name resolution should be attempted for service
+-        tcp::resolver::query::flags query_flags(tcp::resolver::query::passive);
+-        tcp::resolver::query query(tcp::v4(), server, port, query_flags);
+-        tcp::resolver::iterator iterator = resolver.resolve(query);
+-        boost::asio::connect(_socket, iterator);
++        
++        
++        tcp::resolver::results_type results = resolver.resolve(tcp::v4(), server, port);
++        boost::asio::connect(_socket, results);
+ 
+         UHD_LOGGER_TRACE("NIRIO") << "rpc_client connected to server." ;
+ 
+@@ -69,7 +69,7 @@ rpc_client::rpc_client (
+                 _wait_for_next_response_header();
+ 
+                 //Spawn a thread for the io_service callback handler. This thread will run until rpc_client is destroyed.
+-                _io_service_thread.reset(new boost::thread(boost::bind(&boost::asio::io_service::run, &_io_service)));
++                _io_service_thread.reset(new boost::thread(boost::bind(&boost::asio::io_context::run, &_io_service)));
+             } else {
+                 UHD_LOGGER_DEBUG("NIRIO") << "rpc_client handshake failed." ;
+                 _exec_err.assign(boost::asio::error::connection_refused, boost::asio::error::get_system_category());
+diff --git a/host/lib/transport/tcp_zero_copy.cpp b/host/lib/transport/tcp_zero_copy.cpp
+index 5cb7134..0ecf243 100644
+--- a/host/lib/transport/tcp_zero_copy.cpp
++++ b/host/lib/transport/tcp_zero_copy.cpp
+@@ -154,8 +154,8 @@ public:
+ 
+         // resolve the address
+         asio::ip::tcp::resolver resolver(_io_service);
+-        asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), addr, port);
+-        asio::ip::tcp::endpoint receiver_endpoint = *resolver.resolve(query);
++        auto query_results = resolver.resolve(asio::ip::tcp::v4(), addr, port);
++        asio::ip::tcp::endpoint receiver_endpoint = query_results.begin()->endpoint();
+ 
+         // create, open, and connect the socket
+         _socket.reset(new asio::ip::tcp::socket(_io_service));
+@@ -229,7 +229,7 @@ private:
+     size_t _next_recv_buff_index, _next_send_buff_index;
+ 
+     // asio guts -> socket and service
+-    asio::io_service _io_service;
++    asio::io_context _io_service;
+     boost::shared_ptr<asio::ip::tcp::socket> _socket;
+     int _sock_fd;
+ };
+diff --git a/host/lib/transport/udp_simple.cpp b/host/lib/transport/udp_simple.cpp
+index 48d7b50..a392fc2 100644
+--- a/host/lib/transport/udp_simple.cpp
++++ b/host/lib/transport/udp_simple.cpp
+@@ -28,9 +28,7 @@ public:
+ 
+         // resolve the address
+         asio::ip::udp::resolver resolver(_io_service);
+-        asio::ip::udp::resolver::query query(
+-            asio::ip::udp::v4(), addr, port, asio::ip::resolver_query_base::all_matching);
+-        _send_endpoint = *resolver.resolve(query);
++        auto query_results = resolver.resolve(asio::ip::udp::v4(), addr, port);
+ 
+         // create and open the socket
+         _socket = socket_sptr(new asio::ip::udp::socket(_io_service));
+@@ -70,7 +68,7 @@ public:
+ 
+ private:
+     bool _connected;
+-    asio::io_service _io_service;
++    asio::io_context _io_service;
+     socket_sptr _socket;
+     asio::ip::udp::endpoint _send_endpoint;
+     asio::ip::udp::endpoint _recv_endpoint;
+diff --git a/host/lib/transport/udp_wsa_zero_copy.cpp b/host/lib/transport/udp_wsa_zero_copy.cpp
+index c3d9976..3792a22 100644
+--- a/host/lib/transport/udp_wsa_zero_copy.cpp
++++ b/host/lib/transport/udp_wsa_zero_copy.cpp
+@@ -216,10 +216,10 @@ public:
+         UHD_ASSERT_THROW(_num_send_frames <= WSA_MAXIMUM_WAIT_EVENTS);
+ 
+         // resolve the address
+-        asio::io_service io_service;
++        asio::io_context io_service;
+         asio::ip::udp::resolver resolver(io_service);
+-        asio::ip::udp::resolver::query query(asio::ip::udp::v4(), addr, port);
+-        asio::ip::udp::endpoint receiver_endpoint = *resolver.resolve(query);
++        auto query_results = resolver.resolve(asio::ip::udp::v4(), addr, port);
++        asio::ip::udp::endpoint receiver_endpoint = query_results.begin()->endpoint();
+ 
+         // create the socket
+         _sock_fd =
+diff --git a/host/lib/transport/udp_zero_copy.cpp b/host/lib/transport/udp_zero_copy.cpp
+index 71f16e8..d064777 100644
+--- a/host/lib/transport/udp_zero_copy.cpp
++++ b/host/lib/transport/udp_zero_copy.cpp
+@@ -195,8 +195,8 @@ public:
+ 
+         // resolve the address
+         asio::ip::udp::resolver resolver(_io_service);
+-        asio::ip::udp::resolver::query query(asio::ip::udp::v4(), addr, port);
+-        asio::ip::udp::endpoint receiver_endpoint = *resolver.resolve(query);
++        auto query_results = resolver.resolve(asio::ip::udp::v4(), addr, port);
++        asio::ip::udp::endpoint receiver_endpoint = query_results.begin()->endpoint();
+ 
+         // create, open, and connect the socket
+         _socket = socket_sptr(new asio::ip::udp::socket(_io_service));
+@@ -300,7 +300,7 @@ private:
+     size_t _next_recv_buff_index, _next_send_buff_index;
+ 
+     // asio guts -> socket and service
+-    asio::io_service _io_service;
++    asio::io_context _io_service;
+     socket_sptr _socket;
+     int _sock_fd;
+ };
+diff --git a/host/lib/usrp/b100/b100_impl.cpp b/host/lib/usrp/b100/b100_impl.cpp
+index cd43198..5605408 100644
+--- a/host/lib/usrp/b100/b100_impl.cpp
++++ b/host/lib/usrp/b100/b100_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2012-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/b200/b200_iface.cpp b/host/lib/usrp/b200/b200_iface.cpp
+index 082be07..69791ba 100644
+--- a/host/lib/usrp/b200/b200_iface.cpp
++++ b/host/lib/usrp/b200/b200_iface.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2012-2013 Ettus Research LLC
+ // Copyright 2018-2019 Ettus Research, a National Instruments Brand
+diff --git a/host/lib/usrp/b200/b200_impl.cpp b/host/lib/usrp/b200/b200_impl.cpp
+index 1be8c26..aa05162 100644
+--- a/host/lib/usrp/b200/b200_impl.cpp
++++ b/host/lib/usrp/b200/b200_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2012-2015 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/common/ad9361_driver/ad9361_device.cpp b/host/lib/usrp/common/ad9361_driver/ad9361_device.cpp
+index a3d3552..1247753 100644
+--- a/host/lib/usrp/common/ad9361_driver/ad9361_device.cpp
++++ b/host/lib/usrp/common/ad9361_driver/ad9361_device.cpp
+@@ -1,3 +1,6 @@
++#ifndef _USE_MATH_DEFINES
++#define _USE_MATH_DEFINES
++#endif
+ //
+ // Copyright 2014 Ettus Research
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/common/lmx2592.cpp b/host/lib/usrp/common/lmx2592.cpp
+index e6ffdfb..c619512 100644
+--- a/host/lib/usrp/common/lmx2592.cpp
++++ b/host/lib/usrp/common/lmx2592.cpp
+@@ -9,6 +9,7 @@
+ #include <uhdlib/utils/narrow.hpp>
+ #include <chrono>
+ #include <iomanip>
++#include <array>
+ 
+ using namespace uhd;
+ 
+diff --git a/host/lib/usrp/cores/rx_dsp_core_3000.cpp b/host/lib/usrp/cores/rx_dsp_core_3000.cpp
+index 46fce3f..1da7108 100644
+--- a/host/lib/usrp/cores/rx_dsp_core_3000.cpp
++++ b/host/lib/usrp/cores/rx_dsp_core_3000.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+@@ -14,7 +15,7 @@
+ #include <uhdlib/usrp/cores/rx_dsp_core_3000.hpp>
+ #include <boost/assign/list_of.hpp>
+ #include <boost/math/special_functions/round.hpp>
+-#include <boost/thread/thread.hpp> //thread sleep
++#include <boost/math/special_functions/sign.hpp>
+ #include <algorithm>
+ #include <cmath>
+ 
+diff --git a/host/lib/usrp/cores/rx_frontend_core_3000.cpp b/host/lib/usrp/cores/rx_frontend_core_3000.cpp
+index 7f88a3e..6e459a7 100644
+--- a/host/lib/usrp/cores/rx_frontend_core_3000.cpp
++++ b/host/lib/usrp/cores/rx_frontend_core_3000.cpp
+@@ -13,6 +13,7 @@
+ #include <boost/assign/list_of.hpp>
+ #include <boost/bind.hpp>
+ #include <boost/math/special_functions/round.hpp>
++#include <boost/math/special_functions/sign.hpp>
+ 
+ using namespace uhd;
+ 
+diff --git a/host/lib/usrp/cores/tx_dsp_core_3000.cpp b/host/lib/usrp/cores/tx_dsp_core_3000.cpp
+index be75938..fe1b49f 100644
+--- a/host/lib/usrp/cores/tx_dsp_core_3000.cpp
++++ b/host/lib/usrp/cores/tx_dsp_core_3000.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_cbx.cpp b/host/lib/usrp/dboard/db_cbx.cpp
+index dd0640d..ef45917 100644
+--- a/host/lib/usrp/dboard/db_cbx.cpp
++++ b/host/lib/usrp/dboard/db_cbx.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_dbsrx.cpp b/host/lib/usrp/dboard/db_dbsrx.cpp
+index 5871584..3638fe2 100644
+--- a/host/lib/usrp/dboard/db_dbsrx.cpp
++++ b/host/lib/usrp/dboard/db_dbsrx.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2012 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_dbsrx2.cpp b/host/lib/usrp/dboard/db_dbsrx2.cpp
+index e2505df..2a4a0af 100644
+--- a/host/lib/usrp/dboard/db_dbsrx2.cpp
++++ b/host/lib/usrp/dboard/db_dbsrx2.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2012 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_sbx_common.cpp b/host/lib/usrp/dboard/db_sbx_common.cpp
+index b6eaedc..1672c3e 100644
+--- a/host/lib/usrp/dboard/db_sbx_common.cpp
++++ b/host/lib/usrp/dboard/db_sbx_common.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_sbx_version3.cpp b/host/lib/usrp/dboard/db_sbx_version3.cpp
+index 369315b..7debc83 100644
+--- a/host/lib/usrp/dboard/db_sbx_version3.cpp
++++ b/host/lib/usrp/dboard/db_sbx_version3.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_sbx_version4.cpp b/host/lib/usrp/dboard/db_sbx_version4.cpp
+index d1c7628..df16564 100644
+--- a/host/lib/usrp/dboard/db_sbx_version4.cpp
++++ b/host/lib/usrp/dboard/db_sbx_version4.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_tvrx.cpp b/host/lib/usrp/dboard/db_tvrx.cpp
+index 8bf377c..89e90f4 100644
+--- a/host/lib/usrp/dboard/db_tvrx.cpp
++++ b/host/lib/usrp/dboard/db_tvrx.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2012 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_tvrx2.cpp b/host/lib/usrp/dboard/db_tvrx2.cpp
+index 5dba835..f1905c8 100644
+--- a/host/lib/usrp/dboard/db_tvrx2.cpp
++++ b/host/lib/usrp/dboard/db_tvrx2.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010,2012-2014,2016 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_ubx.cpp b/host/lib/usrp/dboard/db_ubx.cpp
+index 305a69c..a0270ae 100644
+--- a/host/lib/usrp/dboard/db_ubx.cpp
++++ b/host/lib/usrp/dboard/db_ubx.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2014-17 Ettus Research, A National Instruments Company
+ //
+diff --git a/host/lib/usrp/dboard/db_wbx_common.cpp b/host/lib/usrp/dboard/db_wbx_common.cpp
+index 41f323d..99be387 100644
+--- a/host/lib/usrp/dboard/db_wbx_common.cpp
++++ b/host/lib/usrp/dboard/db_wbx_common.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_wbx_simple.cpp b/host/lib/usrp/dboard/db_wbx_simple.cpp
+index 390c5c4..ed4762d 100644
+--- a/host/lib/usrp/dboard/db_wbx_simple.cpp
++++ b/host/lib/usrp/dboard/db_wbx_simple.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2012 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_wbx_version2.cpp b/host/lib/usrp/dboard/db_wbx_version2.cpp
+index 775ee44..b02e0db 100644
+--- a/host/lib/usrp/dboard/db_wbx_version2.cpp
++++ b/host/lib/usrp/dboard/db_wbx_version2.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_wbx_version3.cpp b/host/lib/usrp/dboard/db_wbx_version3.cpp
+index 41979f8..48971cc 100644
+--- a/host/lib/usrp/dboard/db_wbx_version3.cpp
++++ b/host/lib/usrp/dboard/db_wbx_version3.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_wbx_version4.cpp b/host/lib/usrp/dboard/db_wbx_version4.cpp
+index 8b3d13b..5b723bb 100644
+--- a/host/lib/usrp/dboard/db_wbx_version4.cpp
++++ b/host/lib/usrp/dboard/db_wbx_version4.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2011-2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/db_xcvr2450.cpp b/host/lib/usrp/dboard/db_xcvr2450.cpp
+index 9e1c9f2..66e5d04 100644
+--- a/host/lib/usrp/dboard/db_xcvr2450.cpp
++++ b/host/lib/usrp/dboard/db_xcvr2450.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2012 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/dboard/eiscat/eiscat_radio_ctrl_impl.cpp b/host/lib/usrp/dboard/eiscat/eiscat_radio_ctrl_impl.cpp
+index 7385165..ffd2e89 100644
+--- a/host/lib/usrp/dboard/eiscat/eiscat_radio_ctrl_impl.cpp
++++ b/host/lib/usrp/dboard/eiscat/eiscat_radio_ctrl_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2017 Ettus Research, a National Instruments Company
+ //
+diff --git a/host/lib/usrp/dboard/rhodium/rhodium_radio_ctrl_lo.cpp b/host/lib/usrp/dboard/rhodium/rhodium_radio_ctrl_lo.cpp
+index 4058624..533f579 100644
+--- a/host/lib/usrp/dboard/rhodium/rhodium_radio_ctrl_lo.cpp
++++ b/host/lib/usrp/dboard/rhodium/rhodium_radio_ctrl_lo.cpp
+@@ -13,6 +13,8 @@
+ #include <uhd/exception.hpp>
+ #include <boost/format.hpp>
+ 
++
++#include <array>
+ using namespace uhd;
+ using namespace uhd::usrp;
+ using namespace uhd::rfnoc;
+diff --git a/host/lib/usrp/mpmd/mpmd_image_loader.cpp b/host/lib/usrp/mpmd/mpmd_image_loader.cpp
+index d5c7d3d..501ee0a 100644
+--- a/host/lib/usrp/mpmd/mpmd_image_loader.cpp
++++ b/host/lib/usrp/mpmd/mpmd_image_loader.cpp
+@@ -14,7 +14,7 @@
+ #include <uhd/types/eeprom.hpp>
+ #include <uhd/utils/paths.hpp>
+ #include <boost/algorithm/string.hpp>
+-#include <boost/filesystem/convenience.hpp>
++#include <boost/filesystem.hpp>
+ #include <fstream>
+ #include <iterator>
+ #include <sstream>
+@@ -190,7 +190,7 @@ static bool mpmd_image_loader(const image_loader::image_loader_args_t& image_loa
+         // DTS component struct
+         // First, we need to determine the name
+         const std::string base_name =
+-            boost::filesystem::change_extension(fpga_path, "").string();
++            boost::filesystem::path(fpga_path).replace_extension("").string();
+         if (base_name == fpga_path) {
+             const std::string err_msg(
+                 "Can't cut extension from FPGA filename... " + fpga_path);
+diff --git a/host/lib/usrp/multi_usrp.cpp b/host/lib/usrp/multi_usrp.cpp
+index 49ffec6..9f497f4 100644
+--- a/host/lib/usrp/multi_usrp.cpp
++++ b/host/lib/usrp/multi_usrp.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2016 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/n230/n230_eeprom_manager.cpp b/host/lib/usrp/n230/n230_eeprom_manager.cpp
+index f5fda3c..f7bce9c 100644
+--- a/host/lib/usrp/n230/n230_eeprom_manager.cpp
++++ b/host/lib/usrp/n230/n230_eeprom_manager.cpp
+@@ -139,17 +139,17 @@ void n230_eeprom_manager::write_mb_eeprom(const mboard_eeprom_t& eeprom)
+     //Push ethernet info
+     if (_mb_eeprom.has_key("gateway")){
+         map.gateway = uhd::htonx<uint32_t>(
+-            boost::asio::ip::address_v4::from_string(_mb_eeprom["gateway"]).to_ulong());
++            boost::asio::ip::make_address_v4(_mb_eeprom["gateway"]).to_uint());
+     }
+     for (size_t i = 0; i < N230_MAX_NUM_ETH_PORTS; i++) {
+         const std::string n(1, i+'0');
+         if (_mb_eeprom.has_key("ip-addr"+n)){
+             map.eth_info[i].ip_addr = uhd::htonx<uint32_t>(
+-                boost::asio::ip::address_v4::from_string(_mb_eeprom["ip-addr"+n]).to_ulong());
++                boost::asio::ip::make_address_v4(_mb_eeprom["ip-addr"+n]).to_uint());
+         }
+         if (_mb_eeprom.has_key("subnet"+n)){
+             map.eth_info[i].subnet = uhd::htonx<uint32_t>(
+-                boost::asio::ip::address_v4::from_string(_mb_eeprom["subnet"+n]).to_ulong());
++                boost::asio::ip::make_address_v4(_mb_eeprom["subnet"+n]).to_uint());
+         }
+         if (_mb_eeprom.has_key("mac-addr"+n)) {
+             byte_vector_t mac_addr = mac_addr_t::from_string(_mb_eeprom["mac-addr"+n]).to_bytes();
+diff --git a/host/lib/usrp/usrp1/usrp1_impl.cpp b/host/lib/usrp/usrp1/usrp1_impl.cpp
+index 2134f81..c4e95ab 100644
+--- a/host/lib/usrp/usrp1/usrp1_impl.cpp
++++ b/host/lib/usrp/usrp1/usrp1_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2010-2012,2014 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/usrp/usrp2/io_impl.cpp b/host/lib/usrp/usrp2/io_impl.cpp
+index 7042f03..2e2bd2f 100644
+--- a/host/lib/usrp/usrp2/io_impl.cpp
++++ b/host/lib/usrp/usrp2/io_impl.cpp
+@@ -373,11 +373,11 @@ void usrp2_impl::program_stream_dest(
+             "IPv4 Address: %s, UDP Port: %s"
+             ) % args.args["addr"] % args.args["port"];
+ 
+-        asio::io_service io_service;
++        asio::io_context io_service;
+         asio::ip::udp::resolver resolver(io_service);
+-        asio::ip::udp::resolver::query query(asio::ip::udp::v4(), args.args["addr"], args.args["port"]);
+-        asio::ip::udp::endpoint endpoint = *resolver.resolve(query);
+-        stream_ctrl.ip_addr = uhd::htonx(uint32_t(endpoint.address().to_v4().to_ulong()));
++        auto query_results = resolver.resolve(asio::ip::udp::v4(), args.args["addr"], args.args["port"]);
++        asio::ip::udp::endpoint endpoint = query_results.begin()->endpoint();
++        stream_ctrl.ip_addr = uhd::htonx(uint32_t(endpoint.address().to_v4().to_uint()));
+         stream_ctrl.udp_port = uhd::htonx(uint32_t(endpoint.port()));
+ 
+         for (size_t i = 0; i < 3; i++){
+diff --git a/host/lib/usrp/usrp2/mb_eeprom.cpp b/host/lib/usrp/usrp2/mb_eeprom.cpp
+index bd91b52..3774d26 100644
+--- a/host/lib/usrp/usrp2/mb_eeprom.cpp
++++ b/host/lib/usrp/usrp2/mb_eeprom.cpp
+@@ -136,19 +136,19 @@ void usrp2_impl::set_mb_eeprom(
+ 
+     if (mb_eeprom.has_key("ip-addr")){
+         byte_vector_t ip_addr_bytes(4);
+-        byte_copy(boost::asio::ip::address_v4::from_string(mb_eeprom["ip-addr"]).to_bytes(), ip_addr_bytes);
++        byte_copy(boost::asio::ip::make_address_v4(mb_eeprom["ip-addr"]).to_bytes(), ip_addr_bytes);
+         iface->write_eeprom(N200_EEPROM_ADDR, offsetof(n200_eeprom_map, ip_addr), ip_addr_bytes);
+     }
+ 
+     if (mb_eeprom.has_key("subnet")){
+         byte_vector_t ip_addr_bytes(4);
+-        byte_copy(boost::asio::ip::address_v4::from_string(mb_eeprom["subnet"]).to_bytes(), ip_addr_bytes);
++        byte_copy(boost::asio::ip::make_address_v4(mb_eeprom["subnet"]).to_bytes(), ip_addr_bytes);
+         iface->write_eeprom(N200_EEPROM_ADDR, offsetof(n200_eeprom_map, subnet), ip_addr_bytes);
+     }
+ 
+     if (mb_eeprom.has_key("gateway")){
+         byte_vector_t ip_addr_bytes(4);
+-        byte_copy(boost::asio::ip::address_v4::from_string(mb_eeprom["gateway"]).to_bytes(), ip_addr_bytes);
++        byte_copy(boost::asio::ip::make_address_v4(mb_eeprom["gateway"]).to_bytes(), ip_addr_bytes);
+         iface->write_eeprom(N200_EEPROM_ADDR, offsetof(n200_eeprom_map, gateway), ip_addr_bytes);
+     }
+ 
+diff --git a/host/lib/usrp/usrp2/usrp2_impl.cpp b/host/lib/usrp/usrp2/usrp2_impl.cpp
+index 1be4c73..cdb629d 100644
+--- a/host/lib/usrp/usrp2/usrp2_impl.cpp
++++ b/host/lib/usrp/usrp2/usrp2_impl.cpp
+@@ -22,6 +22,8 @@
+ #include <boost/asio/ip/address_v4.hpp>
+ #include <boost/asio.hpp> //used for htonl and ntohl
+ #include <boost/thread.hpp>
++#include <boost/math/special_functions/round.hpp>
++#include <boost/math/special_functions/sign.hpp>
+ 
+ using namespace uhd;
+ using namespace uhd::usrp;
+@@ -878,8 +880,6 @@ meta_range_t usrp2_impl::get_tx_dsp_freq_range(const std::string &mb)
+     );
+ }
+ 
+-#include <boost/math/special_functions/round.hpp>
+-#include <boost/math/special_functions/sign.hpp>
+ 
+ void usrp2_impl::update_clock_source(const std::string &mb, const std::string &source){
+     //NOTICE: U2_REG_MISC_CTRL_CLOCK is on the wb clock, and cannot be set from fifo_ctrl
+diff --git a/host/lib/usrp/x300/x300_image_loader.cpp b/host/lib/usrp/x300/x300_image_loader.cpp
+index ccd3761..2c791ec 100644
+--- a/host/lib/usrp/x300/x300_image_loader.cpp
++++ b/host/lib/usrp/x300/x300_image_loader.cpp
+@@ -138,7 +138,7 @@ static void x300_validate_image(x300_session_t& session)
+             boost::format("Could not find image at path \"%s\".") % session.filepath));
+     }
+ 
+-    std::string extension = fs::extension(session.filepath);
++    std::string extension = fs::path(session.filepath).extension().string();
+     session.lvbitx        = (extension == ".lvbitx");
+ 
+     if (session.lvbitx) {
+diff --git a/host/lib/usrp/x300/x300_mb_eeprom.cpp b/host/lib/usrp/x300/x300_mb_eeprom.cpp
+index 54505a4..3860e72 100644
+--- a/host/lib/usrp/x300/x300_mb_eeprom.cpp
++++ b/host/lib/usrp/x300/x300_mb_eeprom.cpp
+@@ -10,6 +10,14 @@
+ #include <uhdlib/utils/eeprom_utils.hpp>
+ 
+ namespace {
++
++// Adapter so check_for_duplicates<> can use boost::asio::ip::address_v4
++// (from_string was removed from address_v4 in Boost 1.83+)
++struct x300_ip_addr {
++    static boost::asio::ip::address_v4 from_string(const std::string& str) {
++        return boost::asio::ip::make_address_v4(str);
++    }
++};
+ const uint8_t X300_EEPROM_ADDR = 0x50;
+ 
+ struct x300_eeprom_map
+@@ -123,7 +131,7 @@ void uhd::usrp::x300::set_mb_eeprom(
+     // make sure there are no duplicate values
+     if (check_for_duplicates<uhd::mac_addr_t>(
+             "X300", mb_eeprom, curr_eeprom, "MAC address", mac_keys)
+-        or check_for_duplicates<boost::asio::ip::address_v4>(
++        or check_for_duplicates<x300_ip_addr>(
+                "X300", mb_eeprom, curr_eeprom, "IP address", ip_keys)) {
+         throw uhd::value_error(
+             "Duplicate values not permitted - write to EEPROM aborted");
+@@ -161,7 +169,7 @@ void uhd::usrp::x300::set_mb_eeprom(
+     byte_vector_t ip_addr_bytes(4);
+     if (mb_eeprom.has_key("gateway")) {
+         byte_copy(
+-            boost::asio::ip::address_v4::from_string(mb_eeprom["gateway"]).to_bytes(),
++            boost::asio::ip::make_address_v4(mb_eeprom["gateway"]).to_bytes(),
+             ip_addr_bytes);
+         iface->write_eeprom(
+             X300_EEPROM_ADDR, offsetof(x300_eeprom_map, gateway), ip_addr_bytes);
+@@ -169,7 +177,7 @@ void uhd::usrp::x300::set_mb_eeprom(
+     for (size_t i = 0; i < 4; i++) {
+         const std::string n(1, char(i) + '0');
+         if (mb_eeprom.has_key("ip-addr" + n)) {
+-            byte_copy(boost::asio::ip::address_v4::from_string(mb_eeprom["ip-addr" + n])
++            byte_copy(boost::asio::ip::make_address_v4(mb_eeprom["ip-addr" + n])
+                           .to_bytes(),
+                 ip_addr_bytes);
+             iface->write_eeprom(X300_EEPROM_ADDR,
+@@ -178,7 +186,7 @@ void uhd::usrp::x300::set_mb_eeprom(
+         }
+ 
+         if (mb_eeprom.has_key("subnet" + n)) {
+-            byte_copy(boost::asio::ip::address_v4::from_string(mb_eeprom["subnet" + n])
++            byte_copy(boost::asio::ip::make_address_v4(mb_eeprom["subnet" + n])
+                           .to_bytes(),
+                 ip_addr_bytes);
+             iface->write_eeprom(X300_EEPROM_ADDR,
+diff --git a/host/lib/usrp/x300/x300_radio_ctrl_impl.cpp b/host/lib/usrp/x300/x300_radio_ctrl_impl.cpp
+index 8d967ae..15e6bda 100644
+--- a/host/lib/usrp/x300/x300_radio_ctrl_impl.cpp
++++ b/host/lib/usrp/x300/x300_radio_ctrl_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2015-2017 Ettus Research, A National Instruments Company
+ //
+diff --git a/host/lib/usrp_clock/octoclock/octoclock_eeprom.cpp b/host/lib/usrp_clock/octoclock/octoclock_eeprom.cpp
+index a9f9189..22cbb12 100644
+--- a/host/lib/usrp_clock/octoclock/octoclock_eeprom.cpp
++++ b/host/lib/usrp_clock/octoclock/octoclock_eeprom.cpp
+@@ -98,21 +98,21 @@ void octoclock_eeprom_t::_store() const {
+ 
+     //IP address
+     if((*this).has_key("ip-addr")){
+-        ip_v4::bytes_type ip_addr_bytes = ip_v4::from_string((*this)["ip-addr"]).to_bytes();
++        ip_v4::bytes_type ip_addr_bytes = boost::asio::ip::make_address_v4((*this)["ip-addr"]).to_bytes();
+         memcpy(&eeprom_out->ip_addr, &ip_addr_bytes, 4);
+         eeprom_out->ip_addr = uhd::htonx<uint32_t>(eeprom_out->ip_addr);
+     }
+ 
+     //Default router
+     if((*this).has_key("gateway")){
+-        ip_v4::bytes_type dr_addr_bytes = ip_v4::from_string((*this)["gateway"]).to_bytes();
++        ip_v4::bytes_type dr_addr_bytes = boost::asio::ip::make_address_v4((*this)["gateway"]).to_bytes();
+         memcpy(&eeprom_out->dr_addr, &dr_addr_bytes, 4);
+         eeprom_out->dr_addr = uhd::htonx<uint32_t>(eeprom_out->dr_addr);
+     }
+ 
+     //Netmask
+     if((*this).has_key("netmask")){
+-        ip_v4::bytes_type netmask_bytes = ip_v4::from_string((*this)["netmask"]).to_bytes();
++        ip_v4::bytes_type netmask_bytes = boost::asio::ip::make_address_v4((*this)["netmask"]).to_bytes();
+         memcpy(&eeprom_out->netmask, &netmask_bytes, 4);
+         eeprom_out->netmask = uhd::htonx<uint32_t>(eeprom_out->netmask);
+     }
+diff --git a/host/lib/usrp_clock/octoclock/octoclock_image_loader.cpp b/host/lib/usrp_clock/octoclock/octoclock_image_loader.cpp
+index e030e61..7a9f92e 100644
+--- a/host/lib/usrp_clock/octoclock/octoclock_image_loader.cpp
++++ b/host/lib/usrp_clock/octoclock/octoclock_image_loader.cpp
+@@ -93,7 +93,7 @@ static void octoclock_validate_firmware_image(octoclock_session_t &session){
+                                      % session.image_filepath));
+     }
+ 
+-    std::string extension = fs::extension(session.image_filepath);
++    std::string extension = fs::path(session.image_filepath).extension().string();
+     if(extension == ".bin"){
+         octoclock_read_bin(session);
+     }
+diff --git a/host/lib/usrp_clock/octoclock/octoclock_impl.cpp b/host/lib/usrp_clock/octoclock/octoclock_impl.cpp
+index f3cf3f4..50f64dc 100644
+--- a/host/lib/usrp_clock/octoclock/octoclock_impl.cpp
++++ b/host/lib/usrp_clock/octoclock/octoclock_impl.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2014,2016 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company
+diff --git a/host/lib/utils/ihex.cpp b/host/lib/utils/ihex.cpp
+index 6bb0ba9..a70fc48 100644
+--- a/host/lib/utils/ihex.cpp
++++ b/host/lib/utils/ihex.cpp
+@@ -1,3 +1,4 @@
++#include <boost/bind.hpp>
+ //
+ // Copyright 2015 Ettus Research LLC
+ // Copyright 2018 Ettus Research, a National Instruments Company

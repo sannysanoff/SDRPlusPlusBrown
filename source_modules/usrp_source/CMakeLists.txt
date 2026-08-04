@@ -8,9 +8,22 @@ include(${SDRPP_MODULE_CMAKE})
 
 # 2. Windows Environment
 if (MSVC)
-    target_link_directories(usrp_source PRIVATE "C:/Program Files/PothosSDR/bin/")
-    target_include_directories(usrp_source PRIVATE "C:/Program Files/PothosSDR/include/")
+    # Source-built UHD (see .github/workflows/build_all.yml). Override with -DUHD_DIR=...
+    if (NOT DEFINED UHD_DIR)
+        if (EXISTS "C:/Program Files/uhd/lib/uhd.lib")
+            set(UHD_DIR "C:/Program Files/uhd")
+        else()
+            set(UHD_DIR "C:/Program Files/PothosSDR")
+        endif()
+    endif ()
+    target_link_directories(usrp_source PRIVATE "${UHD_DIR}/lib")
+    target_include_directories(usrp_source PRIVATE "${UHD_DIR}/include")
     target_link_libraries(usrp_source PRIVATE uhd)
+
+    # UHD public headers include boost headers; vcpkg toolchain provides them,
+    # but link boost explicitly to satisfy MSVC auto-linking on boost_thread.
+    find_package(Boost REQUIRED)
+    target_include_directories(usrp_source PRIVATE ${Boost_INCLUDE_DIRS})
 
 # 3. Unix Environment (macOS, Linux)
 else ()
