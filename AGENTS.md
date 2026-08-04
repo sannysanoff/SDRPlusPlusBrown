@@ -2,6 +2,10 @@
 
 This document provides guidance for AI agents working with the SDR++ Brown Fork codebase.
 
+## Additional Docs
+- [AGENTS-windows.md](./AGENTS-windows.md) — Windows build via windows-mcp (winget/vcpkg toolchain, VS2022 build, runtime assembly, procdump/cdb crash diagnosis, E2E tests)
+- [AGENTS-debugging.md](./AGENTS-debugging.md) — HTTP debug server, module/procfs commands, GUI automation, lldb crash/hang debugging, bugfix workflow
+
 ## Building Locally (Linux - Debian/Ubuntu based)
 
 The following steps outline how to build the SDR++ project locally on a Debian/Ubuntu-based system. These steps are derived from the CI build process and local build attempts.

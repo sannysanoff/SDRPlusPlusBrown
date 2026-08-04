@@ -382,6 +382,164 @@ patches apply cleanly. Workflow per fix:
 > and never edit the same file via PowerShell `-replace` / `sed` on one side only — it makes the
 > trees diverge and `git apply`/`git am` fail silently. Always patch, then commit on both sides.
 
+## 13. USRP / UHD build (Windows)
+
+UHD is built **from source** (EttusResearch/uhd, tag `v3.15.0.0`) on the Windows host and the
+`usrp_source` module is enabled via CMake. Rationale: the UHD 3.15 GitHub release ships **no
+Windows binaries** (only `uhd-images` tarballs), and the PothosSDR-bundled UHD 3.15 is used only
+as a fallback. Build on branch `windows-usrp-build`.
+
+### 13.1 Prerequisites
+
+- **Boost from vcpkg** (`boost:x64-windows`). NOTE: vcpkg's `boost` port has default features
+  that pull in **python3 + sqlite3 + libffi + openssl + expat** even though UHD never uses
+  Boost.Python. Build takes 1.5–2 h on a VM. If you want to skip that, install only the needed
+  components with `--no-default-features` + `[chrono,date_time,filesystem,program_options,regex,system,thread,serialization]`.
+  UHD 3.15 needs Boost ≥ 1.58; vcpkg delivers 1.91 (`BOOST_LIB_VERSION "1_91"`).
+  `boost_regex`/`boost_system` are header-only in modern Boost — no `.lib` for them is expected.
+- **libusb** from vcpkg (`libusb:x64-windows`) — also in the same install.
+- **Python ≥ 3.5 + `mako`** for UHD's codegen. On a VM whose system python is uv-managed
+  (3.14, no pip), create a venv and install there:
+  ```powershell
+  uv venv C:\dev\uhdvenv
+  C:\dev\uhdvenv\Scripts\pip.exe install mako requests
+  # point UHD's configure at it with -DPYTHON_EXECUTABLE=C:/dev/uhdvenv/Scripts/python.exe
+  ```
+- Launch boost install detached and poll a done marker (same pattern as §5.2):
+  ```powershell
+  # boost_install.ps1
+  cd C:\dev\vcpkg
+  C:\dev\vcpkg\vcpkg.exe install boost:x64-windows libusb:x64-windows
+  (Get-Date -Format o) + " BOOST_DONE exit=" + $LASTEXITCODE | Out-File C:\dev\vcpkg\boost_done.txt
+  ```
+  Watch progress via `Get-ChildItem C:\dev\vcpkg\installed\x64-windows\lib\boost_*.lib | Measure`.
+
+### 13.2 Build UHD 3.15.0.0 from source
+
+```powershell
+git clone --depth 1 --branch v3.15.0.0 https://github.com/EttusResearch/uhd C:\dev\uhd
+# build_uhd.ps1 (detached, poll C:\dev\uhd\uhd_done.txt):
+$cmake = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+New-Item -ItemType Directory C:\dev\uhd\build -Force | Out-Null
+Set-Location C:\dev\uhd\build
+& $cmake C:\dev\uhd\host -G "Visual Studio 17 2022" -A x64 `
+  "-DCMAKE_TOOLCHAIN_FILE=C:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+  "-DPYTHON_EXECUTABLE=C:/dev/uhdvenv311/Scripts/python.exe" `
+  "-DCMAKE_INSTALL_PREFIX=C:/Program Files/uhd" `
+  "-DCMAKE_CXX_FLAGS=/EHsc -DBOOST_BIND_GLOBAL_PLACEHOLDERS" `
+  "-DBOOST_ALL_DYN_LINK=ON" `
+  -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_UTILS=OFF `
+  -DENABLE_PYTHON_API=OFF -DENABLE_DOXYGEN=OFF -DENABLE_MAN_PAGES=OFF
+& $cmake --build . --config Release --parallel 4
+"UHD_BUILD_DONE exit=" + $LASTEXITCODE | Out-File C:\dev\uhd\uhd_done.txt
+```
+Then install **elevated** (writes to `C:\Program Files\uhd`):
+```powershell
+# install_elev.ps1, launched via Start-Process -Verb RunAs -Wait
+Set-Location C:\dev\uhd\build
+& $cmake --install . --config Release
+```
+
+> **IMPORTANT:** UHD's CMake always configures the source root `C:\dev\uhd\host` (not `C:\dev\uhd`),
+> and `-DPYTHON_EXECUTABLE` must point into the venv or codegen fails (`no module named mako`).
+> The install step writes to `C:\Program Files\uhd` → needs elevation, so run install via the
+> elevated pattern if UAC isn't disabled (see §2).
+
+> **IMPORTANT — three CMake flags are mandatory:**
+> 1. `-DCMAKE_CXX_FLAGS="/EHsc -DBOOST_BIND_GLOBAL_PLACEHOLDERS"` — without `/EHsc` UHD builds
+>    with exceptions off (`<ExceptionHandling/>` is empty), so Boost defines `BOOST_NO_EXCEPTIONS`
+>    and `boost/serialization` fails with `throw_exception is not a member of 'boost'` (which also
+>    cascades into bogus `boost::math::sign` "not a member of 'boost'" errors in usrp2_impl).
+>    Without `-DBOOST_BIND_GLOBAL_PLACEHOLDERS` many files fail with `error C2065: '_1'`.
+> 2. `-DBOOST_ALL_DYN_LINK=ON` — vcpkg builds boost as **DLLs** (import libs
+>    `boost_thread-vc143-mt-x64-1_91.lib` etc.). Without it UHD's MSVC branch clears the boost
+>    component list (static-link path) and the final link fails with
+>    `LNK2001: unresolved external boost::thread`-family symbols. With it, auto-linking pulls the
+>    import libs.
+> 3. Build with `--parallel 4` — full parallelism trips `cl : error D8040: error creating or
+>    communicating with child process` + `error C1083 ... Permission denied` on obj files
+>    (orphaned cl.exe from a timed-out run fight the next build; kill them first).
+
+> **IMPORTANT — Boost compatibility:** vcpkg ships Boost 1.91 (needed for SDR++), but UHD 3.15's
+> bundled `rpclib` (its RPC server) predates Boost 1.87 and won't compile against it:
+> - `io_service` / `io_service::strand` were **removed** → migrate to `io_context` /
+>   `strand<io_context::executor_type>` (strand ctor takes an executor: `io_.get_executor()`).
+> - Single-arg `strand::post(fn)` / `io_service::strand::post(fn)` removed → use free
+>   `boost::asio::post(strand_, fn)`.
+> - `strand::wrap(fn)` removed → `boost::asio::bind_executor(strand_, fn)`.
+> - `tcp::resolver::iterator` removed → `tcp::resolver::results_type`; the async_connect handler
+>   now takes `tcp::endpoint`, and `resolver.resolve(host, service)` is preferred over the
+>   `{host, service}` init-list overload.
+> - `ip::address::from_string` → `boost::asio::ip::make_address`.
+> Affected files (all under `lib/deps/rpclib/`): `client.cc`, `server.cc`,
+> `detail/server_session.{h,cc}`, `detail/async_writer.h`. Also note UHD needs Python 3.x **with
+> `distutils`** (removed in 3.12+, so use Python 3.11 via `uv python install 3.11` + venv), else
+> every codegen module check fails with `import platform failed`.
+
+> **IMPORTANT — UHD's own code also needs Boost-1.91 fixes** (besides rpclib):
+> - Legacy asio in UHD sources: `lib/transport/{udp_simple,udp_wsa_zero_copy,tcp_zero_copy,udp_zero_copy}.cpp`,
+>   `lib/transport/libusb1_base.{hpp,cpp}` (`timeval` needs `<winsock2.h>` before `libusb.h`),
+>   `lib/transport/nirio/rpc/rpc_client.{hpp,cpp}` (also `io_service`→`io_context`,
+>   `resolver::query`/`iterator`→`results_type`+`begin()->endpoint()`),
+>   `lib/usrp/usrp2/{io_impl,mb_eeprom}.cpp`, `lib/usrp/{x300/x300_mb_eeprom,n230/n230_eeprom_manager}.cpp`
+>   (`address_v4::from_string`→`make_address_v4`, `to_ulong`→`to_uint`).
+> - `boost::filesystem`: `fs::extension()` removed → `path(...).extension().string()`;
+>   `fs::change_extension` removed → `path(...).replace_extension("")` (in mpmd/x300/octoclock
+>   image loaders — note `filepath` is a `std::string`, wrap in `fs::path` first).
+> - `boost::math::sign`/`iround`: files that use them must include
+>   `<boost/math/special_functions/{sign,round}.hpp>` explicitly (MSVC gets no transitive include;
+>   e.g. usrp2_impl.cpp had them AFTER first use).
+> - `std::array` needs an explicit `#include <array>` (lmx2592.cpp etc.).
+> - `M_PI`/`M_LN2` are not defined on MSVC — put `#ifndef _USE_MATH_DEFINES / #define` at the TOP
+>   of the file (ad9361_device.cpp had it after the first include).
+
+> **IMPORTANT — Boost.Bind placeholders:** Boost 1.87+ no longer defines `_1`, `_2`, ... in the
+> global namespace by default, so UHD 3.15 fails with `error C2065: '_1': undeclared identifier`
+> (many files use `boost::bind`/`_1`). Fix: pass
+> `-DCMAKE_CXX_FLAGS="-DBOOST_BIND_GLOBAL_PLACEHOLDERS"` to UHD's configure.
+
+> **IMPORTANT — MSVC resource errors are transient:** a full-parallel UHD build can die with
+> `cl : command line error D8040: error creating or communicating with child process` and/or
+> `error C1083 ... Permission denied` on an obj file. That's MSBuild spawning too many `cl.exe`
+> children (esp. on a RAM-tight VM), NOT a code error. Fix: rerun with
+> `cmake --build . --config Release --parallel 4`. Watch RAM first
+> (`Get-CimInstance Win32_OperatingSystem`) — D8040 usually follows low free RAM. **Never relaunch
+> a timed-out `Start-Process -NoNewWindow` build** — orphaned `cl.exe` children will fight the
+> next build for the same obj files (that's what the `Permission denied` obj errors are). Kill
+> leftover `cl`/`msbuild`/`cmake` processes before retrying.
+
+Verify: `C:\Program Files\uhd\lib\cmake\uhd\UHDConfig.cmake`, `C:\Program Files\uhd\include\uhd\version.hpp`
+(should say `UHD_VERSION_ABI_STRING "3.15.0"`), `C:\Program Files\uhd\lib\uhd.lib`,
+`C:\Program Files\uhd\bin\uhd.dll`.
+
+### 13.3 Module wiring (local repo, `source_modules/usrp_source/CMakeLists.txt`)
+
+MSVC branch uses a `UHD_DIR` variable (defaults to `C:/Program Files/uhd`, falls back to
+`C:/Program Files/PothosSDR`), includes `${UHD_DIR}/include`, links `${UHD_DIR}/lib/uhd.lib`,
+plus `find_package(Boost REQUIRED)` for headers. `usrp_source` is compiled with
+`-DOPT_BUILD_USRP_SOURCE=ON -DUHD_DIR="C:/Program Files/uhd"`.
+
+### 13.4 CI wiring (`.github/workflows/build_all.yml`)
+
+- vcpkg line includes `boost:x64-windows`.
+- New steps in `build_windows`: install `mako`+`requests`, download UHD source tarball
+  (`v3.15.0.0.tar.gz`), build+install it (7z extract, VS 2022 generator, vcpkg toolchain,
+  prefix `C:/Program Files/uhd`, tests/examples/utils/python/doxygen/man OFF), then pass
+  `-DOPT_BUILD_USRP_SOURCE=ON -DUHD_DIR="C:/Program Files/uhd"` to the SDR++ configure.
+- **Branch gating:** all non-Windows jobs (15 of them) get
+  `if: ${{ !contains(github.ref_name, 'windows') }}` so that on a branch whose name contains
+  `windows` only the Windows job runs; `build_windows` has no gate; spelling/formatting checks
+  are not gated.
+
+### 13.5 Runtime packaging (`make_windows_package.ps1`)
+
+Copies `usrp_source.dll` into `modules/`, `uhd.dll` from `C:/Program Files/uhd/bin`, plus
+`boost_*.dll` from both `uhd/bin` and `C:/vcpkg/installed/x64-windows/bin`.
+
+> **IMPORTANT:** PothosSDR's `uhd.dll` statically pulls old `boost_*1_67.dll` names — if the
+> vcpkg-built UHD (Boost 1.91) is the one installed at `C:/Program Files/uhd`, ship **that**
+> `uhd.dll`, not the Pothos one, or the loader won't find matching boost DLLs.
+
 ## Pitfalls at a glance
 
 | Pitfall | Fix |
@@ -404,3 +562,9 @@ patches apply cleanly. Workflow per fix:
 | Window title still "Built at 10:30:01" | Timestamp baked into exe at link time; check module DLL timestamps instead |
 | `Start-Process` MCP call "times out" | App usually started fine (stdout handle keeps session busy); verify with `Get-Process sdrpp`, don't relaunch |
 | `set_filename` returns `Invalid \escape` | `file_source` built JSON by string concat; fixed via `json::dump()` — Windows paths need `\\` escaping |
+| vcpkg `boost:x64-windows` builds python3/sqlite3/libffi/openssl (long) | Default features include Boost.Python; install lean via `--no-default-features` + needed components |
+| UHD codegen fails `no module named mako` | `-DPYTHON_EXECUTABLE=C:/dev/uhdvenv/Scripts/python.exe` (uv python has no pip) |
+| UHD CMake configures wrong dir / hangs | configure `C:\dev\uhd\host` with `-G "Visual Studio 17 2022" -A x64` |
+| `usrp_source` missing at runtime | copy `usrp_source.dll` to `modules/` + `uhd.dll`/`boost_*.dll` (vcpkg-built UHD, not Pothos) |
+| usrp_source DLL deps unresolved at runtime | `usrp_source.dll` imports `sdrpp_core.dll` + `uhd.dll` + `volk.dll`; `uhd.dll` imports `libusb-1.0.dll` + `boost_{filesystem,serialization,thread}-vc143-mt-x64-1_91.dll` — all must sit in the runtime root (sdrpp core/volk already there; copy the uhd/boost/libusb ones) |
+| sdrpp crashes / first-chance `E06D7363` (C++ exception) right after `Loading .../usrp_source.dll` | **Not a crash** — that's UHD's network/USRP discovery throwing `boost::system::system_error` (send_to error 10049) on a VM with no USRP hardware. The app recovers and prints `USRPSourceModule 'USRP Source': Menu Select!` + `Running post-init for USRP Source`. Verify via `Select-String usrp_source` on the stdout log, not the procdump first-chance noise |
