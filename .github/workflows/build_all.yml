@@ -63,6 +63,63 @@ jobs:
         - name: Install codec2
           run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
 
+        - name: Download dependency cache
+          shell: pwsh
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: |
+            New-Item -ItemType Directory ${{runner.workspace}}/cache -Force | Out-Null
+            gh release view build-cache --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              gh release download build-cache `
+                --repo $env:GITHUB_REPOSITORY `
+                --pattern "*.zip" `
+                --dir ${{runner.workspace}}/cache 2>$null
+              if ($LASTEXITCODE -ne 0) { Write-Host "cache download failed, building from source" }
+            } else {
+              Write-Host "no build-cache release found, building from source"
+            }
+            Write-Host "cache:"; Get-ChildItem ${{runner.workspace}}/cache -ErrorAction SilentlyContinue | Select-Object Name,Length
+
+        - name: Restore vcpkg installed tree from cache
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/vcpkg-installed.zip"
+            if (Test-Path $zip) {
+              Expand-Archive $zip -DestinationPath C:/vcpkg -Force
+              try {
+                git -C C:/vcpkg fetch origin 39344dff01c5a5a0134caf2624cdd492f05d30ea 2>$null
+                git -C C:/vcpkg checkout 39344dff01c5a5a0134caf2624cdd492f05d30ea
+                C:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+                Write-Host "vcpkg installed tree restored + vcpkg pinned to cache revision"
+              } catch {
+                Write-Host "vcpkg pin failed (best effort); installed tree still restored"
+              }
+            } else {
+              Write-Host "vcpkg cache not found - building deps from source"
+            }
+
+        - name: Restore UHD install from cache
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/uhd-3.15.0.0-x64.zip"
+            if (Test-Path $zip) {
+              Expand-Archive $zip -DestinationPath "C:/Program Files" -Force
+              Write-Host "UHD restored to C:/Program Files/uhd"
+            } else {
+              Write-Host "UHD cache not found - build-uhd action will compile from source"
+            }
+
+        - name: Restore Python 3.11 codegen env from cache
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/uhd-python311-codegen.zip"
+            if (Test-Path $zip) {
+              Expand-Archive $zip -DestinationPath C:/dev -Force
+              Write-Host "Python 3.11 restored to C:/dev/py311_uhd"
+            } else {
+              Write-Host "Python cache not found - build-uhd action will pip install mako/requests"
+            }
         - name: Install vcpkg dependencies
           run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows boost:x64-windows
 
