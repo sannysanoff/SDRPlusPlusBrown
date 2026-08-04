@@ -22,64 +22,24 @@ jobs:
         - name: Create Build Environment
           run: cmake -E make_directory ${{runner.workspace}}/build
 
-        - name: Download PothosSDR
-          run: Invoke-WebRequest -Uri "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2020.01.26-vc14-x64.exe" -OutFile ${{runner.workspace}}/pothos.exe
-
-        - name: Install PothosSDR
-          run: mkdir "C:/Program Files/PothosSDR" ; 7z x ${{runner.workspace}}/pothos.exe -o"C:/Program Files/PothosSDR/"
-
-        - name: Download libusb
-          run: Invoke-WebRequest -Uri "https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.7z" -OutFile ${{runner.workspace}}/libusb.7z
-
-        - name: Patch Pothos with earlier libusb version
-          working-directory: ${{runner.workspace}}
-          run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
- 
-        - name: Download librtlsdr
-          run: Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20240623.zip" -OutFile ${{runner.workspace}}/rtl-sdr.zip
-
-        - name: Patch Pothos with newer librtlsdr version
-          working-directory: ${{runner.workspace}}
-          run: 7z x rtl-sdr.zip ; rm "C:/Program Files/PothosSDR/bin/rtlsdr.dll" ; cp "rtl-sdr-64bit-20240623/librtlsdr.dll" "C:/Program Files/PothosSDR/bin/rtlsdr.dll"
-
-        - name: Download SDRPlay API
-          run: Invoke-WebRequest -Uri "https://www.sdrpp.org/SDRplay.zip" -OutFile ${{runner.workspace}}/SDRplay.zip
-
-        - name: Install SDRPlay API
-          run: 7z x ${{runner.workspace}}/SDRplay.zip -o"C:/Program Files/"
-
-        - name: Download codec2
-          run: git clone https://github.com/drowe67/codec2
-
-        - name: Prepare MinGW
-          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja"
-
-        - name: Prepare build for codec2
-          run: cd codec2 ; mkdir build ; cd build ; C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "cmake .. -DCMAKE_GNUtoMS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-static-libgcc"
-
-        - name: Build codec2
-          run: cd codec2/build ; C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "ninja"
-
-        - name: Install codec2
-          run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
-
         - name: Download dependency cache
           shell: pwsh
           env:
             GH_TOKEN: ${{ github.token }}
           run: |
             New-Item -ItemType Directory ${{runner.workspace}}/cache -Force | Out-Null
-            gh release view build-cache --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+            $null = gh release view build-cache --repo $env:GITHUB_REPOSITORY 2>&1
             if ($LASTEXITCODE -eq 0) {
-              gh release download build-cache `
+              $null = gh release download build-cache `
                 --repo $env:GITHUB_REPOSITORY `
                 --pattern "*.zip" `
-                --dir ${{runner.workspace}}/cache 2>$null
+                --dir ${{runner.workspace}}/cache 2>&1
               if ($LASTEXITCODE -ne 0) { Write-Host "cache download failed, building from source" }
             } else {
               Write-Host "no build-cache release found, building from source"
             }
             Write-Host "cache:"; Get-ChildItem ${{runner.workspace}}/cache -ErrorAction SilentlyContinue | Select-Object Name,Length
+            exit 0
 
         - name: Restore vcpkg binary cache
           shell: pwsh
@@ -111,6 +71,61 @@ jobs:
               "CACHE_PY=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
               Write-Host "Python cache missing - will use setup-python 3.11"
             }
+
+        - name: Restore MinGW toolchain
+          shell: pwsh
+          run: |
+            $zip = "${{runner.workspace}}/cache/mingw64-codec2.zip"
+            if (Test-Path $zip) {
+              & 7z x $zip -oC:/ -y *> $null
+              "CACHE_MINGW=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "MinGW toolchain restored to C:/msys64 - skipping pacman"
+            } else {
+              "CACHE_MINGW=missing" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "MinGW cache missing - pacman will install toolchain"
+            }
+
+        - name: Download PothosSDR
+          run: Invoke-WebRequest -Uri "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2020.01.26-vc14-x64.exe" -OutFile ${{runner.workspace}}/pothos.exe
+
+        - name: Install PothosSDR
+          run: mkdir "C:/Program Files/PothosSDR" ; 7z x ${{runner.workspace}}/pothos.exe -o"C:/Program Files/PothosSDR/"
+
+        - name: Download libusb
+          run: Invoke-WebRequest -Uri "https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.7z" -OutFile ${{runner.workspace}}/libusb.7z
+
+        - name: Patch Pothos with earlier libusb version
+          working-directory: ${{runner.workspace}}
+          run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
+
+        - name: Download librtlsdr
+          run: Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20240623.zip" -OutFile ${{runner.workspace}}/rtl-sdr.zip
+
+        - name: Patch Pothos with newer librtlsdr version
+          working-directory: ${{runner.workspace}}
+          run: 7z x rtl-sdr.zip ; rm "C:/Program Files/PothosSDR/bin/rtlsdr.dll" ; cp "rtl-sdr-64bit-20240623/librtlsdr.dll" "C:/Program Files/PothosSDR/bin/rtlsdr.dll"
+
+        - name: Download SDRPlay API
+          run: Invoke-WebRequest -Uri "https://www.sdrpp.org/SDRplay.zip" -OutFile ${{runner.workspace}}/SDRplay.zip
+
+        - name: Install SDRPlay API
+          run: 7z x ${{runner.workspace}}/SDRplay.zip -o"C:/Program Files/"
+
+        - name: Download codec2
+          run: git clone https://github.com/drowe67/codec2
+
+        - name: Prepare MinGW
+          if: env.CACHE_MINGW != 'restored'
+          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja"
+
+        - name: Prepare build for codec2
+          run: cd codec2 ; mkdir build ; cd build ; C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "cmake .. -DCMAKE_GNUtoMS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-static-libgcc"
+
+        - name: Build codec2
+          run: cd codec2/build ; C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "ninja"
+
+        - name: Install codec2
+          run: mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
 
         - name: Install vcpkg dependencies (release x64 only, binary-cached)
           shell: pwsh
@@ -152,7 +167,7 @@ jobs:
           uses: ./.github/actions/build-uhd
 
         - name: Upload dependency cache
-          if: always() && github.event_name == 'push' && (env.CACHE_VCPKG_CHANGED == 'True' || env.CACHE_UHD == 'missing' || env.CACHE_PY == 'missing')
+          if: always() && github.event_name == 'push' && (env.CACHE_VCPKG_CHANGED == 'True' || env.CACHE_UHD == 'missing' || env.CACHE_PY == 'missing' || env.CACHE_MINGW == 'missing')
           shell: pwsh
           env:
             GH_TOKEN: ${{ github.token }}
@@ -166,6 +181,13 @@ jobs:
             if (Test-Path "C:/Program Files/uhd") {
               & $7z a -tzip -mmt4 -mx5 "$cache/uhd-3.15.0.0-x64.zip" "C:/Program Files/uhd" *> "$cache/zip_uhd.log"
               Write-Host "zipped UHD install"
+            }
+            if (Test-Path "C:/msys64/msys2_shell.cmd") {
+              & C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman -Scc --noconfirm"
+              Push-Location C:/
+              & $7z a -tzip -mmt4 -mx5 "$cache/mingw64-codec2.zip" msys64 *> "$cache/zip_mingw.log"
+              Pop-Location
+              Write-Host "zipped full MinGW tree (pacman cache cleaned)"
             }
             $pyDir = "C:/dev/py311_uhd"
             $hasDistutils = python -c "import distutils" 2>$null
@@ -188,7 +210,7 @@ jobs:
               gh release create build-cache --repo $env:GITHUB_REPOSITORY --title "Windows build cache" --notes "CI-built incremental dependency cache (vcpkg binary cache, UHD 3.15, python 3.11)." 2>$null
             }
             $toUpload = @()
-            foreach ($z in @("vcpkg-cache.zip","uhd-3.15.0.0-x64.zip","uhd-python311-codegen.zip")) {
+            foreach ($z in @("vcpkg-cache.zip","mingw64-codec2.zip","uhd-3.15.0.0-x64.zip","uhd-python311-codegen.zip")) {
               if (Test-Path "$cache/$z") { $toUpload += "$cache/$z" } else { Write-Host "skip upload of missing $z" }
             }
             if ($toUpload.Count -gt 0) {
@@ -197,6 +219,7 @@ jobs:
             } else {
               Write-Host "nothing to upload"
             }
+
         - name: Install rtaudio
           run: git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake .. ; cmake --build . --config Release ; cmake --install .
 
@@ -233,8 +256,6 @@ jobs:
         - name: Update Nightly
           if: github.ref == 'refs/heads/master'
           run: gh release upload rolling ${{runner.workspace}}/sdrpp_windows_x64.zip -R ${{github.repository}} --clobber
-
-
     build_macos_intel:
       if: ${{ !contains(github.ref_name, 'windows') }}
       runs-on: macos-15-intel
