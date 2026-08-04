@@ -1,0 +1,12 @@
+diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
+index 15f0a9f..ba24558 100644
+--- a/host/CMakeLists.txt
++++ b/host/CMakeLists.txt
+@@ -285,7 +285,6 @@ set(UHD_BOOST_REQUIRED_COMPONENTS
+     filesystem
+     program_options
+     regex
+-    system
+     unit_test_framework
+     serialization
+     thread
