@@ -1,0 +1,95 @@
+name: 'Build UHD 3.15.0.0 from source (macOS)'
+description: 'Downloads, patches and builds UHD 3.15.0.0 against the system Homebrew Boost, installing into the Homebrew prefix so pkg-config finds uhd.pc. Skips the build when a cached UHD install already exists (restored from the build-cache release). Requires `brew install boost` and a python3 with mako + requests in the same job.'
+
+inputs:
+  uhd-version:
+    description: 'UHD release tag to build (must match the patch file).'
+    required: false
+    default: '3.15.0.0'
+  python-executable:
+    description: 'Python interpreter used by the UHD codegen (must have mako + requests).'
+    required: false
+    default: 'python3'
+
+runs:
+  using: 'composite'
+  steps:
+    - id: check-uhd
+      name: Check for existing UHD install
+      shell: bash
+      run: |
+        PREFIX="$(brew --prefix)/uhd"
+        if [ -f "$PREFIX/lib/libuhd.dylib" ]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+          echo "pkgconfigdir=$PREFIX/lib/pkgconfig" >> "$GITHUB_OUTPUT"
+          echo "UHD already installed at $PREFIX - skipping build."
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+          echo "pkgconfigdir=$PREFIX/lib/pkgconfig" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Prepare python for UHD codegen
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: bash
+      run: |
+        # setuptools provides the distutils shim required by UHD 3.15's cmake
+        # checks on Python 3.12+ (distutils was removed from the stdlib).
+        PY="${{ inputs.python-executable }}"
+        "$PY" -m pip install --break-system-packages mako requests setuptools 2>/dev/null \
+          || pip3 install --break-system-packages mako requests setuptools 2>/dev/null \
+          || true
+        "$PY" -c "import mako, requests; print('mako + requests available')"
+
+    - name: Download UHD source
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: bash
+      run: |
+        VER="${{ inputs.uhd-version }}"
+        TGZ="${{ runner.workspace }}/uhd.tar.gz"
+        curl -L -sS -o "$TGZ" "https://github.com/EttusResearch/uhd/archive/refs/tags/v$VER.tar.gz"
+        if [ ! -f "$TGZ" ]; then echo "UHD tarball download failed"; exit 1; fi
+
+    - name: Extract UHD source
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: bash
+      run: |
+        VER="${{ inputs.uhd-version }}"
+        SRCDIR="${{ runner.workspace }}/uhd_src"
+        rm -rf "$SRCDIR"
+        tar -xf "${{ runner.workspace }}/uhd.tar.gz" -C "${{ runner.workspace }}"
+        mv "${{ runner.workspace }}/uhd-$VER" "$SRCDIR"
+
+    - name: Apply Boost 1.91 compatibility patch
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ runner.workspace }}/uhd_src
+      run: |
+        # UHD 3.15 predates Boost 1.87; this patch migrates bundled rpclib and
+        # UHD sources to the Boost 1.91 APIs (io_context, resolver, etc.)
+        PATCH="${{ github.action_path }}/uhd-boost191.patch"
+        TMP="${{ runner.workspace }}/uhd-boost191-lf.patch"
+        sed 's/\r$//' "$PATCH" > "$TMP"
+        git apply --whitespace=nowarn "$TMP"
+
+    - name: Build UHD 3.15.0.0
+      if: steps.check-uhd.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ runner.workspace }}/uhd_src/host
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          "-DPYTHON_EXECUTABLE=${{ inputs.python-executable }}" \
+          "-DCMAKE_INSTALL_PREFIX=${{ steps.check-uhd.outputs.prefix }}" \
+          "-DCMAKE_CXX_FLAGS=-DBOOST_BIND_GLOBAL_PLACEHOLDERS" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_UTILS=OFF \
+          -DENABLE_PYTHON_API=OFF -DENABLE_DOXYGEN=OFF -DENABLE_MAN_PAGES=OFF
+        make -j3
+        if [ -w "${{ steps.check-uhd.outputs.prefix }}/lib" ]; then
+          make install
+        else
+          sudo make install
+        fi
