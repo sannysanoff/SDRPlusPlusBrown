@@ -158,6 +158,7 @@ jobs:
             "CACHE_VCPKG_CHANGED=" + (($now -ne $snap) -or ($snap -eq 0)) | Out-File -FilePath $env:GITHUB_ENV -Append
 
         - name: Setup Python 3.11 (UHD codegen)
+          id: setup-python
           if: env.CACHE_UHD != 'restored'
           uses: actions/setup-python@v5
           with:
@@ -334,9 +335,18 @@ jobs:
 #        - name: Some debugging
 #          run: echo "before" && find /opt/homebrew/Cellar/codec2/1.2.0/include -print && echo "#ifndef CODEC2_HAVE_VERSION\n#define CODEC2_HAVE_VERSION\n#define CODEC2_VERSION_MAJOR 1\n#define CODEC2_VERSION_MINOR 2\n#define CODEC2_VERSION \"1.2.0\"\n#endif\n" > /opt/homebrew/Cellar/codec2/1.2.0/include/codec2/version.h && echo "after"; find /opt/homebrew/Cellar/codec2/1.2.0/include -print
 #
+        - name: Setup Python 3.11 (UHD codegen)
+          id: setup-python
+          if: env.CACHE_UHD != 'restored'
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.11'
+
         - name: Build UHD 3.15.0.0
           if: env.CACHE_UHD != 'restored'
           uses: ./.github/actions/build-uhd-macos
+          with:
+            python-executable: ${{ steps.setup-python.outputs.pythonLocation }}/bin/python3
 
         - name: Upload dependency cache
           if: always() && github.event_name == 'push' && env.CACHE_UHD == 'missing'
@@ -459,9 +469,18 @@ jobs:
         - name: Install libdlcr
           run: wget https://dragnlabs.com/host-tools/dlcr_host_v0.3.0.zip && mkdir dlcr_host && cd dlcr_host && 7z x ../dlcr_host_v0.3.0.zip && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 .. -DCMAKE_BUILD_TYPE=Release && make -j2 && sudo make install && cd ../../
 
+        - name: Setup Python 3.11 (UHD codegen)
+          id: setup-python
+          if: env.CACHE_UHD != 'restored'
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.11'
+
         - name: Build UHD 3.15.0.0
           if: env.CACHE_UHD != 'restored'
           uses: ./.github/actions/build-uhd-macos
+          with:
+            python-executable: ${{ steps.setup-python.outputs.pythonLocation }}/bin/python3
 
         - name: Upload dependency cache
           if: always() && github.event_name == 'push' && env.CACHE_UHD == 'missing'
