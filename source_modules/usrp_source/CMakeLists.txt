@@ -45,9 +45,16 @@ else ()
     target_link_libraries(usrp_source PRIVATE ${CLEANED_UHD_LIBS})
 
     # Find the proper Boost components natively matching the system layout
-    find_package(Boost REQUIRED COMPONENTS system thread)
+    # (boost_system is header-only since Boost 1.69 and no longer ships a
+    # library/target, so only link it when CMake exposes the target)
+    find_package(Boost REQUIRED)
     if (Boost_FOUND)
         target_include_directories(usrp_source PRIVATE ${Boost_INCLUDE_DIRS})
-        target_link_libraries(usrp_source PRIVATE Boost::system Boost::thread)
+        if (TARGET Boost::system)
+            target_link_libraries(usrp_source PRIVATE Boost::system)
+        endif ()
+        if (TARGET Boost::thread)
+            target_link_libraries(usrp_source PRIVATE Boost::thread)
+        endif ()
     endif ()
 endif ()
