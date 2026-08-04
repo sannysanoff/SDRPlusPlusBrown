@@ -71,7 +71,10 @@ runs:
       run: |
         # UHD 3.15 predates Boost 1.87; this patch migrates bundled rpclib and
         # UHD sources to the Boost 1.91 APIs (io_context, resolver, etc.)
-        git apply --whitespace=nowarn "${{ github.action_path }}/uhd-boost191.patch"
+        $patch = "${{ github.action_path }}/uhd-boost191.patch"
+        $tmp = "${{ runner.workspace }}/uhd-boost191-lf.patch"
+        [System.IO.File]::WriteAllText($tmp, ([System.IO.File]::ReadAllText($patch) -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))
+        git apply --whitespace=nowarn $tmp
 
     - name: Build UHD 3.15.0.0
       if: steps.check-uhd.outputs.skip != 'true'

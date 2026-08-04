@@ -1,4 +1,4 @@
-﻿diff --git a/host/include/uhd/transport/nirio/rpc/rpc_client.hpp b/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
+diff --git a/host/include/uhd/transport/nirio/rpc/rpc_client.hpp b/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
 index 80ba203..f146dd5 100644
 --- a/host/include/uhd/transport/nirio/rpc/rpc_client.hpp
 +++ b/host/include/uhd/transport/nirio/rpc/rpc_client.hpp

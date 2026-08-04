@@ -46,7 +46,7 @@ jobs:
           run: |
             $zip = "${{runner.workspace}}/cache/vcpkg-cache.zip"
             if (Test-Path $zip) {
-              Expand-Archive $zip -DestinationPath C:/vcpkg-cache -Force
+              Expand-Archive $zip -DestinationPath C:/ -Force
               "CACHE_VCPKG=restored" | Out-File -FilePath $env:GITHUB_ENV -Append
               Write-Host "vcpkg binary cache restored - vcpkg install will reuse it incrementally"
             } else {
