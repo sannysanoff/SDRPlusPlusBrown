@@ -61,7 +61,7 @@ runs:
         $ver = "${{ inputs.uhd-version }}"
         $srcdir = "${{ runner.workspace }}\uhd_src"
         if (Test-Path $srcdir) { Remove-Item $srcdir -Recurse -Force }
-        7z x "${{ runner.workspace }}/uhd.tar.gz" -o"${{ runner.workspace }}"
+        tar -xf "${{ runner.workspace }}/uhd.tar.gz" -C "${{ runner.workspace }}"
         Move-Item "${{ runner.workspace }}\uhd-$ver" $srcdir -Force
 
     - name: Apply Boost 1.91 compatibility patch
