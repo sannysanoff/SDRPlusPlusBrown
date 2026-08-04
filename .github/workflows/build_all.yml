@@ -66,21 +66,8 @@ jobs:
         - name: Install vcpkg dependencies
           run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows itpp:x64-windows spdlog:x64-windows boost:x64-windows
 
-        - name: Install python modules (UHD codegen)
-          run: python -m pip install mako requests
-
-        - name: Download UHD source
-          run: Invoke-WebRequest -Uri "https://github.com/EttusResearch/uhd/archive/refs/tags/v3.15.0.0.tar.gz" -OutFile ${{runner.workspace}}/uhd.tar.gz
-
         - name: Build UHD 3.15.0.0
-          run: |
-            7z x ${{runner.workspace}}/uhd.tar.gz -o${{runner.workspace}}\uhd_src
-            cd ${{runner.workspace}}\uhd_src\uhd-3.15.0.0\host
-            mkdir build
-            cd build
-            cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_INSTALL_PREFIX="C:/Program Files/uhd" -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_UTILS=OFF -DENABLE_PYTHON_API=OFF -DENABLE_DOXYGEN=OFF -DENABLE_MAN_PAGES=OFF
-            cmake --build . --config Release
-            cmake --install . --config Release
+          uses: ./.github/actions/build-uhd
 
         - name: Install rtaudio
           run: git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake .. ; cmake --build . --config Release ; cmake --install .
