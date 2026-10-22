@@ -130,7 +130,7 @@ bundle_install_binary() {
     # Check if file exists
     if [ ! -f $3 ]; then
         echo "==NOT== Installing" $3
-        return
+        return -1
     fi
 
     # Get RPATHs
@@ -165,10 +165,10 @@ bundle_install_binary() {
 
         local DEP_PATH=$(bundle_find_full_path $DEP $RPATHS)
 
-        # If the dependency is not installed, install it
+        # If the dependency is not installed, install it, and if the install fails, skip
         if [ ! -f $1/Contents/Frameworks/$DEP_NAME ]; then
             echo -n "installing ( $1 $1/Contents/Frameworks $DEP_PATH )"
-            bundle_install_binary $1 $1/Contents/Frameworks $DEP_PATH
+            bundle_install_binary $1 $1/Contents/Frameworks $DEP_PATH || continue
         fi
 
         echo " install_name_tool ( -change $DEP @rpath/$DEP_NAME $EXEC_DEST )"
