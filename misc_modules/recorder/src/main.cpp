@@ -502,7 +502,8 @@ private:
         if (core::modComManager.getModuleName(name) == "radio") {
             int mode = -1;
             core::modComManager.callInterface(name, RADIO_IFACE_CMD_GET_MODE, NULL, &mode);
-            if (mode >= 0) { modeStr = radioModeToString[mode]; };
+            auto modeIt = radioModeToString.find(mode);
+            if (modeIt != radioModeToString.end()) { modeStr = modeIt->second; }
         }
 
         // Replace in template
