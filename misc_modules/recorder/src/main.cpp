@@ -38,12 +38,21 @@ SDRPP_MOD_INFO{
 
 ConfigManager config;
 
+enum TimeZone {
+    TIME_ZONE_LOCAL,
+    TIME_ZONE_UTC
+};
+
 class RecorderModule : public ModuleManager::Instance {
 public:
     RecorderModule(std::string name) : folderSelect("%ROOT%/recordings") {
         this->name = name;
         root = std::string(core::getRoot());
         strcpy(nameTemplate, "$t_$f_$h-$m-$s_$d-$M-$y");
+
+        // Define the time zones
+        timezones.define("local", "Local", TIME_ZONE_LOCAL);
+        timezones.define("utc", "UTC", TIME_ZONE_UTC);
 
         // Define option lists
         containers.define("WAV", wav::FORMAT_WAV);
@@ -55,6 +64,7 @@ public:
 
 
         // Load default config for option lists
+        timezoneId = timezones.valueId(TIME_ZONE_LOCAL);
         containerId = containers.valueId(wav::FORMAT_WAV);
         sampleTypeId = sampleTypes.valueId(wav::SAMP_TYPE_INT16);
 
@@ -65,6 +75,9 @@ public:
         }
         if (config.conf[name].contains("recPath")) {
             folderSelect.setPath(config.conf[name]["recPath"]);
+        }
+        if (config.conf[name].contains("timezone") && timezones.keyExists(config.conf[name]["timezone"])) {
+            timezoneId = timezones.keyId(config.conf[name]["timezone"]);
         }
         if (config.conf[name].contains("container") && containers.keyExists(config.conf[name]["container"])) {
             containerId = containers.keyId(config.conf[name]["container"]);
@@ -178,6 +191,7 @@ public:
             flog::error("Failed to open file for recording: {0}", expandedPath);
             return;
         }
+        currentFile = expandedPath;
 
         // Open audio stream or baseband
         if (recMode == RECORDER_MODE_AUDIO) {
@@ -266,6 +280,14 @@ private:
         if (ImGui::InputText(CONCAT("##_recorder_name_template_", _this->name), _this->nameTemplate, 1023)) {
             config.acquire();
             config.conf[_this->name]["nameTemplate"] = _this->nameTemplate;
+            config.release(true);
+        }
+
+        ImGui::LeftLabel("Time zone");
+        ImGui::FillWidth();
+        if (ImGui::Combo(CONCAT("##_recorder_timezone_", _this->name), &_this->timezoneId, _this->timezones.txt)) {
+            config.acquire();
+            config.conf[_this->name]["timezone"] = _this->timezones.key(_this->timezoneId);
             config.release(true);
         }
 
@@ -458,7 +480,7 @@ private:
     std::string genFileName(std::string templ, int recMode, std::string name) {
         // Get data
         time_t now = time(0);
-        tm* ltm = localtime(&now);
+        tm* ltm = (timezones[timezoneId] == TIME_ZONE_UTC) ? gmtime(&now) : localtime(&now);
         char buf[1024];
         double freq = gui::waterfall.getCenterFrequency();
         if (gui::waterfall.vfos.find(name) != gui::waterfall.vfos.end()) {
@@ -569,7 +591,18 @@ private:
             return "{\"status\":\"stopped\"}";
         }
         if (cmd == "status") {
-            return "{\"recording\":" + std::string(recording ? "true" : "false") + "}";
+            return "{\"recording\":" + std::string(recording ? "true" : "false") + ",\"file\":\"" + currentFile + "\"}";
+        }
+        if (cmd == "set_timezone") {
+            if (!timezones.keyExists(args)) { return "{\"status\":\"invalid\"}"; }
+            timezoneId = timezones.keyId(args);
+            config.acquire();
+            config.conf[name]["timezone"] = timezones.key(timezoneId);
+            config.release(true);
+            return "{\"status\":\"ok\",\"timezone\":\"" + timezones.key(timezoneId) + "\"}";
+        }
+        if (cmd == "get_timezone") {
+            return "{\"timezone\":\"" + timezones.key(timezoneId) + "\"}";
         }
         return "{}";
     }
@@ -597,13 +630,16 @@ private:
     std::string name;
     bool enabled = true;
     std::string root;
+    std::string currentFile;
     char nameTemplate[1024];
 
+    OptionList<std::string, TimeZone> timezones;
     OptionList<std::string, wav::Format> containers;
     OptionList<int, wav::SampleType> sampleTypes;
     FolderSelect folderSelect;
 
     int recMode = RECORDER_MODE_AUDIO;
+    int timezoneId;
     int containerId;
     int sampleTypeId;
     bool stereo = true;

@@ -22,6 +22,14 @@ namespace rds {
         { BLOCK_TYPE_D,  0b0110110100 }
     };
 
+    const BlockType nextType[_BLOCK_TYPE_COUNT] = {
+        BLOCK_TYPE_B, // From BLOCK_TYPE_A,
+        BLOCK_TYPE_C, // From BLOCK_TYPE_B,
+        BLOCK_TYPE_D, // From BLOCK_TYPE_C,
+        BLOCK_TYPE_D, // From BLOCK_TYPE_CP,
+        BLOCK_TYPE_A  // From BLOCK_TYPE_D,
+    };
+
     std::map<uint16_t, const char*> THREE_LETTER_CALLS = {
         { 0x99A5, "KBW" },
         { 0x99A6, "KCY" },
@@ -145,7 +153,8 @@ namespace rds {
                 type = SYNDROMES[syn];
             }
             else {
-                type = (BlockType)((lastType + 1) % _BLOCK_TYPE_COUNT);
+                // Assume the type is the one following the previous block
+                type = nextType[lastType];
             }
 
             // Save block while correcting errors (NOT YET) <- idk why the "not yet is here", TODO: find why
@@ -288,6 +297,11 @@ namespace rds {
         if (blockAvail[BLOCK_TYPE_D]) {
             programServiceName[psOffset] = (blocks[BLOCK_TYPE_D] >> 18) & 0xFF;
             programServiceName[psOffset + 1] = (blocks[BLOCK_TYPE_D] >> 10) & 0xFF;
+
+            // Update the full version only when reaching the end
+            if (offset == 3) {
+                programServiceNameFullUpdate = programServiceName;
+            }
         }
 
         // Update timeout
@@ -304,9 +318,12 @@ namespace rds {
 
         // Clear text field if the A/B flag changed
         if (nAB != rtAB) {
+            radioTextFullUpdate = radioText;
             radioText = "                                                                ";
         }
         rtAB = nAB;
+
+        flog::debug("Group 2: {}, {}, {}", (int)groupVer, (int)nAB, offset);
 
         // Write char at offset in Radiotext
         if (groupVer == GROUP_VER_A) {
@@ -319,12 +336,22 @@ namespace rds {
                 radioText[rtOffset + 2] = (blocks[BLOCK_TYPE_D] >> 18) & 0xFF;
                 radioText[rtOffset + 3] = (blocks[BLOCK_TYPE_D] >> 10) & 0xFF;
             }
+
+            // If a carriage return was sent, update the full text
+            if (offset == 0xF || radioText[rtOffset] == 0x0D || radioText[rtOffset + 1] == 0x0D || radioText[rtOffset + 2] == 0x0D || radioText[rtOffset + 3] == 0x0D) {
+                radioTextFullUpdate = radioText;
+            }
         }
         else {
             uint8_t rtOffset = offset * 2;
             if (blockAvail[BLOCK_TYPE_D]) {
                 radioText[rtOffset] = (blocks[BLOCK_TYPE_D] >> 18) & 0xFF;
                 radioText[rtOffset + 1] = (blocks[BLOCK_TYPE_D] >> 10) & 0xFF;
+            }
+
+            // If a carriage return was sent, update the full text
+            if (offset == 0xF || radioText[rtOffset] == 0x0D || radioText[rtOffset + 1] == 0x0D) {
+                radioTextFullUpdate = radioText;
             }
         }
 

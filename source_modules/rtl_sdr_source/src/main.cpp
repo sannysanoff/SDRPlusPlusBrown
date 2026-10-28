@@ -175,6 +175,7 @@ public:
     }
 
     void selectById(int id) {
+        devId = id;
         selectedDevName = devNames[id];
 
 #ifndef __ANDROID__
