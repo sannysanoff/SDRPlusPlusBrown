@@ -114,4 +114,4 @@ make VERBOSE=1 -j2
 
 # Generate package
 cd ..
-sh make_debian_package.sh ./build 'libfftw3-dev, libglfw3-dev, libvolk1-dev, librtaudio-dev, libzstd-dev, liborc-0.4-dev'
+sh make_debian_package.sh ./build 'libfftw3-dev, libglfw3-dev, libvolk1-dev, librtaudio-dev, libzstd-dev, liborc-0.4-dev, libusb-1.0-0'

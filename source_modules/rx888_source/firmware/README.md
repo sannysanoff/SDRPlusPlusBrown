@@ -1,8 +1,9 @@
 # RX888 MkII firmware and attribution
 
-This folder holds `SDDC_FX3.img`, the USB firmware of the RX888 MkII (Cypress FX3). The module
-copies it to `share/sdrpp/firmware/` on install; `SDRPP_RX888_FIRMWARE` overrides the path at run
-time.
+This folder holds `SDDC_FX3.img`, the USB firmware of the RX888 MkII (Cypress FX3). The packages
+carry it next to the resources of the platform (`share/sdrpp/firmware/` on Linux, `res/firmware/` on
+Windows, `Contents/Resources/firmware/` in the macOS app); `SDRPP_RX888_FIRMWARE` overrides the path
+at run time.
 
 A Cypress FX3 has no persistent program: the host writes the image into the **RAM** of the chip each
 time it is plugged in (nothing is flashed, and unplugging clears it). This is the same image the SDDC

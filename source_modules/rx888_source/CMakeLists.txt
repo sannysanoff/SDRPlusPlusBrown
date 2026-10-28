@@ -10,10 +10,6 @@ if (MSVC)
     target_include_directories(rx888_source PRIVATE "C:/Program Files/PothosSDR/include/libusb-1.0")
     target_link_directories(rx888_source PRIVATE "C:/Program Files/PothosSDR/lib")
     target_link_libraries(rx888_source PRIVATE libusb-1.0)
-elseif (ANDROID)
-    target_link_libraries(rx888_source PRIVATE
-        /sdr-kit/${ANDROID_ABI}/lib/libusb1.0.so
-    )
 else (MSVC)
     find_package(PkgConfig)
 
