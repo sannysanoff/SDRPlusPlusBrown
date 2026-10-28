@@ -53,7 +53,7 @@ public:
     int decim() const { return D_; }
 
     void design(int decim) {
-        D_ = std::max(1, decim);
+        D_ = (std::max)(1, decim);
         N_ = 16 * D_;
         h_.assign((size_t)N_, 0.0);
         const double beta = 7.5, cut = 0.5 / D_, mid = (N_ - 1) / 2.0, i0b = besselI0(beta);
@@ -61,7 +61,7 @@ public:
         for (int k = 0; k < N_; k++) {
             const double t = k - mid, r = t / (mid + 0.5);
             const double sinc = std::fabs(t) < 1e-9 ? 2 * cut : std::sin(2 * M_PI * cut * t) / (M_PI * t);
-            h_[(size_t)k] = sinc * besselI0(beta * std::sqrt(std::max(0.0, 1 - r * r))) / i0b;
+            h_[(size_t)k] = sinc * besselI0(beta * std::sqrt((std::max)(0.0, 1 - r * r))) / i0b;
             sum += h_[(size_t)k];
         }
         for (auto& v : h_) { v /= sum; }

@@ -412,16 +412,16 @@ private:
         const std::string mode = s.adc;
         double adc;
         if (mode == "exact") {
-            int d = std::max(2, (int)std::ceil(kAdcLowHz / want * (1 - 1e-9)));   // (64 MHz / 9.142857 MHz is 7 and a bit of rounding)
+            int d = (std::max)(2, (int)std::ceil(kAdcLowHz / want * (1 - 1e-9)));   // (64 MHz / 9.142857 MHz is 7 and a bit of rounding)
             while (want * d > kAdcMaxHz && d > 2) { d--; }
-            p.decim = std::min(d, kMaxDecim);
+            p.decim = (std::min)(d, kMaxDecim);
             adc = want * p.decim;
         }
         else {
             adc = mode == "64" ? kAdcLowHz : mode == "128" ? kAdcHighHz : (want <= 32e6 * 1.001 ? kAdcLowHz : kAdcHighHz);
             p.decim = (int)std::clamp(std::floor(adc / want * 1.001), 2.0, (double)kMaxDecim);
         }
-        p.adc = (uint32_t)std::lround(std::min(adc, kAdcMaxHz));
+        p.adc = (uint32_t)std::lround((std::min)(adc, kAdcMaxHz));
         p.outHz = (double)p.adc / p.decim;
         const std::string in = s.input;
         p.vhf = in == "vhf" || (in == "auto" && s.centerHz >= p.adc / 2.0);
@@ -776,17 +776,17 @@ private:
             err = "RX888 MkII: the switches (dither, randomizer, PGA, bias tee) could not be set (USB transfer failed)";
             return false;
         }
-        const double f = std::max(s.centerHz, 0.0);
+        const double f = (std::max)(s.centerHz, 0.0);
         const double tuneHz = ppmCorrectedHz(f, s.ppm);
         {
             std::lock_guard<std::mutex> dl(ddcMu_);
             vhfSpectrum_ = vhf;
             rand_ = s.rand;
             if (vhf) { ddc_.tune(adc_, kIfHz, 1.0 / 32768.0); }
-            else { ddc_.tune(adc_, std::max(tuneHz, 0.0), 1.0 / 32768.0); }   // a mixer: above half the ADC clock it aliases, as the hardware would
+            else { ddc_.tune(adc_, (std::max)(tuneHz, 0.0), 1.0 / 32768.0); }   // a mixer: above half the ADC clock it aliases, as the hardware would
         }
         if (vhf) {
-            const uint64_t hz = (uint64_t)std::llround(std::max(tuneHz, 0.0));
+            const uint64_t hz = (uint64_t)std::llround((std::max)(tuneHz, 0.0));
             if (hz != tuneHz_) {
                 if (!setU64(rx888::kTunerTune, hz)) {
                     err = "RX888 MkII: the tuner was not told " + mhzText(f) + " (USB transfer failed)";
@@ -843,7 +843,7 @@ private:
     void push(const rx888::cf32* data, size_t n) {
         static_assert(sizeof(rx888::cf32) == sizeof(dsp::complex_t), "the DDC output must match the stream type");
         while (n) {
-            const size_t chunk = std::min(n, (size_t)STREAM_BUFFER_SIZE);
+            const size_t chunk = (std::min)(n, (size_t)STREAM_BUFFER_SIZE);
             memcpy(stream.writeBuf, data, chunk * sizeof(rx888::cf32));
             if (!stream.swap((int)chunk)) { return; }
             data += chunk;

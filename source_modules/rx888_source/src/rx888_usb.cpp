@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <thread>
 
 namespace rx888 {
@@ -432,8 +433,8 @@ Rx888Gains rx888Gains(double slider, double hfAtt) {
     g.ad8340 = g.ifIndex > kGainSweetPoint ? (0x80 | (g.ifIndex - kGainSweetPoint + 3)) : (g.ifIndex + 1);
     g.hfIfDb = rx888HfIfGainDb(g.ifIndex);
     // VHF: the tuner's LNA and mixer first (the lowest noise), the VGA with what is left
-    g.lna = nearest(kVhfRfDb, 29, std::min(slider, kVhfRfDb[28]));
-    g.vga = nearest(kVhfIfDb, 16, kVhfIfDb[0] + std::max(0.0, slider - kVhfRfDb[28]));
+    g.lna = nearest(kVhfRfDb, 29, (std::min)(slider, kVhfRfDb[28]));
+    g.vga = nearest(kVhfIfDb, 16, kVhfIfDb[0] + (std::max)(0.0, slider - kVhfRfDb[28]));
     g.vhfRfDb = kVhfRfDb[g.lna];
     g.vhfIfDb = kVhfIfDb[g.vga];
     return g;
