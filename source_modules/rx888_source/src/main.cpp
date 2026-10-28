@@ -98,7 +98,10 @@ constexpr RateOption kRates[] = {
     {2.048e6, "2.048 MHz"}, {2.4e6, "2.4 MHz"}, {2.56e6, "2.56 MHz"}, {3.2e6, "3.2 MHz"}, {4e6, "4 MHz"},
     {5e6, "5 MHz"}, {6e6, "6 MHz"}, {8e6, "8 MHz"}, {10e6, "10 MHz"}, {12.5e6, "12.5 MHz"}, {16e6, "16 MHz"},
     {20e6, "20 MHz"}, {25e6, "25 MHz"}, {30.72e6, "30.72 MHz"}, {40e6, "40 MHz"}, {50e6, "50 MHz"},
-    {56e6, "56 MHz"}, {61.44e6, "61.44 MHz"}};
+    {56e6, "56 MHz"}, {61.44e6, "61.44 MHz"},
+    // OnAir's ladder stops at 61.44; the radio itself is good to 64 (the HF input is specified to 64 MHz, and 64 Msps complex is an ADC
+    // clock of 128 MHz halved, which the firmware takes as it takes any clock: STARTADC only retunes the Si5351). Hence one more entry.
+    {64e6, "64 MHz"}};
 
 // OnAir's TuneSettings, reduced to the settings this radio has
 struct Settings {
