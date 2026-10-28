@@ -18,6 +18,14 @@ bundle_create_struct $BUNDLE
 # Add resources
 cp -R root/res/* $BUNDLE/Contents/Resources/
 
+# RX888 MkII firmware (RAM load only; Resources is where resourcesDirectory points)
+if [ -f source_modules/rx888_source/firmware/SDDC_FX3.img ]; then
+    mkdir -p $BUNDLE/Contents/Resources/firmware
+    cp source_modules/rx888_source/firmware/SDDC_FX3.img $BUNDLE/Contents/Resources/firmware/
+    cp source_modules/rx888_source/firmware/README.md $BUNDLE/Contents/Resources/firmware/
+    cp source_modules/rx888_source/firmware/LICENSE-SDDC_Driver.txt $BUNDLE/Contents/Resources/firmware/
+fi
+
 # Create the icon file
 bundle_create_icns root/res/icons/sdrpp.macos.png $BUNDLE/Contents/Resources/sdrpp
 
@@ -48,6 +56,7 @@ bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rfspace_source/rfspace_source.dylib || true
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_sdr_source/rtl_sdr_source.dylib || true
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_tcp_source/rtl_tcp_source.dylib || true
+bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rx888_source/rx888_source.dylib || true
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/sdrplay_source/sdrplay_source.dylib || true
 SDRPLAY_LIB_CANDIDATE=""
 if [ -n "$SDRPLAY_API_LIB" ] && [ -f "$SDRPLAY_API_LIB" ]; then

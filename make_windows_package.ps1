@@ -8,6 +8,12 @@ $RELDIR="RelWithDebInfo"
 # Copy root
 cp -Recurse $root_dir/* sdrpp_windows_x64/
 
+# RX888 MkII firmware (RAM load only; res is where resourcesDirectory points)
+New-Item -ItemType Directory -Force -Path sdrpp_windows_x64/res/firmware | Out-Null
+cp $root_dir/../source_modules/rx888_source/firmware/SDDC_FX3.img sdrpp_windows_x64/res/firmware/
+cp $root_dir/../source_modules/rx888_source/firmware/README.md sdrpp_windows_x64/res/firmware/
+cp $root_dir/../source_modules/rx888_source/firmware/LICENSE-SDDC_Driver.txt sdrpp_windows_x64/res/firmware/
+
 cp C:/vcpkg/installed/x64-windows/bin/itpp.dll sdrpp_windows_x64/
 
 # Copy core
@@ -65,6 +71,9 @@ cp $build_dir/source_modules/rtl_sdr_source/$RELDIR/rtl_sdr_source.dll sdrpp_win
 cp 'C:/Program Files/PothosSDR/bin/rtlsdr.dll' sdrpp_windows_x64/
 
 cp $build_dir/source_modules/rtl_tcp_source/$RELDIR/rtl_tcp_source.dll sdrpp_windows_x64/modules/
+
+cp $build_dir/source_modules/rx888_source/$RELDIR/rx888_source.dll sdrpp_windows_x64/modules/
+cp 'C:/Program Files/PothosSDR/bin/libusb-1.0.dll' sdrpp_windows_x64/
 
 cp $build_dir/source_modules/sdrplay_source/$RELDIR/sdrplay_source.dll sdrpp_windows_x64/modules/ -ErrorAction SilentlyContinue
 cp 'C:/Program Files/SDRplay/API/x64/sdrplay_api.dll' sdrpp_windows_x64/ -ErrorAction SilentlyContinue

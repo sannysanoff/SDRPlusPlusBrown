@@ -15,10 +15,13 @@ android {
 
         externalNativeBuild {
             cmake {
+                // The RX888 MkII is a USB 3 radio and the app has no USB permission path for it, so
+                // it is built for the desktop targets only (the option is on by default there).
                 arguments "-DCMAKE_BUILD_TYPE=Release", "-DSDR_KIT_ROOT=${sdrKitRoot}", "-DOPT_BACKEND_GLFW=OFF", "-DOPT_BACKEND_ANDROID=ON",
                     "-DOPT_BUILD_SOAPY_SOURCE=OFF", "-DOPT_BUILD_ANDROID_AUDIO_SINK=ON", "-DOPT_BUILD_AUDIO_SINK=OFF",
                     "-DOPT_BUILD_DISCORD_PRESENCE=OFF", "-DOPT_BUILD_M17_DECODER=ON", "-DOPT_BUILD_PLUTOSDR_SOURCE=ON",
-                    "-DOPT_BUILD_AUDIO_SOURCE=OFF", "-DOPT_BUILD_CH_EXTRAVHF_DECODER=ON", "-DOPT_BUILD_CH_TETRA_DEMODULATOR=ON", "-DOPT_BUILD_MPEG_ADTS_SINK=OFF","-DOPT_BUILD_HYDRASDR_SOURCE=ON"
+                    "-DOPT_BUILD_AUDIO_SOURCE=OFF", "-DOPT_BUILD_CH_EXTRAVHF_DECODER=ON", "-DOPT_BUILD_CH_TETRA_DEMODULATOR=ON", "-DOPT_BUILD_MPEG_ADTS_SINK=OFF","-DOPT_BUILD_HYDRASDR_SOURCE=ON",
+                    "-DOPT_BUILD_RX888_SOURCE=OFF"
             }
         }
         signingConfig signingConfigs.debug

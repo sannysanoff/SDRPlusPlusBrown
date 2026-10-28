@@ -32,6 +32,7 @@ sudo apt install -y \
     librtaudio-dev \
     libhackrf-dev \
     librtlsdr-dev \
+    libusb-1.0-0-dev \
     libbladerf-dev \
     liblimesuite-dev \
     p7zip-full \
