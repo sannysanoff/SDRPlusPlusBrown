@@ -614,4 +614,8 @@ Use this exact order when fixing SDR++ runtime bugs:
    - In this codebase, `Recorder` uses `mode=0` for baseband and `mode=1` for audio.
    - If decoder state flickers with signal quality, expose a stable wait command instead of polling a single frame.
    - Python test helpers can hide real issues if they use the wrong build target or too-short HTTP timeouts.
+   - On macOS the harness sets `SDRPP_MIC_ACCESS=skip`, because the TCC microphone
+     request in `src/macos_init.m` aborts a binary that is not inside a `.app`
+     bundle with `NSMicrophoneUsageDescription`. For TX tests that really need the
+     mic, run with `E2E_REQUEST_MIC=1`, or pass `SDRPP_MIC_ACCESS=grant` directly.
    - `/log` on desktop is for manual agentic research only when launched with `SDRPP_ENABLE_MEMORY_LOG=1`; each read drains the current batch.
