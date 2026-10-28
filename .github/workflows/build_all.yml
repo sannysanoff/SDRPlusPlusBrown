@@ -100,11 +100,18 @@ jobs:
           run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
 
         - name: Download librtlsdr
-          run: Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20240623.zip" -OutFile ${{runner.workspace}}/rtl-sdr.zip
+          run: Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20261018.zip" -OutFile ${{runner.workspace}}/rtl-sdr.zip
 
         - name: Patch Pothos with newer librtlsdr version
           working-directory: ${{runner.workspace}}
-          run: 7z x rtl-sdr.zip ; rm "C:/Program Files/PothosSDR/bin/rtlsdr.dll" ; cp "rtl-sdr-64bit-20240623/librtlsdr.dll" "C:/Program Files/PothosSDR/bin/rtlsdr.dll"
+          run: 7z x rtl-sdr.zip ; rm "C:/Program Files/PothosSDR/bin/rtlsdr.dll" ; cp "rtl-sdr-64bit-20261018/librtlsdr.dll" "C:/Program Files/PothosSDR/bin/rtlsdr.dll"
+
+        - name: Download libiio
+          run: Invoke-WebRequest -Uri "https://github.com/analogdevicesinc/libiio/releases/download/v0.26/Windows.zip" -OutFile ${{runner.workspace}}/libiio.zip
+
+        - name: Patch Pothos with newer libiio version
+          working-directory: ${{runner.workspace}}
+          run: 7z x libiio.zip ; rm "C:/Program Files/PothosSDR/bin/libiio.dll" ; cp "Windows-VS-2019-x64/libiio.dll" "C:/Program Files/PothosSDR/bin/" ; cp "Windows-VS-2019-x64/libserialport-0.dll" "C:/Program Files/PothosSDR/bin/" ; cp "Windows-VS-2019-x64/libxml2.dll" "C:/Program Files/PothosSDR/bin/" ; cp "Windows-VS-2019-x64/libiio.lib" "C:/Program Files/PothosSDR/lib/" ; cp "include/iio.h" "C:/Program Files/PothosSDR/include/"
 
         - name: Download SDRPlay API
           run: Invoke-WebRequest -Uri "https://www.sdrpp.org/SDRplay.zip" -OutFile ${{runner.workspace}}/SDRplay.zip
@@ -306,7 +313,7 @@ jobs:
           run: git clone --recursive https://github.com/gnuradio/volk && cd volk && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
 
         - name: Install SDRplay API
-          run: wget https://www.sdrplay.com/software/SDRplayAPI-macos-installer-universal-3.15.0.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.15.0.pkg -target /
+          run: wget https://www.sdrpp.org/ci/SDRplayAPI-macos-installer-universal-3.15.1.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.15.1.pkg -target /
 
         - name: Install libiio
           run: wget https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.25.zip && 7z x v0.25.zip && cd libiio-0.25 && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
@@ -440,7 +447,7 @@ jobs:
           run: git clone --recursive https://github.com/gnuradio/volk && cd volk && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
 
         - name: Install SDRplay API
-          run: wget https://www.sdrplay.com/software/SDRplayAPI-macos-installer-universal-3.15.0.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.15.0.pkg -target /
+          run: wget https://www.sdrpp.org/ci/SDRplayAPI-macos-installer-universal-3.15.1.pkg && sudo installer -pkg SDRplayAPI-macos-installer-universal-3.15.1.pkg -target /
 
         - name: Install libiio
           run: wget https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.25.zip && 7z x v0.25.zip && cd libiio-0.25 && mkdir build && cd build && cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=Release .. && make -j3 && sudo make install && cd ../../
@@ -526,7 +533,7 @@ jobs:
 
 
 
-    build_debian_bullseye_amd64:
+    build_ubuntu_resolute_amd64:
         if: ${{ !contains(github.ref_name, 'windows') && !contains(github.ref_name, 'macos') }}
         runs-on: ubuntu-latest
 
@@ -534,24 +541,24 @@ jobs:
         - uses: actions/checkout@v4
 
         - name: Create Docker Image
-          run: cd $GITHUB_WORKSPACE/docker_builds/debian_bullseye && docker build . --tag sdrpp_build
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_resolute && docker build . --tag sdrpp_build
 
         - name: Run Container
           run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
 
         - name: Recover Deb Archive
           working-directory: ${{runner.workspace}}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_bullseye_amd64.deb
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_resolute_amd64.deb
 
         - name: Save Deb Archive
           uses: actions/upload-artifact@v4
           with:
-              name: sdrpp_debian_bullseye_amd64
-              path: ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb
+              name: sdrpp_debian_resolute_amd64
+              path: ${{runner.workspace}}/sdrpp_debian_resolute_amd64.deb
 
         - name: Update Nightly
           if: github.ref == 'refs/heads/master'
-          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_bullseye_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_resolute_amd64.deb -R ${{github.repository}} --clobber
 
 
     build_debian_bookworm:
