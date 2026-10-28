@@ -191,6 +191,7 @@ public:
             flog::error("Failed to open file for recording: {0}", expandedPath);
             return;
         }
+        currentFile = expandedPath;
 
         // Open audio stream or baseband
         if (recMode == RECORDER_MODE_AUDIO) {
@@ -590,7 +591,18 @@ private:
             return "{\"status\":\"stopped\"}";
         }
         if (cmd == "status") {
-            return "{\"recording\":" + std::string(recording ? "true" : "false") + "}";
+            return "{\"recording\":" + std::string(recording ? "true" : "false") + ",\"file\":\"" + currentFile + "\"}";
+        }
+        if (cmd == "set_timezone") {
+            if (!timezones.keyExists(args)) { return "{\"status\":\"invalid\"}"; }
+            timezoneId = timezones.keyId(args);
+            config.acquire();
+            config.conf[name]["timezone"] = timezones.key(timezoneId);
+            config.release(true);
+            return "{\"status\":\"ok\",\"timezone\":\"" + timezones.key(timezoneId) + "\"}";
+        }
+        if (cmd == "get_timezone") {
+            return "{\"timezone\":\"" + timezones.key(timezoneId) + "\"}";
         }
         return "{}";
     }
@@ -618,6 +630,7 @@ private:
     std::string name;
     bool enabled = true;
     std::string root;
+    std::string currentFile;
     char nameTemplate[1024];
 
     OptionList<std::string, TimeZone> timezones;
