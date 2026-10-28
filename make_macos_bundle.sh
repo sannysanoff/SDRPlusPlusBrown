@@ -18,6 +18,14 @@ bundle_create_struct $BUNDLE
 # Add resources
 cp -R root/res/* $BUNDLE/Contents/Resources/
 
+# RX888 MkII firmware (RAM load only; Resources is where resourcesDirectory points)
+if [ -f source_modules/rx888_source/firmware/SDDC_FX3.img ]; then
+    mkdir -p $BUNDLE/Contents/Resources/firmware
+    cp source_modules/rx888_source/firmware/SDDC_FX3.img $BUNDLE/Contents/Resources/firmware/
+    cp source_modules/rx888_source/firmware/README.md $BUNDLE/Contents/Resources/firmware/
+    cp source_modules/rx888_source/firmware/LICENSE-SDDC_Driver.txt $BUNDLE/Contents/Resources/firmware/
+fi
+
 # Create the icon file
 bundle_create_icns root/res/icons/sdrpp.macos.png $BUNDLE/Contents/Resources/sdrpp
 

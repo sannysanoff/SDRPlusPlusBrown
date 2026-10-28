@@ -41,6 +41,7 @@ option(OPT_BUILD_RFNM_SOURCE "Build RFNM Source Module (Dependencies: librfnm)" 
 option(OPT_BUILD_RFSPACE_SOURCE "Build RFspace Source Module (no dependencies required)" ON)
 option(OPT_BUILD_RTL_SDR_SOURCE "Build RTL-SDR Source Module (Dependencies: librtlsdr)" ON)
 option(OPT_BUILD_RTL_TCP_SOURCE "Build RTL-TCP Source Module (no dependencies required)" ON)
+option(OPT_BUILD_RX888_SOURCE "Build RX888 MkII Source Module (Dependencies: libusb)" OFF)
 option(OPT_BUILD_SDRPP_SERVER_SOURCE "Build SDR++ Server Source Module (no dependencies required)" ON)
 option(OPT_BUILD_SDRPLAY_SOURCE "Build SDRplay Source Module (Dependencies: libsdrplay)" OFF)
 option(OPT_BUILD_SOAPY_SOURCE "Build SoapySDR Source Module (Dependencies: soapysdr)" OFF)
@@ -241,6 +242,10 @@ endif (OPT_BUILD_RTL_TCP_SOURCE)
 if (OPT_BUILD_SDDC_SOURCE)
 add_subdirectory("source_modules/sddc_source")
 endif (OPT_BUILD_SDDC_SOURCE)
+
+if (OPT_BUILD_RX888_SOURCE)
+add_subdirectory("source_modules/rx888_source")
+endif (OPT_BUILD_RX888_SOURCE)
 
 if (OPT_BUILD_SDRPP_SERVER_SOURCE)
 add_subdirectory("source_modules/sdrpp_server_source")
