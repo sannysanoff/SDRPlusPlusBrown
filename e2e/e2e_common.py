@@ -22,6 +22,9 @@ Environment Variables:
     E2E_VERBOSE         - Set to "1" for verbose output, "0" for stats only
     E2E_STARTUP_TIMEOUT - Startup timeout in seconds (default: 20.0)
     E2E_SHUTDOWN_TIMEOUT - Shutdown timeout in seconds (default: 5.0)
+    E2E_REQUEST_MIC     - Set to "1" on macOS to let SDR++ request microphone
+                          access (needed only for TX tests). Defaults to "0":
+                          the TCC request aborts a non-bundled binary.
 """
 
 import json
@@ -95,19 +98,25 @@ def get_default_root_dev() -> str:
     return "/Users/san/Fun/SDRPlusPlus/root_dev"
 
 
-def get_default_binary() -> str:
-    if LOCAL_BINARY.is_file():
-        return str(LOCAL_BINARY)
-    return "./sdrpp_brown"
+def get_default_binary(build_dir: str) -> str:
+    for name in ("sdrpp", "sdrpp_brown"):
+        candidate = os.path.join(build_dir, name)
+        if os.path.isfile(candidate):
+            return candidate
+    return "./sdrpp"
 
 
 # Default paths (can be overridden via env vars)
 DEFAULT_BUILD_DIR = get_env_str("E2E_BUILD_DIR", get_default_build_dir())
 DEFAULT_ROOT_DEV = get_env_str("E2E_ROOT_DEV", get_default_root_dev())
 DEFAULT_HTTP_PORT = get_env_int("E2E_HTTP_PORT", 8085)
-DEFAULT_BINARY = get_env_str("E2E_BINARY", get_default_binary())
+DEFAULT_BINARY = get_env_str("E2E_BINARY", get_default_binary(DEFAULT_BUILD_DIR))
 DEFAULT_STARTUP_TIMEOUT = get_env_float("E2E_STARTUP_TIMEOUT", 20.0)
 DEFAULT_SHUTDOWN_TIMEOUT = get_env_float("E2E_SHUTDOWN_TIMEOUT", 5.0)
+
+# Microphone access (macOS only). Only TX tests need it, and requesting it aborts
+# the binary when it is not launched from a .app bundle (TCC privacy check).
+REQUEST_MIC = get_env_bool("E2E_REQUEST_MIC", False)
 
 # Statistics collection mode (set by test runner)
 STATS_MODE = get_env_bool("E2E_STATS_MODE", False)
@@ -452,6 +461,10 @@ class SDRPPTestContext:
         if self.headless:
             env['QT_QPA_PLATFORM'] = 'offscreen'
         
+        # Opt out of the macOS microphone TCC request unless a TX test asks for it
+        if sys.platform == 'darwin' and 'SDRPP_MIC_ACCESS' not in env:
+            env['SDRPP_MIC_ACCESS'] = 'grant' if REQUEST_MIC else 'skip'
+
         cmd = [self.binary, '-r', self.temp_dir, '--http', str(self.http_port)]
         if extra_args:
             cmd.extend(extra_args)
