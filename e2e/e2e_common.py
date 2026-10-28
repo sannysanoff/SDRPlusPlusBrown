@@ -231,13 +231,30 @@ def set_stats_mode(enabled: bool = True) -> None:
 # HTTP Communication
 # =============================================================================
 
+def parse_response(raw: bytes) -> Any:
+    """Parse a debug server response body.
+
+    Most endpoints answer with JSON, but the procfs write endpoints (e.g.
+    ``POST /proc/source/type``) answer with a plain ``ok`` while still setting a
+    JSON content type. Return those as ``{"status": "ok"}`` instead of an
+    ``error`` entry, which hid real failures behind unparseable bodies.
+    """
+    text = raw.decode(errors='replace').strip()
+    if not text:
+        return {"status": "ok"}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"status": text}
+
+
 def http_get(base_url: str, path: str, timeout: float = 5.0) -> Dict:
     """Make HTTP GET request to SDR++ debug API."""
     url = f"{base_url}{path}"
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+            return parse_response(resp.read())
     except Exception as e:
         return {"error": str(e)}
 
@@ -249,7 +266,7 @@ def http_post(base_url: str, path: str, json_data: Optional[Dict] = None, timeou
         data = json.dumps(json_data).encode() if json_data else b''
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
+            return parse_response(resp.read())
     except Exception as e:
         return {"error": str(e)}
 
