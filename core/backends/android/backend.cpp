@@ -4,6 +4,8 @@
 #include <gui/menus/display.h>
 #include <gui/widgets/waterfall.h>
 #include <gui/gui.h>
+#include <gui/brown/tx_hotkey.h>
+#include <signal_path/signal_path.h>
 #include "imgui.h"
 #include "imgui_impl_android.h"
 #include "imgui_impl_opengl3.h"
@@ -158,6 +160,12 @@ namespace backend {
     }
 
     int32_t handleInputEvent(struct android_app* app, AInputEvent* inputEvent) {
+        bool qsoPanelShown = gui::mainWindow.qsoMode == MobileMainWindow::VIEW_QSO ||
+            (gui::mainWindow.qsoMode == MobileMainWindow::VIEW_CONFIG && gui::mainWindow.prevMode == MobileMainWindow::VIEW_QSO);
+        ImGui_ImplAndroid_SetCaptureVolumeKeys(gui::volumeKeyActsAsPtt(
+            sigpath::transmitter != nullptr,
+            displaymenu::transcieverLayout != displaymenu::TRAL_NONE,
+            qsoPanelShown));
         return ImGui_ImplAndroid_HandleInputEvent(inputEvent);
     }
 

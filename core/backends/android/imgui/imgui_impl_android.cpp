@@ -38,6 +38,12 @@
 static double                                   g_Time = 0.0;
 static ANativeWindow*                           g_Window;
 static char                                     g_LogTag[] = "ImGuiExample";
+static bool                                     g_CaptureVolumeKeys = false;
+
+void ImGui_ImplAndroid_SetCaptureVolumeKeys(bool capture)
+{
+    g_CaptureVolumeKeys = capture;
+}
 
 static ImGuiKey ImGui_ImplAndroid_KeyCodeToImGuiKey(int32_t key_code)
 {
@@ -191,7 +197,7 @@ int32_t ImGui_ImplAndroid_HandleInputEvent(AInputEvent* input_event)
                 io.AddKeyEvent(key, event_action == AKEY_EVENT_ACTION_DOWN);
                 io.SetKeyEventNativeData(key, event_key_code, event_scan_code);
             }
-            if (key == ImGuiKey_VolumeUp) {       // shameful hack.
+            if (key == ImGuiKey_VolumeUp && g_CaptureVolumeKeys) {       // shameful hack.
                 return 1; // handled;
             }
 

@@ -2,6 +2,45 @@
 
 Newest entries are at the top.
 
+2026.10.24
+
+* DSD: fixed crash when starting a recording.
+
+2026.08.13
+
+* TETRA decoder: DL/UL frequency shown with more precision.
+
+2026.08.04
+
+* stability fixes, Windows 7 support
+
+2026.05.02
+
+* TETRA demodulator available on Windows again.
+
+2025.12.29
+
+* New application icon.
+* Ctrl+mouse over the waterfall shows the frequency under the cursor.
+
+2025.12.28
+
+* TETRA demodulator module added (from cropinghigh project).
+* ImGui style is saved across restarts, built-in themes added.
+* Option to disable LogMMSE CPU deactivation.
+
+2025.12.04
+
+* DMR: Direct Modes added. DSD recognizes more sync types.
+
+2025.02.27
+
+* Per-device usable bandwidth slider, for devices where bandwidth is lower than sample rate.
+
+2025.02.12
+
+* Native PulseAudio sink driver for Linux.
+
 2024.12.31
 
 * Experimental voice control - not for production use - will fail because free API key. 
