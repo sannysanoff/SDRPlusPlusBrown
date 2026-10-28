@@ -15,9 +15,15 @@
 //   Windows the Cypress driver from the official RX-888 setup (HDSDR / ExtIO) binds 04b4:00f1; this module uses libusb and needs WinUSB for
 //   that device. No driver is shipped.
 // - The converter delivers REAL 16-bit samples at the ADC clock (64 Msps typically, 128 at most 130). HF (below half the clock): the wanted
-//   frequency is shifted to zero, filtered and decimated by RealDdc (realddc.h). VHF (the R828D tuner, from half the clock up to 1.75 GHz):
+//   frequency is shifted to zero, filtered and decimated by RealDdc (realddc.h). The rates are the ones OnAir offers (kRates): 0.25 to
+//   61.44 Msps, delivered as the ADC clock divided by a whole number. VHF (the R828D tuner, from half the clock up to 1.75 GHz):
 //   the tuner puts the channel on an IF of 4.57 MHz, spectrum inverted (SDDC's "sideband"), so the DDC is centred on the IF and its output
 //   conjugated.
+// - A real input has no sideband to reject: once the tuning frequency is mixed down, the conjugate of the wanted band sits at minus that
+//   frequency. While the tuning frequency is below half the output rate - the whole HF band at 32 Msps, 3.15 MHz in the report - that ghost
+//   falls inside the passband and shows as a mirrored copy at negative offsets. OnAir's design does the same; a tuning frequency above half
+//   the output rate, or a lower rate, keeps it off the screen. The rates here are OnAir's (kRates): 0.25 to 61.44 Msps, delivered as the ADC
+//   clock divided by a whole number, so an entry can come out slightly different (the "Match the rate" ADC clock hits it exactly).
 // - The firmware starts the sample stream with STARTFX3 after the host has queued its bulk transfers, and stops it with STOPFX3.
 #include <imgui.h>
 #include <module.h>
@@ -82,6 +88,17 @@ std::string mhzText(double hz) {
     snprintf(b, sizeof b, "%.6g MHz", hz / 1e6);
     return b;
 }
+
+// The rates OnAir offers for this radio, in its order: its core/src/engine/rate_choice.cpp asks for the rates SDRs are usually
+// given (0.25 to 20 Msps) and, for a radio that runs above 20 Msps, the wide captures up to 61.44, then the driver rounds each to
+// the ADC clock divided by a whole number (plan()). The two programs now offer the same choice at the same figures.
+struct RateOption { double hz; const char* label; };
+constexpr RateOption kRates[] = {
+    {0.25e6, "250 kHz"}, {0.5e6, "500 kHz"}, {1e6, "1 MHz"}, {1.024e6, "1.024 MHz"}, {2e6, "2 MHz"},
+    {2.048e6, "2.048 MHz"}, {2.4e6, "2.4 MHz"}, {2.56e6, "2.56 MHz"}, {3.2e6, "3.2 MHz"}, {4e6, "4 MHz"},
+    {5e6, "5 MHz"}, {6e6, "6 MHz"}, {8e6, "8 MHz"}, {10e6, "10 MHz"}, {12.5e6, "12.5 MHz"}, {16e6, "16 MHz"},
+    {20e6, "20 MHz"}, {25e6, "25 MHz"}, {30.72e6, "30.72 MHz"}, {40e6, "40 MHz"}, {50e6, "50 MHz"},
+    {56e6, "56 MHz"}, {61.44e6, "61.44 MHz"}};
 
 // OnAir's TuneSettings, reduced to the settings this radio has
 struct Settings {
@@ -202,14 +219,7 @@ public:
     RX888SourceModule(std::string name) {
         this->name = name;
 
-        sampleRates.define(250e3, "250 KHz", 250e3);
-        sampleRates.define(500e3, "500 KHz", 500e3);
-        sampleRates.define(1e6, "1 MHz", 1e6);
-        sampleRates.define(2e6, "2 MHz", 2e6);
-        sampleRates.define(4e6, "4 MHz", 4e6);
-        sampleRates.define(8e6, "8 MHz", 8e6);
-        sampleRates.define(16e6, "16 MHz", 16e6);
-        sampleRates.define(32e6, "32 MHz", 32e6);
+        for (const RateOption& r : kRates) { sampleRates.define(r.hz, r.label, r.hz); }
 
         adcModes.define("auto", "Auto", "auto");
         adcModes.define("64", "64 Msps", "64");
