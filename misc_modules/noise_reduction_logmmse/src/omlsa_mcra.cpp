@@ -6,6 +6,12 @@ namespace dsp {
 
     void omlsa_mcra::reset() {
         dtr = std::make_shared<Datablock_Read>(sampleRate, 1, 10000);
+        dtr->LSA.setCompensation(compensation);
+    }
+
+    void omlsa_mcra::setCompensation(float c) {
+        compensation = c;
+        if (dtr) { dtr->LSA.setCompensation(c); }
     }
 
     int omlsa_mcra::blockSize() {

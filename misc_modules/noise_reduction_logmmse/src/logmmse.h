@@ -89,6 +89,7 @@ namespace dsp {
                 float mu = 0.98;
                 float ksi_min;
                 bool hold = false;
+                float compensation = 1.0f;   // share of the estimated noise that is subtracted (1.0 = all of it)
                 long long generation = 0;
                 float mindb = 0;
                 float maxdb = 0;
@@ -350,6 +351,8 @@ namespace dsp {
                 ALLOC_AND_CHECK(x, sz, "logmmse_all point -1.7")
                 params->update_noise_mu2(x);
                 ALLOC_AND_CHECK(x, sz, "logmmse_all point -1.8")
+                auto noiseRef = params->noise_mu2;
+                if (params->compensation != 1.0f) { noiseRef = mul(params->noise_mu2, 1.0f / params->compensation); }
                 ADD_STEP_STATS();
                 auto xfinal = npzeros_c(Nframes * params->len2);
                 ALLOC_AND_CHECK(x, sz, "logmmse_all point 0")
@@ -372,13 +375,13 @@ namespace dsp {
                     auto sig2 = muleach(sig, sig);
                     ALLOC_AND_CHECK(x, sz, "logmmse_all point 5")
 
-                    auto gammak = npminimum_(diveach(sig2, params->noise_mu2), 40);
+                    auto gammak = npminimum_(diveach(sig2, noiseRef), 40);
                     ALLOC_AND_CHECK(x, sz, "logmmse_all point 6")
                     FloatArray ksi;
                     if (!npall(params->Xk_prev)) {
                         ksi = add(mul(npmaximum_(add(gammak, -1), 0), 1 - params->aa), params->aa);
                     } else {
-                        const FloatArray d1 = diveach(mul(params->Xk_prev, params->aa), params->noise_mu2);
+                        const FloatArray d1 = diveach(mul(params->Xk_prev, params->aa), noiseRef);
                         const FloatArray m1 = mul(npmaximum_(add(gammak, -1), 0), (1 - params->aa));
                         ksi = addeach(d1, m1);
                         ksi = npmaximum_(ksi, params->ksi_min);

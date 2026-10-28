@@ -14,10 +14,13 @@ namespace dsp {
 
         std::shared_ptr<Datablock_Read> dtr;
         int sampleRate = 0;
+        float compensation = 1.0f;   // share of the estimated noise that is subtracted
         omlsa_mcra() {
         }
 
         void reset();
+
+        void setCompensation(float c);   // (in omlsa_mcra.cpp: Datablock_Read is incomplete here)
 
         void setSampleRate(int sampleRate) {
             this->sampleRate = sampleRate;

@@ -14,6 +14,7 @@ public:
 	LSA_denoise();
 	~LSA_denoise();
 	short Initialize(short wlen);
+	void setCompensation(float c) { Gc.setCompensation(c); }
 	short Denoise_process(short* data_in, short* data_out, int blockInd);
 	
 

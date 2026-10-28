@@ -53,6 +53,10 @@ namespace dsp {
             disableCpuDeactivation = disable;
         }
 
+        void setCompensation(float compensation) {
+            params.compensation = compensation;
+        }
+
         double currentCenterFrequency = -1.0;
 
         bool shouldReset = true;

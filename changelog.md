@@ -2,6 +2,15 @@
 
 Newest entries are at the top.
 
+2026.10.29
+
+* RX888 MkII source module: native USB driver (SDDC firmware, ported from OnAir), HF direct sampling and the R828D VHF input, ADC clock
+  64 or 128 MHz, rates from 250 kHz to 64 MHz (OnAir's list plus 64 MHz), gain, HF attenuator, dither, randomiser, PGA, bias tee. The
+  firmware image ships with the module and is loaded into the radio's RAM, never flashed.
+* Noise reduction: "Compensation" slider (0 to 1) for the LogMMSE baseband NR and for the OMLSA audio NR2, setting how much of the
+  estimated noise is subtracted. Defaults: 1.0 baseband, 0.5 NR2.
+* HTTP debug server is off unless --http is given; it used to listen on port 8080 by default.
+
 2026.10.24
 
 * DSD: fixed crash when starting a recording.

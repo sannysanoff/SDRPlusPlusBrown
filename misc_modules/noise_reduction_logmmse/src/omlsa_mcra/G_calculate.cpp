@@ -316,7 +316,8 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 	}
 	NoiseEstimation(blockInd);
 	for (int i = 0; i <= m_linc; i++) {
-		m_post_SNR[i] = min<int>((__int64)pow((((__int64)m_abs_Y[i] * m_num_mag_pow) / (1 > m_lamda_d[i] ? 1 : m_lamda_d[i])), 2) >> m_amp_para_double, 4096 << 14);
+		const int lam = std::max<int>(1, (int)(m_lamda_d[i] * m_compensation));
+		m_post_SNR[i] = min<int>((__int64)pow((((__int64)m_abs_Y[i] * m_num_mag_pow) / lam), 2) >> m_amp_para_double, 4096 << 14);
 		post_temp = max<int>(m_post_SNR[i] - m_num_mag_pow, 0);
 		m_E_pr_SNR[i] = min<int>(max<int>((m_pr_SNR[i] >> 1) + (m_pr_SNR[i] >> 2) + (m_pr_SNR[i] >> 3) + (post_temp >> 3), m_snpramin), 4096 << m_amp_para_double);
 		m_E_pr_SNR[m_lwlen - i] = m_E_pr_SNR[i];                                                // 0.0001 * (2^24=16777216) =1678  167772 
@@ -326,6 +327,7 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 	}
 	SpeechAbsenceEstm();
 	for (int i = 0; i <= m_linc; i++) {
+		const int lam = std::max<int>(1, (int)(m_lamda_d[i] * m_compensation));
 		m_integra[i] = subexp_solution(m_v[i]);  // exp(-(double)m_v[i] / (1 << 24))
 		m_arr_temp[i] = m_num_mag_pow + ((__int64)(m_num_mag_pow + m_E_pr_SNR[i]) * m_integra[i] * m_q[i] >> m_amp_para_double) / (m_num_mag_pow - m_q[i]);
 		
@@ -338,7 +340,7 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 		m_M[i] = ((__int64)m_G[i] * m_abs_Y[i]) >> m_amp_para_double;  //��ֵ
 		winData[i].real = ((__int64)m_M[i] * m_EN_cos[i]) >> 12; 
 		winData[i].imag = ((__int64)m_M[i] * m_EN_sin[i]) >> 12;
-		m_pr_SNR[i] = min<int>(pow((__int64)m_M[i] * m_num_mag / (1 > m_lamda_d[i] ? 1 : m_lamda_d[i]), 2), 4096 << m_amp_para_double);  // 10000
+		m_pr_SNR[i] = min<int>(pow((__int64)m_M[i] * m_num_mag / lam, 2), 4096 << m_amp_para_double);  // 10000
 		winData[m_lwlen - i].real = winData[i].real;
 		winData[m_lwlen - i].imag = -winData[i].imag;
 		aa[i] = m_G[i];

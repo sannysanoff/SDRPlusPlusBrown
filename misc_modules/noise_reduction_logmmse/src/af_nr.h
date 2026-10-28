@@ -73,6 +73,7 @@ namespace dsp {
         bool allowed = false;
         bool allowed2 = true;       // just convenient for various conditions
         float preAmpGain = 0.0f;
+        float compensation = 0.5f;   // share of the estimated noise that is subtracted (default: half of it)
         int instanceCount = 0;
 //        FILE *dumpIn = nullptr;
 
@@ -103,6 +104,7 @@ namespace dsp {
 
 
             omlsa_mcra.setSampleRate(48000);
+            omlsa_mcra.setCompensation(compensation);
             sigpath::txState.bindHandler(&txHandler);
             block::start();
         }
@@ -110,6 +112,11 @@ namespace dsp {
         void stop() override {
             block::stop();
             sigpath::txState.unbindHandler(&txHandler);
+        }
+
+        void setCompensation(float c) {
+            compensation = c;
+            omlsa_mcra.setCompensation(c);
         }
 
         StreamTracker nrIn, nrOut;

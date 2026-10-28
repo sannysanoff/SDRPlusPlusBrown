@@ -41,11 +41,13 @@ public:
         this->name = name;
         config.acquire();
         if (config.conf.contains("IFNR")) ifnr = config.conf["IFNR"];
+        if (config.conf.contains("IFNR_COMPENSATION")) ifnrCompensation = config.conf["IFNR_COMPENSATION"];
         if (config.conf.contains("DisableCpuDeactivation")) disableCpuDeactivation = config.conf["DisableCpuDeactivation"];
         if (config.conf.contains("SNRChartWidget")) snrChartWidget = config.conf["SNRChartWidget"];
         config.release(true);
 
         ifnrProcessor.setDisableCpuDeactivation(disableCpuDeactivation);
+        ifnrProcessor.setCompensation(ifnrCompensation);
 
         gui::menu.registerEntry(name, menuHandler, this, NULL);
         updateBindings();
@@ -91,6 +93,7 @@ public:
 
 private:
     bool ifnr = false;
+    float ifnrCompensation = 1.0f;
     bool disableCpuDeactivation = false;
 
     bool afnrEnabled = false;
@@ -116,6 +119,9 @@ private:
         bool afnr2 = false;
         if (config.conf.contains("AF_NR2_" + instanceName)) afnr2 = config.conf["AF_NR2_" + instanceName];
 
+        double afnr2comp = 0.5;
+        if (config.conf.contains("AF_NR2_COMP_" + instanceName)) afnr2comp = config.conf["AF_NR2_COMP_" + instanceName];
+
 
         config.release(true);
         afnrlogmmse->afnrBandwidth = frequency;
@@ -123,6 +129,7 @@ private:
         afnrlogmmse->allowed = afnr;
 
         afnromlsa->allowed = afnr2;
+        afnromlsa->setCompensation((float)afnr2comp);
 
         actuateAFNR();
     }
@@ -285,6 +292,15 @@ private:
             }
         }
 
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize("WWWWWW").x);
+        if (ImGui::SliderFloat("##_sdrpp_if_nr_comp", &ifnrCompensation, 0.0f, 1.0f, "%.2f")) {
+            ifnrProcessor.setCompensation(ifnrCompensation);
+            config.acquire();
+            config.conf["IFNR_COMPENSATION"] = ifnrCompensation;
+            config.release(true);
+        }
+
         for (auto [k, v] : afnrProcessors2) {
             if (ImGui::Checkbox(("Audio NR2 " + k + "##_radio_omlsa_nr_" + k).c_str(), &v->allowed)) {
                 actuateAFNR();
@@ -294,6 +310,14 @@ private:
             }
             ImGui::SameLine();
             ImGui::Text("%0.01f", 32767.0 / v->scaled);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize("WWWWWW").x);
+            if (ImGui::SliderFloat(("##_radio_omlsa_comp_" + k).c_str(), &v->compensation, 0.0f, 1.0f, "%.2f")) {
+                v->setCompensation(v->compensation);
+                config.acquire();
+                config.conf["AF_NR2_COMP_" + k] = v->compensation;
+                config.release(true);
+            }
         }
         if (ImGui::Checkbox(("SNR Chart##_radio_logmmse_nr_" + name).c_str(), &snrChartWidget)) {
             config.acquire();
