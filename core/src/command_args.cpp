@@ -30,7 +30,7 @@ void CommandArgsParser::defineAll() {
     define('s', "server", "Run in server mode");
     define('\0', "password", "Protect server mode protocol with password", std::string(""));
     define('\0', "autostart", "Automatically start the SDR after loading");
-    define('\0', "http", "HTTP debug server port (0 to disable)", 8080);
+    define('\0', "http", "HTTP debug server port; off unless set (a test and debugging facility, never on in a normal session)", 0);
     define('\0', "debug-wait", "File to wait for before continuing (for debugging)", std::string(""));
 
     // Test-related command line arguments. Will not fail in runtime, will be just ignored.

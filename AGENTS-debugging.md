@@ -8,7 +8,7 @@ SDR++ includes an embedded HTTP debug server from [EmbeddableWebServer](https://
 
 ### Command Line Options
 
-- `--http <port>` - Start HTTP server on port (0 to disable, default 8080)
+- `--http <port>` - Start the HTTP debug server on that port. **Off by default** (0): the server is for tests and manual debugging and is never started in a normal session, so nothing listens on the network and the macOS local-network prompt stays away. Tests, `sdrpp-cli` and the workflows below pass the port explicitly.
 - `--debug-wait <file>` - Wait for file to exist before continuing (for debugger attachment)
 
 ### Endpoints
@@ -326,7 +326,7 @@ curl http://localhost:8080/status
 
 - Uses a clean config directory (`/tmp/sdrpp_config`) to avoid loading user settings
 - Log file: `/tmp/sdrpp_config/sdrpp.log`
-- HTTP debug server runs on port 8080 when started
+- The HTTP debug server is only up because `sdrpp-cli` passes `--http 8080`; without that option nothing listens
 - The `mainLoopStarted` flag in `/status` endpoint indicates the app is fully initialized
 - Uses `nohup` to run in background, preventing signal propagation to child process
 
