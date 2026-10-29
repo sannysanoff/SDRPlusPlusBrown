@@ -78,6 +78,11 @@ public:
     double lastHarmonicCv() const { return _harmonicCv; }
     double lastCombContrast() const { return _combContrast; }
     double lastOccupiedSpanHz() const { return _occupiedSpanHz; }
+    double lastSpectralFlux() const { return _spectralFlux; }
+    double lastPeakFraction() const { return _peakFraction; }
+    double lastSpectralFlatness() const { return _spectralFlatness; }
+    double lastPeakToMedian() const { return _peakToMedian; }
+    double lastEnvelopeSwingDb() const { return _envelopeSwingDb; }
 
     int process(int count, const stereo_t* in, stereo_t* out) {
         const int delayLen = (int)_delay.size();
@@ -168,6 +173,13 @@ private:
         _fftOut = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (kFftSize / 2 + 1));
         _plan = fftwf_plan_dft_r2c_1d(kFftSize, _fftIn, _fftOut, FFTW_ESTIMATE);
         _power.assign((size_t)(kFftSize / 2 + 1), 0.0);
+        _fluxPrev.assign((size_t)(kFftSize / 2 + 1), 0.0);
+        _fluxCur.assign((size_t)(kFftSize / 2 + 1), 0.0);
+        const double binHz = _fsa / (double)kFftSize;
+        _fluxB0 = std::max(1, (int)std::ceil(200.0 / binHz));
+        _fluxB1 = std::min(kFftSize / 2 - 1, (int)std::floor(3200.0 / binHz));
+        _subWin.assign((size_t)std::max(32, (int)std::lround(0.025 * _fsa)), 0.0f);
+        for (size_t i = 0; i < _subWin.size(); i++) { _subWin[i] = (float)(0.5 - 0.5 * std::cos(2.0 * M_PI * i / (_subWin.size() - 1))); }
 
         // the chain's own start-up transient (resampler, buffers) looks like a click, not like a voice: learn the
         // noise floor from it and stay shut for the first half second
@@ -227,7 +239,9 @@ private:
             return;
         }
         if (std::isnan(_floorDb)) { _floorDb = std::min(rmsDb, -60.0); }
-        if (audible) { _floorDb += (rmsDb < _floorDb ? 0.30 : 0.02) * (rmsDb - _floorDb); }
+        // The floor follows the quiet parts of the last ~20 s: down at once, up very slowly. Speech can occupy
+        // most of a transmission (>70 % is normal) and the floor still has to sit on the noise, not on the voice.
+        if (audible) { _floorDb += (rmsDb < _floorDb ? 0.30 : 0.0005) * (rmsDb - _floorDb); }
         _floorDb = std::max(_floorDb, -100.0);
         _snrDb = rmsDb - _floorDb;
 
@@ -260,13 +274,69 @@ private:
 
         // harmonics: how many lines of that comb stand out of the band
         int harmonics = 0;
-        double harmonicRatio = 0.0, lowestHz = 0.0, highestHz = 0.0, cv = 0.0, combContrast = 0.0, occupiedSpanHz = 0.0;
+        double harmonicRatio = 0.0, lowestHz = 0.0, highestHz = 0.0, cv = 0.0, combContrast = 0.0, occupiedSpanHz = 0.0, peakFraction = 0.0;
+        double spectralFlatness = 1.0, peakToMedian = 0.0;
         if (_periodicity > 0.15 && _pitchHz >= kMinPitchHz) {
             std::memset(_fftIn, 0, sizeof(float) * kFftSize);
             for (int i = 0; i < _nw; i++) { _fftIn[i] = _lin[(size_t)i] * _win[(size_t)i]; }
             fftwf_execute(_plan);
 
-            const double binHz = _fsa / (double)kFftSize;
+            // envelope burstiness: the level of 20 ms blocks across the window. Speech has syllables (10-20 dB swings
+        // at 2-8 Hz), static is flat, and a keyed carrier swings all the way to zero (handled by the comb test).
+        double envMean = 0.0, envVar = 0.0;
+        int envCount = 0;
+        {
+            const int blk = std::max(16, (int)std::lround(0.02 * _fsa));
+            std::vector<double> levels;
+            for (int start = 0; start + blk <= _nw; start += blk) {
+                double e = 0.0;
+                for (int i = 0; i < blk; i++) { const double v = _lin[(size_t)(start + i)]; e += v * v; }
+                levels.push_back(10.0 * std::log10(e / blk + 1e-20));
+            }
+            if (!levels.empty()) {
+                for (double v : levels) { envMean += v; }
+                envMean /= levels.size();
+                for (double v : levels) { envVar += (v - envMean) * (v - envMean); }
+                envVar = std::sqrt(envVar / levels.size());
+                envCount = (int)levels.size();
+            }
+        }
+        _envelopeSwingDb = envCount ? envVar : 0.0;
+
+        // spectral flux: how much the shape of the spectrum moves inside the window (formants move, a carrier only
+        // changes its level, noise has no structure at all - and no harmonics either)
+        _spectralFlux = 0.0;
+        if (audible) {
+            const int sub = (int)_subWin.size();
+            const int step = sub / 2;
+            int frames = 0;
+            for (int start = 0; start + sub <= _nw; start += step) {
+                std::memset(_fftIn, 0, sizeof(float) * kFftSize);
+                for (int i = 0; i < sub; i++) { _fftIn[i] = _lin[(size_t)(start + i)] * _subWin[(size_t)i]; }
+                fftwf_execute(_plan);
+                double norm = 0.0;
+                for (int b = _fluxB0; b <= _fluxB1; b++) {
+                    const double re = _fftOut[b][0], im = _fftOut[b][1];
+                    _fluxCur[(size_t)b] = std::sqrt(re * re + im * im);
+                    norm += _fluxCur[(size_t)b] * _fluxCur[(size_t)b];
+                }
+                norm = std::sqrt(norm);
+                if (norm <= 0.0) { continue; }
+                if (frames > 0) {
+                    double d = 0.0;
+                    for (int b = _fluxB0; b <= _fluxB1; b++) {
+                        const double a = _fluxCur[(size_t)b] / norm - _fluxPrev[(size_t)b];
+                        d += a * a;
+                    }
+                    _spectralFlux += std::sqrt(d);
+                }
+                for (int b = _fluxB0; b <= _fluxB1; b++) { _fluxPrev[(size_t)b] = _fluxCur[(size_t)b] / norm; }
+                frames++;
+            }
+            if (frames > 1) { _spectralFlux /= (frames - 1); }
+        }
+
+        const double binHz = _fsa / (double)kFftSize;
             const int b0 = std::max(1, (int)std::ceil(kBandLowHz / binHz));
             const int b1 = std::min(kFftSize / 2 - 1, (int)std::floor(kBandHighHz / binHz));
             double total = 0.0, peak = 0.0;
@@ -292,6 +362,34 @@ private:
                     if (acc >= 0.90 * total) { break; }
                 }
                 occupiedSpanHz = (hiBin - loBin) * binHz;
+
+                // How much of the band sits within +-150 Hz of its strongest line: a carrier (even one that the AGC
+                // has surrounded with boosted noise, which is what makes its span look wide) keeps nearly all of it
+                // there, a voice spreads it over its formants.
+                int peakBin = b0;
+                for (int b = b0; b <= b1; b++) { if (_power[(size_t)b] > _power[(size_t)peakBin]) { peakBin = b; } }
+                const int wide = std::max(1, (int)std::lround(150.0 / binHz));
+                double around = 0.0;
+                for (int b = std::max(b0, peakBin - wide); b <= std::min(b1, peakBin + wide); b++) { around += _power[(size_t)b]; }
+                peakFraction = around / total;
+
+                // spectrum shape: geometric over arithmetic mean (flat static ~0.3-0.6, a voice comb 0.02-0.10) and
+                // how far the loudest bin stands above the median one (a comb is peaky, static is not)
+                double logSum = 0.0;
+                std::vector<double>& tmp = _powerScratch;
+                tmp.resize((size_t)(b1 - b0 + 1));
+                for (int b = b0; b <= b1; b++) {
+                    tmp[(size_t)(b - b0)] = _power[(size_t)b];
+                    logSum += std::log(_power[(size_t)b] + 1e-30);
+                }
+                const int cnt = b1 - b0 + 1;
+                const double geo = std::exp(logSum / cnt);
+                const double arith = total / cnt;
+                spectralFlatness = (arith > 0.0) ? (geo / arith) : 0.0;
+                std::nth_element(tmp.begin(), tmp.begin() + cnt / 2, tmp.end());
+                const double med = tmp[(size_t)(cnt / 2)];
+                peakToMedian = (med > 0.0) ? (peak / med) : 0.0;
+                _bandMedian = med;
                 // Each line of the comb is judged against the bins between the lines, never against the loudest
                 // bin in the band: a strong carrier in the passband lowers the noise floor relative to the peak and
                 // then noise bins pass for harmonics (that is how a busy RTTY band used to open this squelch).
@@ -306,6 +404,10 @@ private:
                 };
                 double comb = 0.0, between = 0.0;
                 std::vector<double> lines; lines.reserve(32);
+                // A line counts when it stands above the *typical bin of the band*, not above its neighbour: on top of
+                // static the neighbouring bins are noise too, so a data tone would otherwise pass for a comb. A voice
+                // has many such lines, a data signal or a carrier one or two.
+                const double lineFloor = 6.0 * _bandMedian * (2.0 * tol / binHz + 1.0);
                 for (int k = 1; k * _pitchHz <= kBandHighHz; k++) {
                     const double f = k * _pitchHz;
                     if (f < kBandLowHz) { continue; }
@@ -313,7 +415,7 @@ private:
                     const double gapEnergy = energyAround(f + 0.5 * _pitchHz);
                     comb += lineEnergy;
                     between += gapEnergy;
-                    if (lineEnergy > 4.0 * gapEnergy + 1e-30) {      // the line stands 6 dB above what is between lines
+                    if (lineEnergy > lineFloor) {
                         harmonics++;
                         if (lowestHz == 0.0) { lowestHz = f; }
                         highestHz = f;
@@ -339,6 +441,9 @@ private:
         _harmonicCv = cv;
         _combContrast = combContrast;
         _occupiedSpanHz = occupiedSpanHz;
+        _peakFraction = peakFraction;
+        _spectralFlatness = spectralFlatness;
+        _peakToMedian = peakToMedian;
 
         const double pThr = 0.72 - 0.34 * _sensitivity;      // 0.38 .. 0.72
         const double snrThr = 10.0 - 10.0 * _sensitivity;    // 0 .. 10 dB above the learned noise floor
@@ -369,7 +474,13 @@ private:
     double _floorDb = NAN, _snrDb = 0.0, _pitchHz = 0.0, _periodicity = 0.0, _harmonicRatio = 0.0;
     int _harmonics = 0, _voicedHits = 0, _warmupHops = 50;
     double _lowestHarmonicHz = 0.0, _highestHarmonicHz = 0.0, _harmonicCv = 0.0, _combContrast = 0.0, _occupiedSpanHz = 0.0;
+    double _spectralFlux = 0.0, _peakFraction = 0.0, _spectralFlatness = 1.0, _peakToMedian = 0.0, _envelopeSwingDb = 0.0;
+    double _bandMedian = 0.0;
+    int _fluxB0 = 1, _fluxB1 = 1;
+    std::vector<float> _subWin;
+    std::vector<double> _fluxPrev, _fluxCur;
     std::vector<int> _order;
+    std::vector<double> _powerScratch;
     double _analysisSec = kAnalysisSec;
 
     fftwf_plan _plan = nullptr;

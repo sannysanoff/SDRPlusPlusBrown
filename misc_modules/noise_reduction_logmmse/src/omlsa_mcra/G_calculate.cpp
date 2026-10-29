@@ -32,6 +32,8 @@ short G_calculate::Initialize(int wlen) {
 	m_cosen_pmin = 1 * m_num_mag_pow;			// %1.0~1.1֮�����
 	m_cosen_max_min = log(8) *m_num_mag_pow;
 	m_w_global = 8; m_wt_global = 17;
+	m_old_cosen_frame = 0;
+	m_cosen_peak = m_cosen_pmin;
 
 	m_arr_temp = new int[m_lwlen];
 	if (!m_arr_temp) {
@@ -235,7 +237,7 @@ void G_calculate::SpeechAbsenceEstm()
 {
 	unsigned long long sum = 0, a = 0;
 	int p_frame, mu, cosen_peak;
-	short old_cosen_frame = 0, cosen_frame = 0;
+	int cosen_frame;
 
 	for (int k = 0; k <= (m_linc + m_w_global); k++) {   //����ļ�����õ�
 		m_cosen[k] = (m_old_cosen[k] >> 1) + (m_old_cosen[k] >> 2) + (m_E_pr_SNR[k] >> 2);
@@ -273,20 +275,23 @@ void G_calculate::SpeechAbsenceEstm()
 		sum += m_cosen[k];
 	}
 
-	cosen_frame = sum >> m_linc_move; //10000
+	// Keep frame SNR in Q14 int precision and remember its peak across frames.
+	cosen_frame = sum / (m_linc + 1); //10000
 	sum = 0;
-	cosen_peak = std::min<short>(std::max<short>(cosen_frame, m_cosen_pmin), m_cosen_pmax);//10000
+	if (cosen_frame > m_old_cosen_frame)
+		m_cosen_peak = (std::min)((std::max)(cosen_frame, m_cosen_pmin), m_cosen_pmax);
+	cosen_peak = m_cosen_peak;//10000
 
-	if (cosen_frame <= ((cosen_peak * m_cosen_min) >> m_amp_para_double))   // (27)
+	if (cosen_frame <= (((__int64)cosen_peak * m_cosen_min) >> m_amp_para_double))   // (27)
 		mu = 0;
-	else if (cosen_frame >= ((cosen_peak * m_cosen_max) >> m_amp_para_double))
+	else if (cosen_frame >= (((__int64)cosen_peak * m_cosen_max) >> m_amp_para_double))
 		mu = m_num_mag_pow;
 	else
-		mu = m_num_mag_pow * log(cosen_frame  * m_num_mag_pow / cosen_peak / m_cosen_min) / log(m_cosen_max / m_cosen_min);
+		mu = m_num_mag_pow * log((double)cosen_frame * m_num_mag_pow / cosen_peak / m_cosen_min) / log((double)m_cosen_max / m_cosen_min);
 
 	if (cosen_frame > m_cosen_min)
 	{
-		if (cosen_frame > old_cosen_frame)
+		if (cosen_frame > m_old_cosen_frame)
 			p_frame = m_num_mag_pow;
 		else
 		{
@@ -297,12 +302,13 @@ void G_calculate::SpeechAbsenceEstm()
 	{
 		p_frame = 0;
 	}
+	m_old_cosen_frame = cosen_frame;
 	for (int k = 0; k <= m_linc; k++)
 	{
 		m_q[k] = m_num_mag_pow - ((__int64)m_plocal[k] * m_pglobal[k] * p_frame >> 28);//10000
 		m_q[k] = min<int>(m_q[k], 0.95*m_num_mag_pow);
 		m_old_cosen[k] = m_cosen[k];
-		m_old_cosen[m_lwlen - k] = m_old_cosen[k];
+		if (k > 0) m_old_cosen[m_lwlen - k] = m_old_cosen[k];
 	}
 }
 short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  // -49
@@ -311,16 +317,18 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 	int post_temp, w = 8;
 	for (int i = 0; i <= m_linc + w; i++) {
 		m_abs_Y[i] = sqrt(pow(winData[i].real, 2) + pow(winData[i].imag, 2));  //m_abs_Y����2^6��
-		m_EN_cos[i] = ((__int64)winData[i].real << 12) / (1 > m_abs_Y[i] ? 1 : m_abs_Y[i]);
-		m_EN_sin[i] = ((__int64)winData[i].imag << 12) / (1 > m_abs_Y[i] ? 1 : m_abs_Y[i]);
+		m_EN_cos[i] = ((__int64)winData[i].real * 4096) / (1 > m_abs_Y[i] ? 1 : m_abs_Y[i]);
+		m_EN_sin[i] = ((__int64)winData[i].imag * 4096) / (1 > m_abs_Y[i] ? 1 : m_abs_Y[i]);
 	}
 	NoiseEstimation(blockInd);
 	for (int i = 0; i <= m_linc; i++) {
 		const int lam = std::max<int>(1, (int)(m_lamda_d[i] * m_compensation));
-		m_post_SNR[i] = min<int>((__int64)pow((((__int64)m_abs_Y[i] * m_num_mag_pow) / lam), 2) >> m_amp_para_double, 4096 << 14);
+		// Clamp before converting to Q14: narrowing first can wrap a large SNR.
+		const double ratio = (double)m_abs_Y[i] / lam;
+		m_post_SNR[i] = (int)((std::min)(ratio * ratio, 4096.0) * m_num_mag_pow);
 		post_temp = max<int>(m_post_SNR[i] - m_num_mag_pow, 0);
 		m_E_pr_SNR[i] = min<int>(max<int>((m_pr_SNR[i] >> 1) + (m_pr_SNR[i] >> 2) + (m_pr_SNR[i] >> 3) + (post_temp >> 3), m_snpramin), 4096 << m_amp_para_double);
-		m_E_pr_SNR[m_lwlen - i] = m_E_pr_SNR[i];                                                // 0.0001 * (2^24=16777216) =1678  167772 
+		if (i > 0) m_E_pr_SNR[m_lwlen - i] = m_E_pr_SNR[i];                                                // 0.0001 * (2^24=16777216) =1678  167772
 		m_v[i] = max<__int64>(min<__int64>((__int64)((__int64)m_E_pr_SNR[i] * m_post_SNR[i] << 10) / (m_num_mag_pow + m_E_pr_SNR[i]), 15 << 24), 1678);
 		m_integra[i] = expintpow_solution(m_v[i]);  // ����ֵ�Ŵ�14��  =exp(expint(v)/2)
 		m_Gh1[i] = min<int>((__int64)m_E_pr_SNR[i] * m_integra[i] / (m_num_mag_pow + m_E_pr_SNR[i]), 70 << 14);
@@ -340,9 +348,16 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 		m_M[i] = ((__int64)m_G[i] * m_abs_Y[i]) >> m_amp_para_double;  //��ֵ
 		winData[i].real = ((__int64)m_M[i] * m_EN_cos[i]) >> 12; 
 		winData[i].imag = ((__int64)m_M[i] * m_EN_sin[i]) >> 12;
-		m_pr_SNR[i] = min<int>(pow((__int64)m_M[i] * m_num_mag / lam, 2), 4096 << m_amp_para_double);  // 10000
-		winData[m_lwlen - i].real = winData[i].real;
-		winData[m_lwlen - i].imag = -winData[i].imag;
+		const double cleanRatio = (double)m_M[i] / lam;
+		m_pr_SNR[i] = (int)((std::min)(cleanRatio * cleanRatio, 4096.0) * m_num_mag_pow);  // 10000
+		// DC and Nyquist are self-conjugate; DC has no bin at index N.
+		if (i > 0 && i < m_linc) {
+			winData[m_lwlen - i].real = winData[i].real;
+			winData[m_lwlen - i].imag = -winData[i].imag;
+		}
+		else {
+			winData[i].imag = 0;
+		}
 		aa[i] = m_G[i];
 	}
 	

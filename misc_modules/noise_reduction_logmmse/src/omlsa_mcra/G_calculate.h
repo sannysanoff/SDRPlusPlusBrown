@@ -26,6 +26,7 @@ private:
 	int m_linc, m_linc_move;
 	int m_lwlen, N_wlen1;
 	int m_cosen_pmax, m_w_global, m_wt_global;
+	int m_old_cosen_frame, m_cosen_peak;
 	short* m_dataBuf;
 	int*m_init_S_min, *m_init_S, *m_init_S_tmp;
 	int* m_arr_temp;

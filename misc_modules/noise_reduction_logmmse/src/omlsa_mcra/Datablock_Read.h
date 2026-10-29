@@ -16,7 +16,8 @@ public:
 	//����Χ��-1��-14 base4_fft   -15��-18 LSA_denoise
 	//-19��-49 G_calculate  -50��-58 Datablock_Read
 	int m_maxdata;
-	short m_inc, m_wlen,m_blockInd,m_inc_move;
+	short m_inc, m_wlen,m_inc_move;
+	int m_blockInd;
 	short m_channels,m_wlen15,m_inc2;
 	int m_sample_rate,m_data_rest_length ;
 	short* m_data_in;

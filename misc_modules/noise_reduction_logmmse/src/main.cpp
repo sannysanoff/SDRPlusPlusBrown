@@ -9,6 +9,7 @@
 #include <core.h>
 #include <imgui/imgui_internal.h>
 #include <vector>
+#include <algorithm>
 #include <gui/widgets/snr_meter.h>
 #include "signal_path/signal_path.h"
 #include <radio_interface.h>
@@ -42,6 +43,7 @@ public:
         config.acquire();
         if (config.conf.contains("IFNR")) ifnr = config.conf["IFNR"];
         if (config.conf.contains("IFNR_COMPENSATION")) ifnrCompensation = config.conf["IFNR_COMPENSATION"];
+        ifnrCompensation = std::clamp(ifnrCompensation, 0.01f, 0.99f);
         if (config.conf.contains("DisableCpuDeactivation")) disableCpuDeactivation = config.conf["DisableCpuDeactivation"];
         if (config.conf.contains("SNRChartWidget")) snrChartWidget = config.conf["SNRChartWidget"];
         config.release(true);
@@ -93,7 +95,7 @@ public:
 
 private:
     bool ifnr = false;
-    float ifnrCompensation = 1.0f;
+    float ifnrCompensation = 0.99f;
     bool disableCpuDeactivation = false;
 
     bool afnrEnabled = false;
@@ -121,6 +123,7 @@ private:
 
         double afnr2comp = 0.5;
         if (config.conf.contains("AF_NR2_COMP_" + instanceName)) afnr2comp = config.conf["AF_NR2_COMP_" + instanceName];
+        afnr2comp = std::clamp(afnr2comp, 0.01, 0.99);
 
 
         config.release(true);
@@ -294,7 +297,7 @@ private:
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::CalcTextSize("WWWWWW").x);
-        if (ImGui::SliderFloat("##_sdrpp_if_nr_comp", &ifnrCompensation, 0.0f, 1.0f, "%.2f")) {
+        if (ImGui::SliderFloat("##_sdrpp_if_nr_comp", &ifnrCompensation, 0.01f, 0.99f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
             ifnrProcessor.setCompensation(ifnrCompensation);
             config.acquire();
             config.conf["IFNR_COMPENSATION"] = ifnrCompensation;
@@ -312,7 +315,7 @@ private:
             ImGui::Text("%0.01f", 32767.0 / v->scaled);
             ImGui::SameLine();
             ImGui::SetNextItemWidth(ImGui::CalcTextSize("WWWWWW").x);
-            if (ImGui::SliderFloat(("##_radio_omlsa_comp_" + k).c_str(), &v->compensation, 0.0f, 1.0f, "%.2f")) {
+            if (ImGui::SliderFloat(("##_radio_omlsa_comp_" + k).c_str(), &v->compensation, 0.01f, 0.99f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
                 v->setCompensation(v->compensation);
                 config.acquire();
                 config.conf["AF_NR2_COMP_" + k] = v->compensation;
