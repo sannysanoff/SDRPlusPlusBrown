@@ -623,8 +623,23 @@ Use this exact order when fixing SDR++ runtime bugs:
      second of wall clock, so a polled state cannot be tied to a position in the file. Assert on the distribution of
      states (and on a second, signal-free fixture), not on fixed times. `e2e/test_vowel_squelch.py` does this.
    - The radio module exposes the vowel squelch state for tests: `/proc/radio/<instance>/vowel_squelch_open` (bool),
-     `.../vowel_squelch_snr` (dB) and `.../vowel_squelch_features` (periodicity, pitch, harmonics, comb contrast,
-     occupied span, SNR).
+     `.../vowel_squelch_score` (harmonic-motion evidence), `.../vowel_squelch_detection` (a vowel was detected in the
+     last 100 ms of input audio, undelayed: this is the panel lamp) and `.../vowel_squelch_features` (score,
+     threshold, pitch, pitch motion, motion SNR, partial count, comb span, detection count).
+   - Vowel squelch live diagnostics: enable Vowel Squelch, then `Details / charts`. `Freeze` holds the display
+     while feature CSVs keep recording under `<root>/vowel_squelch_logs/<instance>_<epoch_ms>.csv`. The displayed UTC
+     timestamp and sequence identify the same 10 ms hop in the log. File I/O runs on a separate logger thread; the
+     bounded DSP history reports dropped diagnostic samples as `skipped_hops`. The logs contain features, not audio.
+   - The vowel squelch in `core/src/dsp/noise_reduction/vowel_squelch.h` tracks spectral partials and fits
+     `f_j = order_j * F0 + offset` (SSB tuning offset). Harmonic dilation must fit twice as well as rigid drift.
+     Window/tracking durations are 80/60, 80/30 and 40/20 ms. Physical harmonic numbers are inferred from coordinated motion when motion SNR >=3, independently of the
+     constant SSB offset; weaker motion retains the nominal anchor. Diagnostics v3 record inferred orders, offset,
+     UI-sampled tuning and demodulator ID. Short paths require >=3 Hz pitch motion and motion SNR
+     >=3; the long path can confirm weaker motion with recent score support. All share one sensitivity threshold
+     (default 0.6). The 0.5 s audio buffer opens on the next sample after detection, with one second of source-audio
+     hold by default. `tests/vowel_squelch_timing.cpp` checks a short voiced burst, replay and gate timing.
+     The Python proof of concept and corpus report are in `/tmp/codex-vsq`. Triggering somewhere in a voice file is
+     not speech recall: partial tracking can still miss words, so inspect gate coverage and rejection reasons.
    - Python test helpers can hide real issues if they use the wrong build target or too-short HTTP timeouts.
    - On macOS the harness sets `SDRPP_MIC_ACCESS=skip`, because the TCC microphone
      request in `src/macos_init.m` aborts a binary that is not inside a `.app`

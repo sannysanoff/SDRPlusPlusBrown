@@ -18,7 +18,7 @@ visit both states) and it never opens on noise of the same level and bandwidth.
 Note on timing: with the null audio sink the audio chain runs as fast as it can, not in real time (the
 7.5 s fixture is consumed in about a quarter of a second of wall clock), so a sample cannot be tied to a
 position in the file. Both fixtures loop, so the samples are effectively drawn from the whole recording,
-which is what makes a distribution check the right tool here. The time-accurate behaviour (250 ms buffer,
+which is what makes a distribution check the right tool here. The time-accurate behaviour (500 ms buffer,
 1 s hangover) is covered by the detector's own measurements, not by this test.
 
 Environment Variables:
@@ -42,7 +42,7 @@ NOISE_FIXTURE = os.path.join(HERE, "recordings", "vowel_squelch_noise.wav")
 PROC_PATH = "/proc/radio/Radio/vowel_squelch_open"
 
 
-def build_config(fixture_path, enabled=True, decay=1.0, sensitivity=0.5):
+def build_config(fixture_path, enabled=True, decay=1.0, sensitivity=0.6):
     cfg = get_base_config()
     cfg["sampleRate"] = 48000.0
     cfg["frequency"] = 0.0            # the fixture has the station at 0 Hz
@@ -92,8 +92,8 @@ def record_gate(ctx, seconds, interval=0.05):
     return samples
 
 
-def run_fixture(fixture_path, seconds, enabled=True):
-    main_config, radio_config = build_config(fixture_path, enabled=enabled)
+def run_fixture(fixture_path, seconds, enabled=True, decay=1.0):
+    main_config, radio_config = build_config(fixture_path, enabled=enabled, decay=decay)
     with SDRPPTestContext() as ctx:
         ctx.write_configs(main_config, radio_config)
         # the file source keeps its own configuration, in its own file
@@ -142,11 +142,8 @@ def test_vowel_squelch():
     if open_fraction <= 0.0:
         stats.test_fail("test_vowel_squelch", "the squelch never opened on the station")
         return False
-    if open_fraction < 0.2:
+    if open_fraction < 0.5:
         stats.test_fail("test_vowel_squelch", f"the squelch was open only {100 * open_fraction:.0f}% of the samples")
-        return False
-    if open_fraction > 0.95:
-        stats.test_fail("test_vowel_squelch", f"the squelch stayed open {100 * open_fraction:.0f}% of the time, i.e. it never closed")
         return False
 
     # ---- 2. the same bandwidth, same level, nothing but noise: it must never open
@@ -159,6 +156,23 @@ def test_vowel_squelch():
     stats.info(f"{len(opened)} open samples of {len(samples)} on noise")
     if opened:
         stats.test_fail("test_vowel_squelch", f"the squelch opened on noise at {opened[:5]}")
+        return False
+
+    # ---- 1c. with a short decay the gate has to visit both states on the same channel: it opens on a vowel and
+    # closes again in the gaps between overs. This is what proves the hangover is a hangover and not a latch.
+    stats.subsection("gate closes between overs (decay 0.2 s)")
+    samples = run_fixture(SPEECH_FIXTURE, seconds=6.0, decay=0.2)
+    if not samples:
+        stats.test_fail("test_vowel_squelch", "the squelch state was never readable with a short decay")
+        return False
+    short_open = sum(1 for _, o in samples if o) / len(samples)
+    stats.info(f"gate open in {100 * short_open:.0f}% of {len(samples)} samples with decay 0.2 s")
+    if short_open <= 0.0:
+        stats.test_fail("test_vowel_squelch", "the squelch never opened with a short decay")
+        return False
+    if short_open >= 0.98:
+        stats.test_fail("test_vowel_squelch",
+                        f"the squelch stayed open {100 * short_open:.0f}% of the time even with decay 0.2 s, so it latches")
         return False
 
     stats.test_pass("test_vowel_squelch", "shut on noise, open on the voice, shut after the decay")

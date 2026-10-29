@@ -20,6 +20,12 @@
 #include <cmath>
 #include <fftw3.h>
 #include <algorithm>
+#include <fstream>
+#include <filesystem>
+#include <iomanip>
+#include <thread>
+#include <ctime>
+#include <cctype>
 #include "radio_interface.h"
 #include "demod.h"
 #include "radio_module_interface.h"
@@ -165,12 +171,16 @@ public:
         const std::string vsPath = "/radio/" + name;
         httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_open", [this]() { return vowelSquelch.isOpen() ? "true" : "false"; },
                                             nullptr, httpdebug::procfs::Type::Bool);
-        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_snr", [this]() { return std::to_string(vowelSquelch.lastSnrDb()); },
+        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_score", [this]() { return std::to_string(vowelSquelch.lastScore()); },
                                             nullptr, httpdebug::procfs::Type::Float);
+        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_detection", [this]() { return vowelSquelch.detectedRecently() ? "true" : "false"; },
+                                            nullptr, httpdebug::procfs::Type::Bool);
         httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_features", [this]() {
-            char b[160];
-            snprintf(b, sizeof b, "p=%.3f f0=%.0f nh=%d con=%.0f span=%.0f snr=%.1f", vowelSquelch.lastPeriodicity(), vowelSquelch.lastPitchHz(),
-                     vowelSquelch.lastHarmonics(), vowelSquelch.lastCombContrast(), vowelSquelch.lastOccupiedSpanHz(), vowelSquelch.lastSnrDb());
+            char b[192];
+            snprintf(b, sizeof b, "score=%.3f threshold=%.3f pitch=%.0f motion=%.2f snr=%.1f partials=%d span=%.0f detections=%d",
+                     vowelSquelch.lastScore(), vowelSquelch.getThreshold(), vowelSquelch.lastPitchHz(),
+                     vowelSquelch.lastPitchMotionHz(), vowelSquelch.lastMotionSnr(), vowelSquelch.lastPartials(),
+                     vowelSquelch.lastSpanHz(), vowelSquelch.detectionCount());
             return std::string(b);
         }, nullptr, httpdebug::procfs::Type::String);
 
@@ -183,6 +193,7 @@ public:
             _this->selectedDemod->setFrozen(txActive);
         };
         sigpath::txState.bindHandler(&txHandler);
+        startVowelDiagnosticsLog();
     }
 
     // Automation channel — invoked by debug HTTP server
@@ -363,11 +374,14 @@ public:
 
 
     ~RadioModule() {
+        vowelLogStop.store(true);
+        if (vowelLogThread.joinable()) { vowelLogThread.join(); }
         sigpath::txState.unbindHandler(&txHandler);
         core::modComManager.unregisterInterface(name);
         gui::menu.removeEntry(name);
         httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_open");
-        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_snr");
+        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_score");
+        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_detection");
         httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_features");
         afsplitter.stop();
         for(auto &s: streams) {
@@ -498,8 +512,168 @@ public:
     }
 
 private:
+    using VowelDiagnostics = dsp::noise_reduction::VowelSquelch::Diagnostics;
+
+    static std::string vowelTimestamp(int64_t utcMs) {
+        const time_t seconds = (time_t)(utcMs / 1000);
+        std::tm utc{};
+#ifdef _WIN32
+        gmtime_s(&utc, &seconds);
+#else
+        gmtime_r(&seconds, &utc);
+#endif
+        char date[32], text[48];
+        std::strftime(date, sizeof date, "%Y-%m-%d %H:%M:%S", &utc);
+        snprintf(text, sizeof text, "%s.%03dZ", date, (int)(utcMs % 1000));
+        return text;
+    }
+
+    void startVowelDiagnosticsLog() {
+        std::string safeName = name;
+        for (char& c : safeName) { if (!std::isalnum((unsigned char)c) && c != '-') { c = '_'; } }
+        const auto now = std::chrono::system_clock::now();
+        const auto epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        const auto directory = std::filesystem::path(core::getRoot()) / "vowel_squelch_logs";
+        vowelLogPath = (directory / (safeName + "_" + std::to_string(epochMs) + ".csv")).string();
+        vowelLogThread = std::thread([this, directory]() {
+            std::error_code error;
+            std::filesystem::create_directories(directory, error);
+            std::ofstream file(vowelLogPath);
+            if (error || !file) { vowelLogError.store(true); return; }
+            file << "utc,utc_ms,sequence,hop,tuned_hz,demod_id,input_peak_dbfs,input_rms_dbfs,analysis_gain_db,sample_rate,analysis_rate,threshold,selected_band_hz,detected,gate_open,hold_left_s,last_detection_age_s,detections";
+            for (const char* band : { "high", "low" }) {
+                for (const char* field : { "score", "raw_score", "support", "reason", "peaks", "tracks", "complete", "partials", "span_hz", "pitch_hz", "motion_hz", "motion_snr", "lattice_error_hz", "motion_error_hz", "translation_error_hz", "roughness_hz", "contrast", "window_ms", "tracking_ms", "ssb_offset_hz", "first_harmonic", "last_harmonic" }) {
+                    file << ',' << band << '_' << field;
+                }
+            }
+            file << ",skipped_hops\n" << std::setprecision(9);
+            uint64_t cursor = 0;
+            auto lastFlush = std::chrono::steady_clock::now();
+            auto drain = [&]() {
+                const auto samples = vowelSquelch.diagnosticsSince(cursor);
+                for (const auto& d : samples) {
+                    const uint64_t skipped = d.sequence - cursor - 1;
+                    file << vowelTimestamp(d.utcMs) << ',' << d.utcMs << ',' << d.sequence << ',' << d.hop << ',' << d.tunedHz << ',' << d.demodId << ','
+                         << d.inputPeakDb << ',' << d.inputRmsDb << ',' << d.analysisGainDb << ',' << d.sampleRate << ','
+                         << d.analysisRate << ',' << d.threshold << ',' << (d.selectedBand ? 70 : 150) << ',' << d.detected << ','
+                         << d.open << ',' << d.holdLeft << ',' << d.detectionAge << ',' << d.detections;
+                    for (const auto& b : d.bands) {
+                        file << ',' << b.score << ',' << b.rawScore << ',' << b.support << ','
+                             << dsp::noise_reduction::VowelSquelch::rejectionReason(b.stage) << ',' << b.peaks << ',' << b.tracks << ','
+                             << b.complete << ',' << b.partials << ',' << b.span << ',' << b.pitch << ',' << b.motion << ',' << b.snr << ','
+                             << b.latticeError << ',' << b.motionError << ',' << b.translationError << ',' << b.roughness << ',' << b.strength << ',' << b.windowMs << ',' << b.trackingMs << ',' << b.offsetHz << ',' << b.firstHarmonic << ',' << b.lastHarmonic;
+                    }
+                    file << ',' << skipped << '\n';
+                    cursor = d.sequence;
+                }
+            };
+            while (!vowelLogStop.load()) {
+                drain();
+                if (std::chrono::steady_clock::now() - lastFlush >= std::chrono::seconds(1)) {
+                    file.flush();
+                    if (!file) { vowelLogError.store(true); return; }
+                    lastFlush = std::chrono::steady_clock::now();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            drain();
+        });
+    }
+
+    void drawVowelDiagnostics() {
+        ImGui::PushID(this);
+        ImGui::TextUnformatted("VSQ diagnostics v3");
+        ImGui::Checkbox("Details / charts", &vowelDiagnosticsWindow);
+        ImGui::SameLine();
+        ImGui::Checkbox("Freeze", &vowelDiagnosticsFrozen);
+        if (!vowelDiagnosticsFrozen) {
+            const auto fresh = vowelSquelch.diagnosticsSince(vowelUiSequence);
+            for (const auto& d : fresh) {
+                if (!vowelUiHistory.empty() && d.hop <= vowelUiHistory.back().hop) { vowelUiHistory.clear(); }
+                vowelUiHistory.push_back(d);
+                vowelUiSequence = d.sequence;
+                if (vowelUiHistory.size() > 1000) { vowelUiHistory.pop_front(); }
+            }
+        }
+        ImGui::Text("AF %s | IF squelch %s", (enabled && postProcEnabled) ? "active" : "BYPASSED", squelchEnabled ? "ON" : "off");
+        if (vowelUiHistory.empty()) {
+            ImGui::TextWrapped("Waiting for analysis audio (no hops yet).");
+        }
+        else {
+            const auto& d = vowelUiHistory.back();
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            ImGui::TextUnformatted(vowelTimestamp(d.utcMs).c_str());
+            ImGui::Text("#%llu hop %d | data age %.1fs", (unsigned long long)d.sequence, d.hop, (nowMs - d.utcMs) / 1000.0);
+            ImGui::Text("Gate %s | hits %d | last %.2fs", d.open ? "OPEN" : "closed", d.detections, d.detectionAge);
+            ImGui::Text("Score %.3f / %.3f", d.bands[d.selectedBand].score, d.threshold);
+        }
+        ImGui::TextWrapped("CSV: %s", std::filesystem::path(vowelLogPath).filename().string().c_str());
+        if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", vowelLogPath.c_str()); }
+        if (vowelLogError.load()) { ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.2f, 1.0f), "CSV WRITE FAILED"); }
+        if (!vowelDiagnosticsWindow) { ImGui::PopID(); return; }
+        ImGui::SetNextWindowSize(ImVec2(660.0f, 660.0f), ImGuiCond_FirstUseEver);
+        const std::string title = "Vowel squelch diagnostics - " + name;
+        if (!ImGui::Begin(title.c_str(), &vowelDiagnosticsWindow)) { ImGui::End(); ImGui::PopID(); return; }
+        ImGui::TextUnformatted("VSQ diagnostics v3 - 3 analysis paths");
+        ImGui::Checkbox("Freeze display (CSV keeps recording)", &vowelDiagnosticsFrozen);
+        if (!vowelUiHistory.empty()) {
+            const auto& d = vowelUiHistory.back();
+            ImGui::Text("%s  #%llu  hop %d", vowelTimestamp(d.utcMs).c_str(), (unsigned long long)d.sequence, d.hop);
+            ImGui::Text("Gate %s | hits %d | last %.2fs | hold %.2fs | buffer %.2fs", d.open ? "OPEN" : "closed", d.detections, d.detectionAge, d.holdLeft, vowelSquelch.kPrerollSec);
+            ImGui::Text("Input rms %.1f peak %.1f dBFS", d.inputRmsDb, d.inputPeakDb);
+            ImGui::Text("Analysis gain %+.1f dB", d.analysisGainDb);
+            ImGui::Text("Rate %.0f -> %.0f Hz", d.sampleRate, d.analysisRate);
+            ImGui::Text("Tuned %.0f Hz | demod %d", d.tunedHz, d.demodId);
+            ImGui::Text("Threshold %.3f | errors -1 = unavailable", d.threshold);
+            ImGui::Columns(2, "vsq_bands", false);
+            for (int i = 0; i < 2; i++) {
+                const auto& b = d.bands[i];
+                ImGui::Separator();
+                ImGui::Text("%d Hz band: %.3f (raw %.3f)", i ? 70 : 150, b.score, b.rawScore);
+                ImGui::Text("Window %d / tracking %d ms", b.windowMs, b.trackingMs);
+                ImGui::TextWrapped("%s", dsp::noise_reduction::VowelSquelch::rejectionReason(b.stage));
+                ImGui::Text("Peaks %d tracks %d ready %d", b.peaks, b.tracks, b.complete);
+                ImGui::Text("Comb %d span %.0f F0 %.1f Hz", b.partials, b.span, b.pitch);
+                ImGui::Text("Harmonics %d..%d offset %+.0f Hz", b.firstHarmonic, b.lastHarmonic, b.offsetHz);
+                ImGui::Text("Motion %.2f Hz SNR %.2f", b.motion, b.snr);
+                ImGui::Text("Fit %.2f move %.2f drift %.2f", b.latticeError, b.motionError, b.translationError);
+                ImGui::Text("Rough %.2f contrast %.2f", b.roughness, b.strength);
+                ImGui::Text("Prior score support %.3f", b.support);
+                ImGui::NextColumn();
+            }
+            ImGui::Columns(1);
+            ImGui::Separator();
+            std::vector<float> scores, gates;
+            float peakRatio = 0.0f;
+            int hits = 0;
+            for (const auto& item : vowelUiHistory) {
+                const float ratio = (float)((std::max)(item.bands[0].score, item.bands[1].score) / item.threshold);
+                scores.push_back(ratio);
+                gates.push_back(item.open ? 1.0f : 0.0f);
+                peakRatio = (std::max)(peakRatio, ratio);
+                hits += item.detected;
+            }
+            ImGui::Text("History %.2fs | %d hits", (vowelUiHistory.size() - 1) * vowelSquelch.kHopSec, hits);
+            ImGui::Text("Peak score/threshold %.2f", peakRatio);
+            const float plotWidth = ImGui::GetContentRegionAvail().x;
+            const ImVec2 size(plotWidth, ImGui::GetTextLineHeight() * 4.0f);
+            ImGui::PlotLines("##vsq_score", scores.data(), (int)scores.size(), 0, "Score / threshold (1 = opens)", 0.0f, 3.0f, size);
+            // Draw the trigger threshold on the same fixed scale as the score trace.
+            const ImVec2 lo = ImGui::GetItemRectMin(), hi = ImGui::GetItemRectMax();
+            const ImVec2 pad = ImGui::GetStyle().FramePadding;
+            const float y = hi.y - pad.y - (hi.y - lo.y - 2.0f * pad.y) / 3.0f;
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(lo.x + pad.x, y), ImVec2(hi.x - pad.x, y), IM_COL32(240, 160, 50, 180));
+            ImGui::PlotLines("##vsq_gate", gates.data(), (int)gates.size(), 0, "Gate open (includes hold)", -0.1f, 1.1f, ImVec2(plotWidth, ImGui::GetTextLineHeight() * 2.5f));
+        }
+        ImGui::TextWrapped("CSV: %s", vowelLogPath.c_str());
+        if (vowelLogError.load()) { ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.2f, 1.0f), "CSV WRITE FAILED"); }
+        ImGui::End();
+        ImGui::PopID();
+    }
+
     static void menuHandler(void* ctx) {
         RadioModule* _this = (RadioModule*)ctx;
+        if (_this->vfo) { _this->vowelSquelch.setDiagnosticTuning(gui::waterfall.getCenterFrequency() + _this->vfo->getOffset(), _this->selectedDemodID); }
 
         if (!_this->enabled) { style::beginDisabled(); }
 
@@ -612,6 +786,19 @@ private:
         if (ImGui::Checkbox(("Vowel Squelch##_radio_vsqelch_ena_" + _this->name).c_str(), &_this->vowelSquelchEnabled)) {
             _this->setVowelSquelchEnabled(_this->vowelSquelchEnabled);
         }
+        // The lamp shows recent input detections; the separate gate status below includes the hold time.
+        {
+            const bool lit = _this->vowelSquelchEnabled && _this->vowelSquelch.detectedRecently(120.0);
+            ImGui::SameLine();
+            const ImVec2 p0 = ImGui::GetCursorScreenPos();
+            const float r = ImGui::GetTextLineHeight() * 0.32f;
+            const ImVec2 centre(p0.x + 10.0f, p0.y + ImGui::GetTextLineHeight() * 0.5f);
+            ImGui::Dummy(ImVec2(24.0f, ImGui::GetTextLineHeight()));
+            ImGui::GetWindowDrawList()->AddCircleFilled(centre, r, lit ? IM_COL32(60, 235, 120, 255) : IM_COL32(70, 78, 90, 255));
+            if (lit) {
+                ImGui::GetWindowDrawList()->AddCircleFilled(centre, r * 2.0f, IM_COL32(60, 235, 120, 70));
+            }
+        }
         if (!_this->vowelSquelchEnabled && _this->enabled) { style::beginDisabled(); }
 
         ImGui::Text("Decay");
@@ -629,6 +816,7 @@ private:
         }
 
         if (!_this->vowelSquelchEnabled && _this->enabled) { style::endDisabled(); }
+        if (_this->vowelSquelchEnabled) { _this->drawVowelDiagnostics(); }
 
         // FM IF Noise Reduction
         if (_this->FMIFNRAllowed) {
@@ -723,7 +911,7 @@ private:
         squelchLevel = MIN_SQUELCH;
         vowelSquelchEnabled = false;
         vowelSquelchDecay = 1.0f;
-        vowelSquelchSensitivity = 0.5f;
+        vowelSquelchSensitivity = 0.6f;
         deempAllowed = selectedDemod->getDeempAllowed();
         deempId = deempModes.valueId((DeemphasisMode)selectedDemod->getDefaultDeemphasisMode());
         squelchEnabled = false;
@@ -1123,6 +1311,13 @@ private:
     dsp::filter::Deemphasis<dsp::stereo_t> deemp;
     dsp::noise_reduction::VowelSquelch vowelSquelch;
 
+    std::thread vowelLogThread;
+    std::atomic<bool> vowelLogStop{ false }, vowelLogError{ false };
+    std::string vowelLogPath;
+    std::deque<VowelDiagnostics> vowelUiHistory;
+    uint64_t vowelUiSequence = 0;
+    bool vowelDiagnosticsFrozen = false, vowelDiagnosticsWindow = true;
+
     // Spectrum capture splitter (taps VFO output before IF chain)
     dsp::routing::Splitter<dsp::complex_t> ifSplitter;
     static constexpr int SPECTRUM_BUF_SIZE = 131072;
@@ -1153,7 +1348,7 @@ private:
     float squelchLevel;
     bool vowelSquelchEnabled = false;
     float vowelSquelchDecay = 1.0f;
-    float vowelSquelchSensitivity = 0.5f;
+    float vowelSquelchSensitivity = 0.6f;
 
     int deempId = 0;
     bool deempAllowed;
