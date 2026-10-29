@@ -619,6 +619,12 @@ Use this exact order when fixing SDR++ runtime bugs:
      template; `e2e/test_recorder_timezone.py` forces `TZ=Asia/Tokyo` so local and
      UTC hours differ.
    - If decoder state flickers with signal quality, expose a stable wait command instead of polling a single frame.
+   - With the null audio sink the audio chain is **not real time**: a 7.5 s recording is consumed in a fraction of a
+     second of wall clock, so a polled state cannot be tied to a position in the file. Assert on the distribution of
+     states (and on a second, signal-free fixture), not on fixed times. `e2e/test_vowel_squelch.py` does this.
+   - The radio module exposes the vowel squelch state for tests: `/proc/radio/<instance>/vowel_squelch_open` (bool),
+     `.../vowel_squelch_snr` (dB) and `.../vowel_squelch_features` (periodicity, pitch, harmonics, comb contrast,
+     occupied span, SNR).
    - Python test helpers can hide real issues if they use the wrong build target or too-short HTTP timeouts.
    - On macOS the harness sets `SDRPP_MIC_ACCESS=skip`, because the TCC microphone
      request in `src/macos_init.m` aborts a binary that is not inside a `.app`

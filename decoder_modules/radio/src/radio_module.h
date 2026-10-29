@@ -10,11 +10,13 @@
 #include <dsp/noise_reduction/noise_blanker.h>
 #include <dsp/noise_reduction/fm_if.h>
 #include <dsp/noise_reduction/squelch.h>
+#include <dsp/noise_reduction/vowel_squelch.h>
 #include <dsp/multirate/rational_resampler.h>
 #include <dsp/filter/deephasis.h>
 #include <core.h>
 #include <stdint.h>
 #include <utils/optionlist.h>
+#include <http_debug_server.h>
 #include <cmath>
 #include <fftw3.h>
 #include <algorithm>
@@ -102,9 +104,13 @@ public:
 
         resamp.init(NULL, 250000.0, 48000.0);
         deemp.init(NULL, 50e-6, 48000.0);
+        vowelSquelch.init(NULL, 48000.0);
+        vowelSquelch.setDecay(vowelSquelchDecay);
+        vowelSquelch.setSensitivity(vowelSquelchSensitivity);
 
         afChain.addBlock(&resamp, true);
         afChain.addBlock(&deemp, false);
+        afChain.addBlock(&vowelSquelch, false);
 
         // Initialize the sink
         srChangeHandler.ctx = this;
@@ -154,6 +160,19 @@ public:
 
         // Register the menu
         gui::menu.registerEntry(name, menuHandler, this, this);
+
+        // for the e2e test: whether the squelch is passing audio, and what it sees
+        const std::string vsPath = "/radio/" + name;
+        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_open", [this]() { return vowelSquelch.isOpen() ? "true" : "false"; },
+                                            nullptr, httpdebug::procfs::Type::Bool);
+        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_snr", [this]() { return std::to_string(vowelSquelch.lastSnrDb()); },
+                                            nullptr, httpdebug::procfs::Type::Float);
+        httpdebug::procfs::registerEndpoint(vsPath + "/vowel_squelch_features", [this]() {
+            char b[160];
+            snprintf(b, sizeof b, "p=%.3f f0=%.0f nh=%d con=%.0f span=%.0f snr=%.1f", vowelSquelch.lastPeriodicity(), vowelSquelch.lastPitchHz(),
+                     vowelSquelch.lastHarmonics(), vowelSquelch.lastCombContrast(), vowelSquelch.lastOccupiedSpanHz(), vowelSquelch.lastSnrDb());
+            return std::string(b);
+        }, nullptr, httpdebug::procfs::Type::String);
 
         // Register the module interface
         core::modComManager.registerInterface("radio", name, moduleInterfaceHandler, this);
@@ -347,6 +366,9 @@ public:
         sigpath::txState.unbindHandler(&txHandler);
         core::modComManager.unregisterInterface(name);
         gui::menu.removeEntry(name);
+        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_open");
+        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_snr");
+        httpdebug::procfs::unregister("/radio/" + name + "/vowel_squelch_features");
         afsplitter.stop();
         for(auto &s: streams) {
             s->stop();
@@ -586,6 +608,28 @@ private:
         }
         if (!_this->squelchEnabled && _this->enabled) { style::endDisabled(); }
 
+        // Vowel squelch: opens on the harmonics of a voice, not on noise or a carrier
+        if (ImGui::Checkbox(("Vowel Squelch##_radio_vsqelch_ena_" + _this->name).c_str(), &_this->vowelSquelchEnabled)) {
+            _this->setVowelSquelchEnabled(_this->vowelSquelchEnabled);
+        }
+        if (!_this->vowelSquelchEnabled && _this->enabled) { style::beginDisabled(); }
+
+        ImGui::Text("Decay");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::SliderFloat(("##_radio_vsqelch_decay_" + _this->name).c_str(), &_this->vowelSquelchDecay, _this->MIN_VOWEL_DECAY, _this->MAX_VOWEL_DECAY, "%.2f s")) {
+            _this->setVowelSquelchDecay(_this->vowelSquelchDecay);
+        }
+
+        ImGui::Text("Sensitivity");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::SliderFloat(("##_radio_vsqelch_sens_" + _this->name).c_str(), &_this->vowelSquelchSensitivity, 0.0f, 1.0f, "%.2f")) {
+            _this->setVowelSquelchSensitivity(_this->vowelSquelchSensitivity);
+        }
+
+        if (!_this->vowelSquelchEnabled && _this->enabled) { style::endDisabled(); }
+
         // FM IF Noise Reduction
         if (_this->FMIFNRAllowed) {
             if (ImGui::Checkbox(("IF Noise Reduction##_radio_fmifnr_ena_" + _this->name).c_str(), &_this->FMIFNREnabled)) {
@@ -677,6 +721,9 @@ private:
         bandwidthLocked = selectedDemod->getBandwidthLocked();
         snapInterval = selectedDemod->getDefaultSnapInterval();
         squelchLevel = MIN_SQUELCH;
+        vowelSquelchEnabled = false;
+        vowelSquelchDecay = 1.0f;
+        vowelSquelchSensitivity = 0.5f;
         deempAllowed = selectedDemod->getDeempAllowed();
         deempId = deempModes.valueId((DeemphasisMode)selectedDemod->getDefaultDeemphasisMode());
         squelchEnabled = false;
@@ -701,6 +748,15 @@ private:
         }
         if (config.conf[name][selectedDemod->getName()].contains("squelchEnabled")) {
             squelchEnabled = config.conf[name][selectedDemod->getName()]["squelchEnabled"];
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("vowelSquelchEnabled")) {
+            vowelSquelchEnabled = config.conf[name][selectedDemod->getName()]["vowelSquelchEnabled"];
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("vowelSquelchDecay")) {
+            vowelSquelchDecay = config.conf[name][selectedDemod->getName()]["vowelSquelchDecay"];
+        }
+        if (config.conf[name][selectedDemod->getName()].contains("vowelSquelchSensitivity")) {
+            vowelSquelchSensitivity = config.conf[name][selectedDemod->getName()]["vowelSquelchSensitivity"];
         }
         if (config.conf[name][selectedDemod->getName()].contains("deempMode")) {
             if (!config.conf[name][selectedDemod->getName()]["deempMode"].is_string()) {
@@ -753,6 +809,10 @@ private:
         setSquelchLevel(squelchLevel);
         setSquelchEnabled(squelchEnabled);
 
+        // Configure vowel squelch (the block itself is put in the chain at the end, once it is configured)
+        vowelSquelch.setDecay(vowelSquelchDecay);
+        vowelSquelch.setSensitivity(vowelSquelchSensitivity);
+
         // Configure AF chain
         if (postProcEnabled) {
             // Configure resampler
@@ -769,8 +829,17 @@ private:
             afChain.disableAllBlocks([=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
         }
 
+        // the vowel squelch sits last in the audio chain: enable it now that the chain is configured
+        applyVowelSquelch();
+
         // Start new demodulator
         selectedDemod->start();
+    }
+
+    void applyVowelSquelch() {
+        if (!selectedDemod) { return; }
+        afChain.setBlockEnabled(&vowelSquelch, (vowelSquelchEnabled && postProcEnabled),
+                               [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
     }
 
 
@@ -853,6 +922,37 @@ private:
         config.release(true);
     }
 
+    void setVowelSquelchEnabled(bool enable) {
+        vowelSquelchEnabled = enable;
+        if (!selectedDemod) { return; }
+        applyVowelSquelch();
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["vowelSquelchEnabled"] = vowelSquelchEnabled;
+        config.release(true);
+    }
+
+    void setVowelSquelchDecay(float seconds) {
+        vowelSquelchDecay = std::clamp<float>(seconds, (float)MIN_VOWEL_DECAY, (float)MAX_VOWEL_DECAY);
+        vowelSquelch.setDecay(vowelSquelchDecay);
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["vowelSquelchDecay"] = vowelSquelchDecay;
+        config.release(true);
+    }
+
+    void setVowelSquelchSensitivity(float sensitivity) {
+        vowelSquelchSensitivity = std::clamp<float>(sensitivity, 0.0f, 1.0f);
+        vowelSquelch.setSensitivity(vowelSquelchSensitivity);
+
+        // Save config
+        config.acquire();
+        config.conf[name][selectedDemod->getName()]["vowelSquelchSensitivity"] = vowelSquelchSensitivity;
+        config.release(true);
+    }
+
     void setFMIFNREnabled(bool enabled) {
         FMIFNREnabled = enabled;
         if (!selectedDemod) { return; }
@@ -870,6 +970,7 @@ private:
         bool deempEnabled = (mode != DEEMP_MODE_NONE);
         if (deempEnabled) { deemp.setTau(deempTaus[mode]); }
         afChain.setBlockEnabled(&deemp, deempEnabled, [=](dsp::stream<dsp::stereo_t>* out){ afsplitter.setInput(out); });
+        applyVowelSquelch();
 
         // Save config
         config.acquire();
@@ -1020,6 +1121,7 @@ private:
     dsp::chain<dsp::stereo_t> afChain;
     dsp::multirate::RationalResampler<dsp::stereo_t> resamp;
     dsp::filter::Deemphasis<dsp::stereo_t> deemp;
+    dsp::noise_reduction::VowelSquelch vowelSquelch;
 
     // Spectrum capture splitter (taps VFO output before IF chain)
     dsp::routing::Splitter<dsp::complex_t> ifSplitter;
@@ -1049,6 +1151,9 @@ private:
 
     bool squelchEnabled = false;
     float squelchLevel;
+    bool vowelSquelchEnabled = false;
+    float vowelSquelchDecay = 1.0f;
+    float vowelSquelchSensitivity = 0.5f;
 
     int deempId = 0;
     bool deempAllowed;
@@ -1069,6 +1174,8 @@ private:
     const double MAX_NB = 10.0;
     const double MIN_SQUELCH = -100.0;
     const double MAX_SQUELCH = 0.0;
+    const double MIN_VOWEL_DECAY = 0.0;
+    const double MAX_VOWEL_DECAY = 5.0;
 
     bool enabled = true;
 

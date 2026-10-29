@@ -4,6 +4,9 @@ Newest entries are at the top.
 
 2026.10.29
 
+* Vowel Squelch in the radio panel: an audio-domain squelch that opens on the harmonics of a voice and keeps
+  noise, carriers, CW and data bursts muted. Decay (how long it stays open) and sensitivity (energy to open)
+  sliders. The audio is buffered by 1/4 s, so a word is not cut, and the gate stays open for the decay time.
 * RX888 MkII source module: native USB driver (SDDC firmware, ported from OnAir), HF direct sampling and the R828D VHF input, ADC clock
   64 or 128 MHz, rates from 250 kHz to 64 MHz (OnAir's list plus 64 MHz), gain, HF attenuator, dither, randomiser, PGA, bias tee. The
   firmware image ships with the module and is loaded into the radio's RAM, never flashed.
