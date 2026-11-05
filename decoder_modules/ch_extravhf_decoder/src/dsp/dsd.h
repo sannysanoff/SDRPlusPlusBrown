@@ -25,6 +25,7 @@ extern "C" {
 #include "common.h"
 #include "dsd_p25_utils.h"
 #include "Golay24.hpp"
+#include "Golay2087.hpp"
 #include "ReedSolomon.hpp"
 #include "Hamming.hpp"
 
@@ -99,7 +100,24 @@ namespace dsp {
             uint8_t dmr_status_s1_lastburstt = 0;
             std::string dmr_status_s0_lasttype = "";
             std::string dmr_status_s1_lasttype = "";
-            uint8_t dmr_status_cc = 0;
+            // Colour Code is tracked per-slot: every DMR TDMA slot sends a
+            // burst continuously (even "Idle" ones), each carrying its own
+            // Slot Type field, so a single shared value would get
+            // overwritten by whichever slot's burst was decoded last -
+            // showing a spurious change whenever your call ends and the
+            // other slot's (or a stray/interfering) burst is read next.
+            uint8_t dmr_status_s0_cc = 0;
+            uint8_t dmr_status_s1_cc = 0;
+            // Full Link Control (talkgroup/private call) decoded from the
+            // Voice LC Header / Terminator-with-LC bursts of each slot.
+            bool dmr_status_s0_lc_valid = false;
+            bool dmr_status_s1_lc_valid = false;
+            bool dmr_status_s0_group = true;  // true = group(TG) call, false = private/direct call
+            bool dmr_status_s1_group = true;
+            uint32_t dmr_status_s0_tgid = 0;  // TG id (group call) or destination unit id (private call)
+            uint32_t dmr_status_s1_tgid = 0;
+            uint32_t dmr_status_s0_srcid = 0; // source radio id
+            uint32_t dmr_status_s1_srcid = 0;
         };
         struct P25_status {
             int p25_status_src = 0;
@@ -240,6 +258,36 @@ namespace dsp {
 
         int dmr_dibitBuffP = 0;
         int processDMRdata(int count, const uint8_t* in);
+
+        // DMR Full Link Control decode (BPTC(196,96)) for Voice LC Header /
+        // Terminator-with-LC data bursts. Captured across the two halves of
+        // the data burst (Data1 before the sync field, Data2 after it).
+        bool dmrlc_bits[196];
+        bool dmrlc_pending = false;
+        int dmrlc_dtype = 0;     // 1 = Voice LC Header, 2 = Terminator with LC
+        int dmrlc_slot = 0;
+        int dmrlc_afterSyncPos = 0;
+
+        // Last logged CC/TG per slot, so we only log on change (see
+        // processDMRSlotType/processDMRFullLC) instead of on every burst.
+        // 0xFF / 0xFFFFFFFF mean "nothing logged yet".
+        uint8_t dmrLoggedCC[2] = { 0xFF, 0xFF };
+        uint32_t dmrLoggedTG[2] = { 0xFFFFFFFF, 0xFFFFFFFF };
+        static bool dmrHamming15113Decode(bool* d);
+        static bool dmrHamming1393Decode(bool* d);
+        void dmrBptcDecode(const bool* rawBits, uint8_t* out);
+        void processDMRFullLC(int dtype, int slot);
+
+        // Slot Type (Colour Code + Data Type) Golay(20,8,7) FEC. The 8 info
+        // bits + first 2 parity bits are read right after the CACH/Data1;
+        // the remaining 10 parity bits are mirrored right after the sync
+        // field. dmrSlotType1Pos marks where those first 10 bits start in
+        // dibitBuf so they (plus the 5 dibits at dmrlc_afterSyncPos) can be
+        // re-read once the whole codeword has streamed in.
+        int dmrSlotType1Pos = 0;
+        int dmrBurstSlot = 0;
+        void processDMRSlotType(int slot);
+        static std::string dmrDataTypeName(int dataType);
         int dmrv_iter = 0;
         int dmrv_ctr = 0;
         char dmrv_ambe_fr[4][24];

@@ -31,6 +31,10 @@ bundle_is_not_to_be_installed() {
     if [ "$1" = "Security" ]; then echo 1; fi
     if [ "$1" = "AppleFSCompression" ]; then echo 1; fi
     if [ "$1" = "libxml2.2.dylib" ]; then echo 1; fi
+    if [ "$1" = "QuartzCore" ]; then echo 1; fi
+    if [ "$1" = "Metal" ]; then echo 1; fi
+    if [ "$1" = "IOSurface" ]; then echo 1; fi
+    if [ "$1" = "ColorSync" ]; then echo 1; fi
 }
 
 # ========================= FOR INTERNAL USE ONLY =========================
