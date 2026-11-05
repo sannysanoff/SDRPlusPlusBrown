@@ -726,6 +726,12 @@ private:
             case RADIO_DEMOD_CW:
                 limit = 1000;
                 break;
+            case RADIO_DEMOD_NFM:
+                limit = 15000;
+                break;
+            case RADIO_DEMOD_WFM:
+                limit = 200000;
+                break;                
             }
             ImGui::SameLine();
             ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
