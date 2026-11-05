@@ -132,6 +132,12 @@
             "end": 7200000
         },
         {
+            "name": "SW 41m",
+            "type": "broadcast",
+            "start": 7200000,
+            "end": 7450000
+        },        
+        {
             "name": "SW 31m",
             "type": "broadcast",
             "start": 9500000,
