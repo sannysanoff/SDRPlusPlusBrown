@@ -318,7 +318,7 @@ namespace ImGui {
             }
         }
 
-        afterWaterfallDraw.emit(WaterfallDrawArgs{ window, wfMin, wfMax });
+        afterWaterfallDraw.emit(WaterfallDrawArgs{ window, wfMin, wfMax, fftAreaMin });
     }
 
 
@@ -384,6 +384,22 @@ namespace ImGui {
         mouseInFreq = IS_IN_AREA(dragOrigin, freqAreaMin, freqAreaMax);
         mouseInFFT = IS_IN_AREA(dragOrigin, fftAreaMin, fftAreaMax);
         mouseInWaterfall = IS_IN_AREA(dragOrigin, wfMin, wfMax);
+
+        // A floating window over the waterfall (e.g. a decoder's text window)
+        // owns the mouse: dragging or scrolling it must not tune the VFO.
+        {
+            ImGuiContext& g = *GImGui;
+            ImGuiWindow* root = window ? window->RootWindow : NULL;
+            const bool hoverOther = g.HoveredWindow && g.HoveredWindow->RootWindow != root;
+            const bool activeOther = g.ActiveId != 0 && g.ActiveIdWindow && g.ActiveIdWindow->RootWindow != root;
+            const bool movingOther = g.MovingWindow && g.MovingWindow->RootWindow != root;
+            if (hoverOther || activeOther || movingOther) {
+                mouseInFFTResize = false;
+                mouseInFreq = false;
+                mouseInFFT = false;
+                mouseInWaterfall = false;
+            }
+        }
 
         int mouseWheel = ImGui::GetIO().MouseWheel;
 
@@ -1028,6 +1044,25 @@ namespace ImGui {
         else {
             fftHeight = widgetSize.y - (50.0f * style::uiScale);
         }
+
+        // Room for overlays that draw between the oscilloscope and the waterfall
+        // (e.g. per-carrier markers). Each listener adds its own requirement.
+        {
+            // The band is inserted between the frequency scale and the waterfall
+            // so overlays draw at a fixed Y right above the waterfall instead of
+            // on top of the spectrum trace.
+            int overlayReserve = 0;
+            onReserveOverlayHeight.emit(overlayReserve);
+            if (!waterfallVisible) { overlayReserve = 0; }
+            if (overlayReserve > 0) {
+                const int maxReserve = (int)(widgetSize.y * 0.25f);
+                overlayReserve = std::min<int>(overlayReserve, maxReserve);
+                if (waterfallHeight - overlayReserve < 40) { overlayReserve = 0; }
+            }
+            overlayBand = overlayReserve;
+            waterfallHeight -= overlayReserve;
+        }
+
         dataWidth = widgetSize.x - (60.0f * style::uiScale);
         //        flog::info("onresize: dataWidth={} wsx={}", (int)dataWidth, widgetSize.x);
 
@@ -1099,7 +1134,7 @@ namespace ImGui {
             freqAreaMax.y = freqAreaMin.y;
         }
 
-        wfMin = ImVec2(fftAreaMin.x, freqAreaMax.y + 1);
+        wfMin = ImVec2(fftAreaMin.x, freqAreaMax.y + 1 + overlayBand);
         wfMax = ImVec2(fftAreaMin.x + dataWidth, wfMin.y + waterfallHeight);
 
         maxHSteps = dataWidth / (ImGui::CalcTextSize("000.000").x + 10);

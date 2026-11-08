@@ -8,9 +8,29 @@
 // .app bundle (TCC: "attempted to access privacy-sensitive data without a usage
 // description"), which breaks headless, CI and e2e runs. Set SDRPP_MIC_ACCESS=skip
 // to leave the permission alone.
+//
+// An unbundled binary has no Info.plist, so it has no NSMicrophoneUsageDescription.
+// Any TCC request from it aborts the whole process in a background tccd callback
+// (SIGABRT with no message). Therefore the default is "skip" unless we run from a
+// bundle; SDRPP_MIC_ACCESS=grant forces the request anyway.
+static int runningFromBundle() {
+    NSBundle* bundle = [NSBundle mainBundle];
+    if (bundle == nil) { return 0; }
+    NSString* path = [bundle bundlePath];
+    if (path == nil) { return 0; }
+    return [[path pathExtension] isEqualToString:@"app"] ? 1 : 0;
+}
+
 static int micAccessRequested() {
     const char* v = getenv("SDRPP_MIC_ACCESS");
-    if (v == NULL || v[0] == '\0') { return 1; }
+    if (v == NULL || v[0] == '\0') {
+        if (!runningFromBundle()) {
+            NSLog(@"MACOS: microphone access skipped: not running from an .app bundle, "
+                   "a TCC request would abort the process. Set SDRPP_MIC_ACCESS=grant to force it.");
+            return 0;
+        }
+        return 1;
+    }
     if (!strcasecmp(v, "skip") || !strcasecmp(v, "none") || !strcasecmp(v, "off") ||
         !strcasecmp(v, "no") || !strcasecmp(v, "0") || !strcasecmp(v, "false")) {
         return 0;
@@ -37,6 +57,11 @@ static void doMacosInit() {
 
             case AVAuthorizationStatusNotDetermined:
             {
+                if (!runningFromBundle()) {
+                    NSLog(@"MACOS: microphone permission not determined and not running from an "
+                           ".app bundle, not requesting it (TCC would abort the process).");
+                    break;
+                }
                 [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
                     if (granted) {
                         NSLog(@"User has granted audio permission to the application: requestAccessForMediaType:true");

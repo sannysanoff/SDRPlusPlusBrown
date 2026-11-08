@@ -22,12 +22,10 @@ namespace flog {
     std::vector<LogRec> logRecords;
     int performAdhocFileLogging = -1;
     static const char *adhocLogFileName = "/tmp/sdrpp.adhoc.log";
-    static bool memoryLogEnabled =
-#ifdef __ANDROID__
-        true;
-#else
-        false;
-#endif
+    // Always keep a ring buffer: the GUI "Show log" console reads it on every
+    // platform, not just Android.
+    static bool memoryLogEnabled = true;
+    static const size_t kMaxLogRecords = 1000;
 
     void setMemoryLogEnabled(bool enabled) {
         std::lock_guard<std::mutex> lck(outMtx);
@@ -233,6 +231,10 @@ namespace flog {
                 fclose(f);
             }
             if (memoryLogEnabled) {
+                if (logRecords.size() >= kMaxLogRecords) {
+                    logRecords.erase(logRecords.begin(), logRecords.begin() +
+                                     (long)(logRecords.size() - kMaxLogRecords + 1));
+                }
                 logRecords.emplace_back(LogRec{msec, type, out});
             }
         }

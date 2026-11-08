@@ -37,6 +37,9 @@ public:
     void setTuningMode(TuningMode mode);
     void setPanadapterIF(double freq);
     const std::string& getSelectedName() const { return selectedName; }
+    // True once a source is selected and its handlers are registered; starting
+    // before that is a silent no-op (this bit --autostart).
+    bool hasSelectedSource() const { return selectedHandler != NULL; }
 
     std::vector<std::string> getSourceNames();
 

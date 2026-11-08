@@ -374,11 +374,8 @@ void MainWindow::drawUpperLine(ImGui::WaterfallVFO* vfo) {
     }
     if (playButtonLocked && !tmpPlaySate) { style::endDisabled(); }
 
-    // Handle auto-start
-    if (autostart) {
-        autostart = false;
-        setPlayState(true);
-    }
+    // Handle auto-start (kept as a fallback; the retrying version lives in
+    // MainWindow::draw() because the source may not be selected yet).
 
     ImGui::SameLine();
     float origY = ImGui::GetCursorPosY();
@@ -542,8 +539,27 @@ void MainWindow::displayVariousWindows() {
 }
 
 
+// --autostart: retry until playback really runs. Two silent no-ops made the flag
+// look broken: sourceManager::start() does nothing while no source is selected,
+// and the file source ignores start() until it has opened the file. Both are
+// idempotent, so retrying for a few seconds is safe. The brown UI overrides
+// draw(), hence this is called from both draw paths.
+void MainWindow::handleAutostart() {
+    if (!autostart) { return; }
+    if (!sigpath::sourceManager.hasSelectedSource()) { return; }
+    if (++autostartTries > 300) {
+        autostart = false;
+        flog::warn("[autostart] gave up, start playback manually");
+        return;
+    }
+    if (!playing) { setPlayState(true); }
+    else { sigpath::sourceManager.start(); }
+}
+
 void MainWindow::draw() {
     auto ctm = currentTimeNanos();
+    handleAutostart();
+
     ImGui::WaterfallVFO* vfo;
     this->preDraw(&vfo);
     ImGui::Begin("Main", NULL, WINDOW_FLAGS);

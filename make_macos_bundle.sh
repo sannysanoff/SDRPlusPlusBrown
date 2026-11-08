@@ -99,6 +99,7 @@ bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_module
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_modules/ft8_decoder/ft8_decoder.dylib || true
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_modules/ch_extravhf_decoder/ch_extravhf_decoder.dylib || true
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_modules/ch_tetra_demodulator/ch_tetra_demodulator.dylib || true
+bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_modules/tinycw_decoder/tinycw_decoder.dylib || true
 #bundle_install_binary $BUNDLE $BUNDLE/Contents/MacOS $BUILD_DIR/decoder_modules/ft8_decoder/sdrpp_ft8_mshv
 #bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/decoder_modules/ft8_decoder/sdrpp_ft8_mshv
 

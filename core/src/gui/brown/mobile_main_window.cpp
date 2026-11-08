@@ -1641,6 +1641,7 @@ static TransientBookmarkManager *getTransientBookmarkManager() {
 void MobileMainWindow::draw() {
 
     auto ctm = currentTimeNanos();
+    handleAutostart();
     updateAudioWaterfallPipeline();
 
     if (auto radio = getRadioModule()) {

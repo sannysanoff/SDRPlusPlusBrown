@@ -24,6 +24,9 @@ add_definitions(-DFLOG_ANDROID_TAG="SDR++")
 if(BUILD_TESTS)
     add_definitions(-DBUILD_TESTS)
     file(GLOB_RECURSE TEST_SRC "../tests/*.cpp")
+    # tests/omlsa_mcra is a standalone program built by its own run.sh, not a
+    # harness test; it must not be linked into the core.
+    list(FILTER TEST_SRC EXCLUDE REGEX "omlsa_mcra/")
     set(SRC ${SRC} ${TEST_SRC})
 endif()
 

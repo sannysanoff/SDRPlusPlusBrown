@@ -97,6 +97,10 @@ namespace ImGui {
         float* getFFTBuffer();
         void pushFFT();
 
+        // Forces the next frame to recompute the layout (e.g. after an overlay
+        // changed its reserved height).
+        void refreshLayout() { lastWidgetSize = ImVec2(-1.0f, -1.0f); }
+
         void updatePallette(float colors[][3], int colorCount);
         void updatePalletteFromArray(float* colors, int colorCount);
 
@@ -197,10 +201,12 @@ namespace ImGui {
             ImGuiWindow* window;
             ImVec2 wfMin;
             ImVec2 wfMax;
+            ImVec2 fftMin;   // top-left of the spectrum area (clock is drawn here)
 
         };
 
         Event<WaterfallDrawArgs> afterWaterfallDraw;
+
 
         struct InputHandlerArgs {
             ImVec2 fftRectMin;
@@ -376,6 +382,18 @@ namespace ImGui {
 
         int rawFFTIndex(double frequency) const;
         void testAlloc(const std::string& where);
+
+    public:
+        // Overlays drawn above the waterfall can request extra vertical space
+        // between the oscilloscope (FFT) and the waterfall. Every listener adds
+        // its own requirement in pixels to the argument; the sum is reserved at
+        // the bottom of the FFT area and the waterfall shrinks by it.
+        // NOTE: keep these the last members so already-built plugins stay ABI
+        // compatible (member offsets must not shift).
+        Event<int&> onReserveOverlayHeight;
+
+        // Height in pixels of the band reserved above the waterfall.
+        int overlayBand = 0;
     };
 
 

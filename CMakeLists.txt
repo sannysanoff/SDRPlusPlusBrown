@@ -69,6 +69,7 @@ option(OPT_BUILD_M17_DECODER "Build the M17 decoder module (Dependencies: codec2
 option(OPT_BUILD_CH_EXTRAVHF_DECODER "Build the extra VHF decoder module" ON)
 option(OPT_BUILD_CH_TETRA_DEMODULATOR "Build the tetra demodulator" ON)
 option(OPT_BUILD_FT8_DECODER "Build the FT8 decoder module" ON)
+option(OPT_BUILD_TINYCW_DECODER "Build the TinyCW neural CW decoder module (FastCW, no dependencies)" ON)
 option(OPT_BUILD_METEOR_DEMODULATOR "Build the meteor demodulator module (no dependencies required)" ON)
 option(OPT_BUILD_PAGER_DECODER "Build the pager decoder module (no dependencies required)" ON)
 option(OPT_BUILD_RADIO "Main audio modulation decoder (AM, FM, SSB, etc...)" ON)
@@ -361,6 +362,10 @@ endif (OPT_BUILD_CH_TETRA_DEMODULATOR)
 if (OPT_BUILD_FT8_DECODER)
     add_subdirectory("decoder_modules/ft8_decoder")
 endif (OPT_BUILD_FT8_DECODER)
+
+if (OPT_BUILD_TINYCW_DECODER)
+    add_subdirectory("decoder_modules/tinycw_decoder")
+endif (OPT_BUILD_TINYCW_DECODER)
 
 if (OPT_BUILD_METEOR_DEMODULATOR)
 add_subdirectory("decoder_modules/meteor_demodulator")

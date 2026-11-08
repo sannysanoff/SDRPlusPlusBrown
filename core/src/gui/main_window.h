@@ -20,6 +20,8 @@ public:
     virtual void preDraw(ImGui::WaterfallVFO* *vfo);
     virtual void draw();
     void drawUpperLine(ImGui::WaterfallVFO* vfo);
+    // --autostart: starts playback once a source is actually selected.
+    void handleAutostart();
     void updateZoom() {
         this->updateWaterfallZoomBandwidth(bw);
     }
@@ -92,6 +94,7 @@ protected:
     float fftMax = 0.0;
     float bw = 1.0;             // slider position 0.0 .. 1.0
     bool playing = false;
+    int autostartTries = 0;
     bool showCredits = false;
     std::string audioStreamName = "";
     std::string sourceName = "";
