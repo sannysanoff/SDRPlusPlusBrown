@@ -10,6 +10,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <chrono>
 #include <condition_variable>
 #include <complex>
@@ -21,12 +22,14 @@
 #include <vector>
 
 #include <dsp/channel/rx_vfo.h>
+#include <dsp/buffer/packer.h>
 #include <dsp/demod/cw.h>
 #include <dsp/routing/splitter.h>
 #include <dsp/sink/handler_sink.h>
 #include <dsp/stream.h>
 #include <dsp/types.h>
 
+#include "tinycw_calls.h"
 #include "tinycw_conditioner.h"
 #include "tinycw_markers.h"
 #include "tinycw_model.h"
@@ -50,6 +53,13 @@ struct EngineConfig {
     double channelBwHz = 1200.0; // per-signal channel bandwidth (wider = better for keying sidebands)
     double squelch = 0.0;        // optional hard gate, 0 = off (frame gate instead)
     double spotHoldSec = 12.0;   // drop a channel after this much silence
+    // A channel that shows no keying at all for this long is torn down even if
+    // the scanner still reports a spot at its frequency (an unkeyed carrier, a
+    // neighbour's skirt, QRM). Without it a dead channel keeps a row in the
+    // decodes table forever, because the spot never stops matching.
+    double channelIdleSec = 24.0;
+    // How long a decoded row survives without new text (decodes window).
+    double rowHoldSec = 24.0;
     // Two channels closer than this decode the same signal: one station then
     // shows up as several lines of slightly different text. Keep them apart.
     double minChannelSpacingHz = 250.0;
@@ -140,14 +150,15 @@ struct Channel {
     double stableCommitSec = 0.0;
     double lastTextSec = 0.0;
     double lastCommitSec = 0.0;
-    double lastSignalSec = 0.0;
+    // Written by the decode worker, read by the manager under mtx_ only.
+    std::atomic<double> lastSignalSec{ 0.0 };
     bool   started = false;
 
     ZoneState zone;                     // commit zone (tinycw_zone.h)
     VoteText vote;                      // statistical text (tinycw_vote.h)
     ConfText voteFrozen;                // frozen part, with confidence
-    double  voteLastSec = 0.0;          // render state of the frozen part
-    bool    voteLastSpace = false;
+    RenderState voteRender;             // render state of the frozen part
+    CallLexicon calls;                  // voted callsigns (tinycw_calls.h)
     double  lastCharSec = 0.0;          // time of the last committed character
 };
 
@@ -171,27 +182,30 @@ public:
     void setMaxChannels(int n);
     void setPaused(bool paused) { paused_ = paused; }
     bool paused() const { return paused_.load(); }
-    void setSquelch(double thresh) { cfg_.squelch = thresh; }
-    void setChannelBandwidth(double hz) { cfg_.channelBwHz = hz; }
-    void setMinChannelSpacing(double hz) { cfg_.minChannelSpacingHz = hz; }
-    void setCtcBeam(int n) { cfg_.ctcBeam = n; }
-    void setFocusLagSec(double s) { cfg_.focusLagSec = std::max(0.0, s); }
-    void setMassEnsemble(bool on) { cfg_.massEnsemble = on; }
-    void setVoteDecode(bool on) { cfg_.voteDecode = on; }
-    void setCommitTailFactor(double f) { cfg_.commitTailFactor = f; }
-    void setProvisionalSec(double sec) { cfg_.provisionalSec = std::max(0.0, sec); }
-    void setConditioning(bool on) { cfg_.conditioning = on; }
-    void setFrameGate(bool on) { cfg_.frameGate = on; }
-    void setFrameGateFrac(double f) { if (f > 0.0 && f < 1.0) { cfg_.frameGateFrac = f; } }
-    void setFrameGateDilate(int n) { cfg_.frameGateDilate = std::max(0, n); }
-    void setInferCpuPercent(double p) { cfg_.inferCpuPercent = std::max(0.0, std::min(100.0, p)); }
-    void setMaxBatchWindows(int n) { cfg_.maxBatchWindows = std::max(1, std::min(64, n)); }
-    void setCwPitch(double hz) { cfg_.cwPitchHz = hz; }
+    void setSquelch(double thresh) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.squelch = thresh; }
+    void setChannelBandwidth(double hz) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.channelBwHz = hz; }
+    void setMinChannelSpacing(double hz) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.minChannelSpacingHz = hz; }
+    void setCtcBeam(int n) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.ctcBeam = n; }
+    void setFocusLagSec(double s) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.focusLagSec = std::max(0.0, s); }
+    void setMassEnsemble(bool on) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.massEnsemble = on; }
+    void setVoteDecode(bool on) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.voteDecode = on; }
+    void setCommitTailFactor(double f) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.commitTailFactor = f; }
+    void setProvisionalSec(double sec) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.provisionalSec = std::max(0.0, sec); }
+    void setConditioning(bool on) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.conditioning = on; }
+    void setFrameGate(bool on) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.frameGate = on; }
+    void setFrameGateFrac(double f) { std::lock_guard<std::mutex> cl(cfgMtx_); if (f > 0.0 && f < 1.0) { cfg_.frameGateFrac = f; } }
+    void setFrameGateDilate(int n) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.frameGateDilate = std::max(0, n); }
+    void setInferCpuPercent(double p) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.inferCpuPercent = std::max(0.0, std::min(100.0, p)); }
+    void setMaxBatchWindows(int n) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.maxBatchWindows = std::max(1, std::min(64, n)); }
+    void setCwPitch(double hz) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.cwPitchHz = hz; }
     // Buffer kept per channel: window plus slack, so a long context window is
     // never trimmed before it can be decoded.
     void setWindowSec(double v);
     void setTickSec(double v) {
-        if (v > 0.1) { cfg_.tickSec = v; }
+        {
+            std::lock_guard<std::mutex> cl(cfgMtx_);
+            if (v > 0.1) { cfg_.tickSec = v; }
+        }
         updateKeepSamples();
     }
     // Number of decode worker threads (1 = single core). Safe to call while the
@@ -207,6 +221,11 @@ public:
     // batch 1, once per second, no squelch and no keying gate.
     void setFocusFreq(double absHz);
     void disableFocus();
+    double rowHoldSec() const { std::lock_guard<std::mutex> cl(cfgMtx_); return cfg_.rowHoldSec; }
+    void setRowHoldSec(double s) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.rowHoldSec = std::max(1.0, s); }
+    double channelIdleSec() const { std::lock_guard<std::mutex> cl(cfgMtx_); return cfg_.channelIdleSec; }
+    void setChannelIdleSec(double s) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.channelIdleSec = std::max(5.0, s); }
+
     bool focusActive() const { return focusActive_.load(); }
     double focusFreq() const { return focusFreq_.load(); }
     std::string focusText();
@@ -263,7 +282,12 @@ public:
     // Load relative to the allowed thread budget, 0..100.
     double cpuLoadPercent() const;
     double wideRate() const { return wideRate_; }
-    const EngineConfig& config() const { return cfg_; }
+    // Debug/corpus hook (CLI --dump-slots): every frozen vote slot of the mass
+    // decoder, with the channel frequency. Set before start(); called from the
+    // infer thread under the channel lock.
+    using SlotSink = std::function<void(double freqHz, const std::vector<VoteText::Slot>& slots)>;
+    void setSlotSink(SlotSink sink) { slotSink_ = std::move(sink); }
+    EngineConfig config() const { return cfgSnap(); }
 
 private:
     void scanThread();
@@ -278,9 +302,15 @@ private:
     void updateKeepSamples();
     void stopLocked();
     void updateRangeLocked();
-    Channel* addChannel(double freqHz, double spotRatio = 0.0);
-    void removeChannel(Channel* ch);
-    void destroyChannelsLocked();
+    // Builds and starts a channel's DSP chain. Takes no locks on entry and
+    // does not touch channels_; the caller attaches the result under mtx_.
+    std::shared_ptr<Channel> startChannel(double freqHz, double spotRatio = 0.0);
+    // Stops a channel's streams. Stream stop() joins threads, so it must never
+    // run while mtx_ is held: the UI thread takes mtx_ every frame.
+    void stopChannelDsp(const std::shared_ptr<Channel>& ch);
+    // Caller holds mtx_. Hands back the channel list and empties it; the caller
+    // stops the returned channels without the lock.
+    std::vector<std::shared_ptr<Channel>> detachChannelsLocked();
     // Clears focus audio, votes and text; caller holds focusMtx_.
     void resetFocusDecodeLocked();
     bool decodeChannel(const std::shared_ptr<Channel>& ch, int worker, double nowSec);
@@ -305,7 +335,16 @@ private:
     void onWideSamples(dsp::complex_t* data, int count);
 
     Model* model_ = nullptr;
+    SlotSink slotSink_;
+    // The GUI thread writes cfg_ through the setters while the decode, infer,
+    // focus and manager threads run. Readers take a copy with cfgSnap() once
+    // per window / loop pass; cfgMtx_ is a leaf lock (nothing nests inside it).
     EngineConfig cfg_;
+    mutable std::mutex cfgMtx_;
+    EngineConfig cfgSnap() const {
+        std::lock_guard<std::mutex> cl(cfgMtx_);
+        return cfg_;
+    }
 
     std::atomic_bool running_{ false };
     std::atomic_bool paused_{ false };
@@ -316,12 +355,20 @@ private:
 
     dsp::stream<dsp::complex_t>* iq_ = nullptr;
     std::unique_ptr<dsp::channel::RxVFO> wide_;
+    // Collects the wide stream into kWideBlockSec blocks. The source blocks
+    // are small; every block wakes ~3 threads per channel, so with 60
+    // channels the thread hand-offs cost more CPU than the decoding.
+    std::unique_ptr<dsp::buffer::Packer<dsp::complex_t>> widePack_;
     std::unique_ptr<dsp::routing::Splitter<dsp::complex_t>> split_;
     double inRate_ = 0.0;
     double wideRate_ = 0.0;
     double wideBw_ = 0.0;
 
     mutable std::mutex mtx_;
+    // Serialises DSP-chain lifetime (wide chain, splitter, per-channel chains)
+    // so those expensive start/stop calls never need mtx_.
+    std::recursive_mutex dspMtx_;
+    bool wideRetune_ = false;      // under mtx_: SDR centre moved, retune the wide VFO
     double centerHz_ = 0.0;      // IQ center (absolute)
     double rangeLoHz_ = 0.0;     // wide channelizer range (absolute)
     double rangeHiHz_ = 0.0;
@@ -367,7 +414,12 @@ private:
         double lastCommit = 0.0;
         double feMs = 0.0;         // front-end time spent on this window
         std::vector<uint8_t> active;  // per model frame: is there keying energy
+        bool silent = false;       // dead-air window: no model pass, only a vote for "nothing"
     };
+    // Queues a window without keying, so the vote text of the channel keeps
+    // freezing after a transmission ends (in order with its other windows).
+    void enqueueSilentWindow(const std::shared_ptr<Channel>& ch, double t0, double now);
+    std::mutex roundMtx_;          // guards the workerRound_ vector (not its atomics)
     std::mutex inferMtx_;
     std::condition_variable inferCv_;
     std::vector<InferJob> inferQueue_;
@@ -403,8 +455,8 @@ private:
     VoteText focusVote_;
     ConfText focusFrozen_;
     std::vector<float> focusConf_;      // per byte of focusText_ (vote path)
-    double focusVoteLastSec_ = 0.0;
-    bool focusVoteLastSpace_ = false;
+    RenderState focusRender_;
+    CallLexicon focusCalls_;
     std::vector<double> focusGaps_;   // recent inter-character gaps, seconds
     Conditioner focusCond_;
     Spectrogram focusSpec_;

@@ -77,33 +77,47 @@ inline std::vector<uint8_t> secondsPresent(const std::vector<uint8_t>& on) {
 // Power in dB [bins][frames] of 160-sample Hann frames (screen_clips.band_power).
 inline std::vector<std::vector<double>> bandPowerDb(const float* x, int n) {
     using namespace mainband;
-    static const std::vector<double> win = hannSymmetric(kMbFrame);
-    static const std::vector<double> tabCos = [] {
-        std::vector<double> t((size_t)kMbBins * kMbFrame);
-        for (int k = 0; k < kMbBins; k++)
-            for (int m = 0; m < kMbFrame; m++) t[(size_t)k * kMbFrame + m] = std::cos(2.0 * kPi * k * m / kMbFrame);
+    // DFT tables [m][k] in float: the inner loop over the bins is a plain
+    // multiply-add over contiguous memory, which the compiler vectorizes.
+    // Float sums of 160 terms change the dB values by < 1e-3 dB.
+    static const std::vector<float> win = [] {
+        const std::vector<double> w = hannSymmetric(kMbFrame);
+        return std::vector<float>(w.begin(), w.end());
+    }();
+    static const std::vector<float> tabCos = [] {
+        std::vector<float> t((size_t)kMbFrame * kMbBins);
+        for (int m = 0; m < kMbFrame; m++)
+            for (int k = 0; k < kMbBins; k++)
+                t[(size_t)m * kMbBins + k] = (float)std::cos(2.0 * kPi * k * m / kMbFrame);
         return t;
     }();
-    static const std::vector<double> tabSin = [] {
-        std::vector<double> t((size_t)kMbBins * kMbFrame);
-        for (int k = 0; k < kMbBins; k++)
-            for (int m = 0; m < kMbFrame; m++) t[(size_t)k * kMbFrame + m] = std::sin(2.0 * kPi * k * m / kMbFrame);
+    static const std::vector<float> tabSin = [] {
+        std::vector<float> t((size_t)kMbFrame * kMbBins);
+        for (int m = 0; m < kMbFrame; m++)
+            for (int k = 0; k < kMbBins; k++)
+                t[(size_t)m * kMbBins + k] = (float)std::sin(2.0 * kPi * k * m / kMbFrame);
         return t;
     }();
     const int frames = 1 + std::max(0, n - kMbFrame) / kMbHop;
     std::vector<std::vector<double>> db(kMbBins, std::vector<double>((size_t)frames));
-    double buf[kMbFrame];
+    float re[kMbBins], im[kMbBins];
     for (int t = 0; t < frames; t++) {
+        std::fill(re, re + kMbBins, 0.0f);
+        std::fill(im, im + kMbBins, 0.0f);
         for (int m = 0; m < kMbFrame; m++) {
             const int i = t * kMbHop + m;
-            buf[m] = (i < n ? (double)x[i] : 0.0) * win[(size_t)m];
+            const float v = (i < n ? x[i] : 0.0f) * win[(size_t)m];
+            if (v == 0.0f) { continue; }
+            const float* c = &tabCos[(size_t)m * kMbBins];
+            const float* s = &tabSin[(size_t)m * kMbBins];
+            for (int k = 0; k < kMbBins; k++) {
+                re[k] += v * c[k];
+                im[k] -= v * s[k];
+            }
         }
         for (int k = 0; k < kMbBins; k++) {
-            const double* c = &tabCos[(size_t)k * kMbFrame];
-            const double* s = &tabSin[(size_t)k * kMbFrame];
-            double re = 0.0, im = 0.0;
-            for (int m = 0; m < kMbFrame; m++) { re += buf[m] * c[m]; im -= buf[m] * s[m]; }
-            db[(size_t)k][(size_t)t] = 10.0 * std::log10(re * re + im * im + 1e-12);
+            const double p = (double)re[k] * re[k] + (double)im[k] * im[k];
+            db[(size_t)k][(size_t)t] = 10.0 * std::log10(p + 1e-12);
         }
     }
     return db;
@@ -190,6 +204,9 @@ inline MainTone findMainTone(const float* x, int n, double searchLoHz = mainband
         for (uint8_t v : secondsPresent(owned)) { sec += v; }
         if (sec > bestSec) { bestSec = sec; best = b; }   // tops are in energy order: ties keep the first
     }
+    // No band is present for a single second: noise, not a station. The
+    // caller then uses its default pitch instead of a noise peak.
+    if (bestSec <= 0) { return r; }
     r.found = true;
     r.bandHz = hz(best);
     r.presentSec = bestSec;

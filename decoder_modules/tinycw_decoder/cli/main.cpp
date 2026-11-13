@@ -32,6 +32,7 @@
 
 #include "tinycw_adapt.h"
 #include "tinycw_bands.h"
+#include "tinycw_ctc.h"
 #include "tinycw_engine.h"
 #include "tinycw_model.h"
 
@@ -75,6 +76,8 @@ struct Options {
     int channels = 0;              // 0 = auto
     int threads = 0;               // 0 = auto
     double threadsCycleSec = 0.0;  // >0: rotate the worker count (live resize smoke test)
+    double restartAtSec = 0.0;     // >0: stop + start the engine once (SDR++ play/stop reset test)
+    std::string dumpSlots;         // TSV of frozen vote slots: freq_hz, sec, symbol, conf
     bool verbose = false;
 };
 
@@ -102,6 +105,9 @@ void usage() {
         "  --channels N        max concurrent channels (default: derived from width)\n"
         "  --threads N         decode worker threads (default: auto, hw-1 capped at 4)\n"
         "  --threads-cycle SEC rotate the worker count every SEC (live resize test)\n"
+        "  --dump-slots FILE   write every frozen character (freq_hz, sec, symbol, conf) as TSV\n"
+        "  --restart-at SEC    stop + start the engine at SEC of audio, as SDR++ play/stop does;\n"
+        "                      exit 1 if any CW state survives or decoding does not resume\n"
         "  --channel-bw HZ     per-signal channel bandwidth (default 1200)\n"
         "  --channel-spacing HZ minimum spacing between channel centres (default 250)\n"
         "  --ctc-beam N       prefix beam width, 1 = greedy (default 1)\n"
@@ -148,6 +154,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
         else if (a == "--channels") { o.channels = std::atoi(next("--channels").c_str()); }
         else if (a == "--threads") { o.threads = std::atoi(next("--threads").c_str()); }
         else if (a == "--threads-cycle") { o.threadsCycleSec = std::atof(next("--threads-cycle").c_str()); }
+        else if (a == "--restart-at") { o.restartAtSec = std::atof(next("--restart-at").c_str()); }
+        else if (a == "--dump-slots") { o.dumpSlots = next("--dump-slots"); }
         else if (a == "--channel-bw") { o.channelBwHz = std::atof(next("--channel-bw").c_str()); }
         else if (a == "--channel-spacing") { o.channelSpacingHz = std::atof(next("--channel-spacing").c_str()); }
         else if (a == "--ctc-beam") { o.ctcBeam = std::atoi(next("--ctc-beam").c_str()); }
@@ -302,6 +310,20 @@ int main(int argc, char** argv) {
     // --- engine
     tinycw::Engine engine(&model);
     engine.setDecodeThreads(opt.threads);
+    FILE* slotFile = nullptr;
+    if (!opt.dumpSlots.empty()) {
+        slotFile = std::fopen(opt.dumpSlots.c_str(), "w");
+        if (!slotFile) { std::fprintf(stderr, "cannot write %s\n", opt.dumpSlots.c_str()); finish(1); }
+        std::fprintf(slotFile, "freq_hz\tsec\tsym\tconf\n");
+        const std::vector<std::string>& tok = tinycw::tokens();
+        engine.setSlotSink([slotFile, &tok](double freqHz, const std::vector<tinycw::VoteText::Slot>& slots) {
+            for (const auto& s : slots) {
+                if (s.id <= 0 || s.id >= (int)tok.size()) { continue; }
+                const std::string sym = (tok[(size_t)s.id] == " ") ? "_" : tok[(size_t)s.id];
+                std::fprintf(slotFile, "%.1f\t%.3f\t%s\t%.3f\n", freqHz, s.sec, sym.c_str(), s.conf);
+            }
+        });
+    }
     dsp::stream<dsp::complex_t> iq("tinycw.cli.iq");
     if (!engine.start(&iq, (double)sr, err)) {
         std::fprintf(stderr, "engine start failed: %s\n", err.c_str());
@@ -388,6 +410,9 @@ int main(int argc, char** argv) {
     double peakCpu = 0.0;
     double lastAdaptWidth = width.currentHz;
     int batches = 0;
+    bool restarted = false;
+    bool restartClean = false;
+    int charsAtRestart = 0;
     auto started = std::chrono::steady_clock::now();
     auto wallSec = 0.0;
 
@@ -426,6 +451,28 @@ int main(int argc, char** argv) {
         }
 
         const double fed = fedSeconds.load();
+        if (opt.restartAtSec > 0.0 && !restarted && fed >= opt.restartAtSec) {
+            restarted = true;
+            const size_t rowsBefore = engine.decodeLines(0.0).size();
+            const size_t focusBefore = engine.focusText().size();
+            engine.takeBatch();
+            engine.stop();
+            if (!engine.start(&iq, (double)sr, err)) {
+                std::fprintf(stderr, "engine restart failed: %s\n", err.c_str());
+                finish(1);
+            }
+            const size_t rows = engine.decodeLines(0.0).size();
+            const size_t marks = engine.activeMarkers().size();
+            const size_t focus = engine.focusText().size();
+            const int chans = engine.liveChannels();
+            restartClean = (rows == 0 && marks == 0 && focus == 0 && chans == 0 && engine.spotCount() == 0);
+            std::printf("  [restart] at %.0f s: before rows %zu focus %zu chars | after rows %zu markers %zu "
+                        "focus %zu chars channels %d -> %s\n",
+                        fed, rowsBefore, focusBefore, rows, marks, focus, chans,
+                        restartClean ? "clean" : "NOT CLEAN");
+            std::fflush(stdout);
+            charsAtRestart = charsTotal;
+        }
         if (fed - lastBatchAudio >= opt.batchSec) {
             lastBatchAudio = fed;
             auto lines = engine.takeBatch();
@@ -501,11 +548,18 @@ int main(int argc, char** argv) {
     iq.stopWriter();
     if (feeder.joinable()) { feeder.join(); }
     engine.stop();
+    if (slotFile) { std::fclose(slotFile); }
 
     const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     std::printf("\nprocessed %.0f s of audio in %.1f s wall (%.1fx realtime)\n",
                 fedSeconds.load(), wall, wall > 0.0 ? fedSeconds.load() / wall : 0.0);
     std::printf("decoded %d lines / %d chars, peak cpu %.0f%% of %d00%%\n",
                 linesTotal, charsTotal, peakCpu, std::max(1, engine.decodeThreads()));
+    if (opt.restartAtSec > 0.0) {
+        const int after = charsTotal - charsAtRestart;
+        const bool ok = restarted && restartClean && after > 0;
+        std::printf("restart check: %s (%d chars decoded after the restart)\n", ok ? "PASS" : "FAIL", after);
+        finish(ok ? 0 : 1);
+    }
     finish(0);
 }

@@ -94,6 +94,11 @@ trace: the band is inserted above the waterfall, not inside the scope.
   70 kHz (the widest HF CW segment), and narrows when it saturates (75 % / 45 %
   thresholds). Dragging the slider switches to manual.
 * **Band range (from / to)** — per-band sliders, stored in
+  `tinycw_decoder_config.json`.
+* **Row lifetime / channel idle** — `rowHoldSec` (default 24) removes a decoded
+  row that has produced no text for that long, and `channelIdleSec` (default 24)
+  tears down a channel that shows no keying for that long even while the
+  scanner still reports a spot at its frequency. Both live in
   `tinycw_decoder_config.json`. The effective range is the intersection of the
   setting, the CW segment and what the source can actually see; partial coverage
   is reported in the panel.
@@ -111,8 +116,11 @@ Hard-coded IARU Region 1 CW segments (`src/tinycw_bands.h`):
 | 30m | 10100–10130 | | 6m | 50000–50100 |
 | 20m | 14000–14070 | | 2m | 144000–144150 |
 
-When the span covers several bands, the lowest one that is at least partially
-visible is used.
+When the span covers several bands — a wide source, or a zoomed-out view — the
+band the tuned centre sits in is used, and if the centre sits between bands, the
+one whose edge is nearest. (Picking the lowest band in view meant a 10 MHz span
+decoded 60m while the operator was listening on 40m, and 30m after tuning to
+20m.)
 
 ## Build
 

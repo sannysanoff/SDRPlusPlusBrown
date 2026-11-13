@@ -80,6 +80,7 @@ double Engine::nowSec() const {
 }
 
 bool Engine::start(dsp::stream<dsp::complex_t>* iq, double inSampleRate, std::string& err) {
+    const EngineConfig cfg = cfgSnap();
     updateKeepSamples();
     std::lock_guard<std::mutex> life(lifecycleMtx_);
     stopLocked();
@@ -114,10 +115,10 @@ bool Engine::start(dsp::stream<dsp::complex_t>* iq, double inSampleRate, std::st
             decodeLoHz_ = rangeLoHz_;
             decodeHiHz_ = rangeHiHz_;
         }
-        rebuildWideChain(inSampleRate);
     }
+    rebuildWideChain(inSampleRate);
 
-    threads_ = (cfg_.threads > 0) ? cfg_.threads : autoThreads();
+    threads_ = (cfg.threads > 0) ? cfg.threads : autoThreads();
     threads_ = std::max(1, std::min(threads_, hardwareThreads()));
 
     conditioners_.clear();
@@ -179,50 +180,87 @@ void Engine::stopLocked() {
     }
     decodeWorkers_.clear();
 
-    std::lock_guard<std::mutex> lck(mtx_);
-    destroyChannelsLocked();
-    if (split_) { split_->stop(); split_.reset(); }
-    if (wide_) { wide_->stop(); wide_.reset(); }
-    iq_ = nullptr;
-    wideRate_ = 0.0;
-}
-
-void Engine::destroyChannelsLocked() {
-    for (auto& ch : channels_) {
-        if (!ch->started) { continue; }
-        if (ch->vfo) { ch->vfo->stop(); }
-        if (split_ && ch->in) {
-            try { split_->unbindStream(ch->in.get()); }
-            catch (...) {}
-        }
-        if (ch->cw) { ch->cw->stop(); }
-        if (ch->sink) { ch->sink->stop(); }
-        ch->started = false;
+    std::vector<std::shared_ptr<Channel>> old;
+    {
+        std::lock_guard<std::mutex> lck(mtx_);
+        old = detachChannelsLocked();
     }
-    channels_.clear();
+    for (auto& ch : old) { stopChannelDsp(ch); }
+
+    {
+        std::lock_guard<std::recursive_mutex> dl(dspMtx_);
+        std::lock_guard<std::mutex> lck(mtx_);
+        if (split_) { split_->stop(); split_.reset(); }
+        if (widePack_) { widePack_->stop(); widePack_.reset(); }
+        if (wide_) { wide_->stop(); wide_.reset(); }
+        iq_ = nullptr;
+        wideRate_ = 0.0;
+        lastRoundSec_ = 0.0;
+    }
+
+    // A stopped engine holds no CW state: the next start() (SDR++ play, a
+    // sample-rate change) begins with no rows, no markers and no focus text.
+    // Channels, votes and the focus decoder were cleared above.
+    {
+        std::lock_guard<std::mutex> lck(textMtx_);
+        textByFreq_.clear();
+    }
+    textRows_ = 0;
+    {
+        std::lock_guard<std::mutex> lck(markerMtx_);
+        markers_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lck(scanMtx_);
+        spots_.clear();
+    }
+    roundReq_ = 0;
+    channelCount_ = 0;
+    queueDepth_ = 0;
+    queueLagSec_ = 0.0;
 }
 
 void Engine::rebuildWideChain(double inRate) {
+    std::lock_guard<std::recursive_mutex> dsp(dspMtx_);
+    // Copied under the lock: the UI thread rewrites these fields in setWideRange().
+    double lo = 0.0, hi = 0.0;
+    dsp::stream<dsp::complex_t>* iq = nullptr;
+    {
+        std::lock_guard<std::mutex> lck(mtx_);
+        lo = rangeLoHz_;
+        hi = rangeHiHz_;
+        iq = iq_;
+    }
     // The focus chain is bound to this splitter, so it has to go first.
     stopFocusLocked();
     if (split_) { split_->stop(); split_.reset(); }
+    if (widePack_) { widePack_->stop(); widePack_.reset(); }
     if (wide_) { wide_->stop(); wide_.reset(); }
 
-    const double span = (rangeHiHz_ > rangeLoHz_) ? (rangeHiHz_ - rangeLoHz_) : inRate;
-    wideRate_ = chooseWideRate(span);
-    if (wideRate_ > inRate) { wideRate_ = inRate; }
-    wideBw_ = span;
-    rangeCenter_ = (rangeHiHz_ > rangeLoHz_) ? (rangeLoHz_ + rangeHiHz_) * 0.5 : 0.0;
+    const double span = (hi > lo) ? (hi - lo) : inRate;
+    double wideOffset = 0.0;
+    {
+        std::lock_guard<std::mutex> lck(mtx_);
+        wideRate_ = chooseWideRate(span);
+        if (wideRate_ > inRate) { wideRate_ = inRate; }
+        wideBw_ = span;
+        rangeCenter_ = (hi > lo) ? (lo + hi) * 0.5 : 0.0;
+        wideOffset = rangeCenter_ - centerHz_;
+        wideRetune_ = false;   // the new chain uses the current centre
+    }
 
-    const double wideOffset = rangeCenter_ - centerHz_;
-    wide_ = std::make_unique<dsp::channel::RxVFO>(iq_, inRate, wideRate_, wideBw_, wideOffset);
-    split_ = std::make_unique<dsp::routing::Splitter<dsp::complex_t>>(&wide_->out);
+    wide_ = std::make_unique<dsp::channel::RxVFO>(iq, inRate, wideRate_, wideBw_, wideOffset);
+    constexpr double kWideBlockSec = 0.05;
+    const int packSamples = std::max(1, (int)std::lround(wideRate_ * kWideBlockSec));
+    widePack_ = std::make_unique<dsp::buffer::Packer<dsp::complex_t>>(&wide_->out, packSamples);
+    split_ = std::make_unique<dsp::routing::Splitter<dsp::complex_t>>(&widePack_->out);
     split_->origin = "tinycw.splitter";
     split_->setHook([this](dsp::complex_t* data, int count) {
         this->onWideSamples(data, count);
     });
 
     wide_->start();
+    widePack_->start();
     split_->start();
 
     {
@@ -242,9 +280,14 @@ void Engine::rebuildWideChain(double inRate) {
 
 void Engine::setWideRange(double centerHz, double rangeLoHz, double rangeHiHz) {
     std::lock_guard<std::mutex> lck(mtx_);
-    if (std::fabs(rangeLoHz - rangeLoHz_) < 100.0 &&
-        std::fabs(rangeHiHz - rangeHiHz_) < 100.0 &&
-        std::fabs(centerHz - centerHz_) < 1.0) {
+    const bool sameRange = std::fabs(rangeLoHz - rangeLoHz_) < 100.0 &&
+                           std::fabs(rangeHiHz - rangeHiHz_) < 100.0;
+    if (sameRange && std::fabs(centerHz - centerHz_) < 1.0) { return; }
+    if (sameRange) {
+        // Only the SDR centre moved: the decoded segment and every channel
+        // (tuned relative to the segment centre) stay; the wide VFO is retuned.
+        centerHz_ = centerHz;
+        wideRetune_ = true;
         return;
     }
     centerHz_ = centerHz;
@@ -257,7 +300,10 @@ void Engine::setRange(double centerHz, double rangeLoHz, double rangeHiHz) {
     std::lock_guard<std::mutex> lck(mtx_);
     decodeLoHz_ = rangeLoHz;
     decodeHiHz_ = rangeHiHz;
-    if (centerHz > 0.0 && std::fabs(centerHz - centerHz_) > 1.0) { centerHz_ = centerHz; }
+    if (centerHz > 0.0 && std::fabs(centerHz - centerHz_) > 1.0) {
+        centerHz_ = centerHz;
+        wideRetune_ = true;
+    }
 }
 
 int Engine::hardwareThreads() {
@@ -269,7 +315,10 @@ void Engine::setDecodeThreads(int n) {
     std::lock_guard<std::mutex> life(lifecycleMtx_);
     const int hw = hardwareThreads();
     const int want = (n <= 0) ? 0 : std::max(1, std::min(n, hw));
-    cfg_.threads = want;
+    {
+        std::lock_guard<std::mutex> cl(cfgMtx_);
+        cfg_.threads = want;
+    }
 
     if (!running_.load()) { return; }
 
@@ -288,14 +337,20 @@ void Engine::setDecodeThreads(int n) {
     condBufs_.clear();
     specBufs_.clear();
     workerBusy_.clear();
-    workerRound_.clear();
+    {
+        // inferThread() reads this vector while the engine runs.
+        std::lock_guard<std::mutex> rl(roundMtx_);
+        workerRound_.clear();
+        for (int i = 0; i < target; i++) {
+            workerRound_.push_back(std::make_unique<std::atomic<int64_t>>(0));
+        }
+    }
     for (int i = 0; i < target; i++) {
         conditioners_.push_back(std::make_unique<Conditioner>());
         spectrometers_.push_back(std::make_unique<Spectrogram>());
         condBufs_.emplace_back();
         specBufs_.emplace_back();
         workerBusy_.push_back(std::make_unique<std::atomic<double>>(0.0));
-        workerRound_.push_back(std::make_unique<std::atomic<int64_t>>(0));
     }
     threads_ = target;
     for (int i = 0; i < threads_; i++) {
@@ -306,13 +361,17 @@ void Engine::setDecodeThreads(int n) {
 }
 
 void Engine::updateKeepSamples() {
-    const double sec = std::max(12.0, cfg_.windowSec * 2.0 + cfg_.tickSec);
+    const EngineConfig cfg = cfgSnap();
+    const double sec = std::max(12.0, cfg.windowSec * 2.0 + cfg.tickSec);
     keepSamples_ = (size_t)(kAudioRate * sec);
 }
 
 void Engine::setWindowSec(double v) {
     if (v <= 1.0) { return; }
-    cfg_.windowSec = v;
+    {
+        std::lock_guard<std::mutex> cl(cfgMtx_);
+        cfg_.windowSec = v;
+    }
     updateKeepSamples();
 }
 
@@ -353,10 +412,12 @@ void Engine::focusAudioHandler(float* data, int count, void* ctx) {
 void Engine::stopFocusLocked() {
     focusActive_ = false;
     if (focusWorker_.joinable()) { focusWorker_.join(); }
-    if (focusVfo_) { focusVfo_->stop(); }
+    // Unbind first: the splitter must stop writing into focusIn_ before the
+    // VFO that reads it stops, or the splitter can block on a dead reader.
     if (split_ && focusIn_) {
         try { split_->unbindStream(focusIn_.get()); } catch (...) {}
     }
+    if (focusVfo_) { focusVfo_->stop(); }
     if (focusCw_) { focusCw_->stop(); }
     if (focusSink_) { focusSink_->stop(); }
     focusSink_.reset();
@@ -379,22 +440,38 @@ void Engine::resetFocusDecodeLocked() {
     focusVote_ = VoteText();
     focusFrozen_ = ConfText();
     focusConf_.clear();
-    focusVoteLastSec_ = 0.0;
-    focusVoteLastSpace_ = false;
+    focusRender_ = RenderState();
+    focusCalls_ = CallLexicon();
     focusGaps_.clear();
 }
 
 void Engine::disableFocus() {
     std::lock_guard<std::mutex> life(lifecycleMtx_);
+    // dspMtx_: rebuildWideChain() (manager thread) also stops the focus chain.
+    std::lock_guard<std::recursive_mutex> dl(dspMtx_);
     stopFocusLocked();
 }
 
 void Engine::setFocusFreq(double absHz) {
+    const EngineConfig cfg = cfgSnap();
     std::lock_guard<std::mutex> life(lifecycleMtx_);
-    if (!running_.load() || !split_ || wideRate_ <= 0.0) { return; }
+    // dspMtx_: rebuildWideChain() (manager thread) replaces split_ and stops
+    // the focus chain; both must not run at the same time.
+    std::lock_guard<std::recursive_mutex> dl(dspMtx_);
+    double rangeCenter = 0.0, wideBw = 0.0, wideRate = 0.0;
+    {
+        std::lock_guard<std::mutex> lck(mtx_);
+        rangeCenter = rangeCenter_;
+        wideBw = wideBw_;
+        wideRate = wideRate_;
+    }
+    if (!running_.load() || !split_ || wideRate <= 0.0) { return; }
 
-    const double offset = absHz - rangeCenter_;
-    if (std::fabs(offset) > wideBw_ * 0.5 - 300.0) { return; }   // outside the band
+    const double offset = absHz - rangeCenter;
+    if (std::fabs(offset) > wideBw * 0.5 - 300.0) {   // outside the band
+        if (focusActive_.load()) { stopFocusLocked(); }
+        return;
+    }
 
     if (focusActive_.load()) {
         if (std::fabs(absHz - focusFreq_.load()) < 25.0) { return; }
@@ -411,8 +488,8 @@ void Engine::setFocusFreq(double absHz) {
     focusVfo_ = std::make_unique<dsp::channel::RxVFO>();
     focusCw_ = std::make_unique<dsp::demod::CW<float>>();
     focusSink_ = std::make_unique<dsp::sink::Handler<float>>();
-    focusVfo_->init(focusIn_.get(), wideRate_, (double)kAudioRate, cfg_.channelBwHz, offset);
-    focusCw_->init(&focusVfo_->out, cfg_.cwPitchHz, 0.0, 0.0, (double)kAudioRate);
+    focusVfo_->init(focusIn_.get(), wideRate, (double)kAudioRate, cfg.channelBwHz, offset);
+    focusCw_->init(&focusVfo_->out, cfg.cwPitchHz, 0.0, 0.0, (double)kAudioRate);
     focusSink_->init(&focusCw_->out, &Engine::focusAudioHandler, this);
     focusSink_->start();
     focusCw_->start();
@@ -446,6 +523,7 @@ std::string Engine::focusFresh() {
 }
 
 void Engine::focusThread() {
+    EngineConfig cfg = cfgSnap();
     lowerThreadPriority();
     SetThreadName("tinycw_focus");
 
@@ -453,12 +531,13 @@ void Engine::focusThread() {
     const std::vector<std::string>& tok = tokens();
     const int frameSamples = 2 * kHop;                     // 30 ms output frame
     const double framePeriod = (double)frameSamples / (double)kAudioRate;
-    const int windowSamples = (int)(cfg_.focusWindowSec * (double)kAudioRate);
+    const int windowSamples = (int)(cfg.focusWindowSec * (double)kAudioRate);
     const int tickSamples = kAudioRate;                    // one pass per second
     int64_t lastDecoded = 0;
     uint64_t gen = 0;
 
     while (running_.load() && focusActive_.load()) {
+        cfg = cfgSnap();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if (!running_.load() || !focusActive_.load()) { break; }
 
@@ -479,10 +558,10 @@ void Engine::focusThread() {
         // Single band: the main tone by the screening rules the model was trained on,
         // searched only within this channel (pitch +- half the channel spacing).
         const MainTone mt = findMainTone(window.data(), (int)window.size(),
-                                           cfg_.cwPitchHz - cfg_.minChannelSpacingHz / 2,
-                                           cfg_.cwPitchHz + cfg_.minChannelSpacingHz / 2);
+                                           cfg.cwPitchHz - cfg.minChannelSpacingHz / 2,
+                                           cfg.cwPitchHz + cfg.minChannelSpacingHz / 2);
         focusCond_.process(window.data(), (int)window.size(), focusCondBuf_, kAudioRate,
-                           mt.found ? mt.toneHz : cfg_.cwPitchHz);
+                           mt.found ? mt.toneHz : cfg.cwPitchHz);
         int frames = 0;
         if (!focusSpec_.compute(focusCondBuf_.data(), (int)focusCondBuf_.size(),
                                 focusSpecBuf_, frames) || frames <= 0) {
@@ -503,22 +582,28 @@ void Engine::focusThread() {
         std::lock_guard<std::mutex> lck(focusMtx_);
         if (gen != focusGen_) { continue; }   // retuned during this pass: old audio
 
-        if (cfg_.voteDecode) {
+        if (cfg.voteDecode) {
             // Statistical text (tinycw_vote.h): every window votes; the last
             // window length stays open and is re-rendered on every pass.
             std::vector<int> vIds, vIdx;
             greedyCtc(logProbs.data(), outFrames, classes, vIds, vIdx);
-            focusVote_.add(vIds, vIdx, startSec, framePeriod, cfg_.focusWindowSec);
+            focusVote_.add(vIds, vIdx, startSec, framePeriod, cfg.focusWindowSec);
             const size_t before = focusFrozen_.text.size();
-            renderSlots(focusVote_.takeFrozen(), tok, focusFrozen_, focusVoteLastSec_, focusVoteLastSpace_);
+            const std::vector<VoteText::Slot> focusSlots = focusVote_.takeFrozen();
+            for (const VoteText::Slot& sl : focusSlots) {
+                if (sl.id > 0 && sl.id < (int)tok.size()) { focusCalls_.add(tok[(size_t)sl.id], sl.sec); }
+            }
+            focusCalls_.update(startSec);
+            renderSlots(focusSlots, tok, focusFrozen_, focusRender_);
             focusFrozen_.keepLast(1000);
             ConfText open;
-            double lastSec = focusVoteLastSec_;
-            bool lastSpace = focusVoteLastSpace_;
-            renderSlots(focusVote_.open(), tok, open, lastSec, lastSpace);
+            RenderState openRender = focusRender_;
+            renderSlots(focusVote_.open(), tok, open, openRender);
             focusText_ = focusFrozen_.text + open.text;
             focusConf_ = focusFrozen_.conf;
             focusConf_.insert(focusConf_.end(), open.conf.begin(), open.conf.end());
+            callPass(focusText_, focusConf_, focusCalls_.calls());
+            fixWords(focusText_, focusConf_);
             focusFresh_ = open.text;
             focusFreshAt_ = nowSec();
             static double lastVoteLog = 0.0;
@@ -536,8 +621,8 @@ void Engine::focusThread() {
         std::vector<int> ids, idx;
         greedyCtc(logProbs.data(), outFrames, classes, ids, idx);
         const std::vector<ZoneChar> chars =
-            commitZone(focusZone_, ids, idx, startSec, framePeriod, cfg_.focusWindowSec,
-                       cfg_.focusLagSec, startSec + kZoneEdgeSec);
+            commitZone(focusZone_, ids, idx, startSec, framePeriod, cfg.focusWindowSec,
+                       cfg.focusLagSec, startSec + kZoneEdgeSec);
 
         int added = 0;
         for (const ZoneChar& c : chars) {
@@ -576,7 +661,7 @@ void Engine::focusThread() {
             snprintf(msg, sizeof msg,
                      "focus pass %.1f ms, win %.0f s, lag %.1f s, frames %d chars %d, "
                      "+%d chars, text %d: %s",
-                     ms, startSec, cfg_.focusLagSec, outFrames, (int)chars.size(), added,
+                     ms, startSec, cfg.focusLagSec, outFrames, (int)chars.size(), added,
                      (int)focusText_.size(),
                      focusText_.size() > 44 ? focusText_.substr(focusText_.size() - 44).c_str()
                                             : focusText_.c_str());
@@ -663,12 +748,15 @@ void Engine::scanThread() {
         double rangeCenter = 0.0;
         double loHz = 0.0;
         double hiHz = 0.0;
+        double sdrCenter = 0.0;
         {
             std::lock_guard<std::mutex> lck(mtx_);
             rangeCenter = rangeCenter_;
             loHz = rangeLoHz_;
             hiHz = rangeHiHz_;
+            sdrCenter = centerHz_;
         }
+        std::vector<double> p10s((size_t)nBins, 0.0), p90s((size_t)nBins, 0.0), floors;
 
         // Only bins inside the wide (segment) range need a probability map.
         for (int b = 0; b < nBins; b++) {
@@ -681,9 +769,19 @@ void Engine::scanThread() {
             }
             if (col.size() < 8) { continue; }
             std::sort(col.begin(), col.end());
-            const double p10 = percentile(col.data(), (int)col.size(), 0.10);
-            const double p90 = percentile(col.data(), (int)col.size(), 0.90);
-            ratio[(size_t)b] = p90 / (p10 + 1e-3);
+            p10s[(size_t)b] = percentile(col.data(), (int)col.size(), 0.10);
+            p90s[(size_t)b] = percentile(col.data(), (int)col.size(), 0.90);
+            floors.push_back(p10s[(size_t)b]);
+        }
+        // Division guard relative to the noise floor of the range, so the
+        // ratio does not depend on the SDR level (raw IQ, no AGC).
+        double eps = 1e-12;
+        if (!floors.empty()) {
+            std::nth_element(floors.begin(), floors.begin() + (long)(floors.size() / 2), floors.end());
+            eps = std::max(eps, 1e-3 * floors[floors.size() / 2]);
+        }
+        for (int b = 0; b < nBins; b++) {
+            if (p90s[(size_t)b] > 0.0) { ratio[(size_t)b] = p90s[(size_t)b] / (p10s[(size_t)b] + eps); }
         }
 
         const int guard = std::max(1, (int)std::lround(60.0 / binHz));
@@ -703,7 +801,9 @@ void Engine::scanThread() {
             const double offsetHz = ((double)b - (double)half) * binHz;
             const double absHz = rangeCenter + offsetHz;
             if (absHz < loHz || absHz > hiHz) { continue; }
-            if (std::fabs(offsetHz) < 120.0) { continue; }  // remix DC
+            // The SDR LO (DC spike) is at the tuned centre, not at the
+            // centre of the wide channel (that one is just the remix point).
+            if (sdrCenter > 0.0 && std::fabs(absHz - sdrCenter) < 120.0) { continue; }
 
             if (!found.empty() && std::fabs(absHz - found.back().freqHz) < kPeakClusterHz) {
                 Spot& prev = found.back();
@@ -723,8 +823,10 @@ void Engine::scanThread() {
                 bool merged = false;
                 for (Spot& old : spots_) {
                     if (std::fabs(old.freqHz - s.freqHz) < kPeakClusterHz) {
-                        if (s.ratio > old.ratio) { old.freqHz = s.freqHz; }
-                        old.ratio = std::max(old.ratio, s.ratio);
+                        // The latest measurement wins: a historical peak
+                        // pinned the spot to an old position.
+                        old.freqHz = s.freqHz;
+                        old.ratio = s.ratio;
                         old.lastSeenSec = t;
                         merged = true;
                         break;
@@ -744,12 +846,24 @@ void Engine::scanThread() {
     }
 }
 
-Channel* Engine::addChannel(double freqHz, double spotRatio) {
+std::shared_ptr<Channel> Engine::startChannel(double freqHz, double spotRatio) {
+    const EngineConfig cfg = cfgSnap();
     const auto addStart = std::chrono::steady_clock::now();
-    if (!split_ || !wide_ || wideRate_ <= 0.0) { return nullptr; }
+    dsp::routing::Splitter<dsp::complex_t>* split = nullptr;
+    double rate = 0.0;
+    {
+        std::lock_guard<std::mutex> lck(mtx_);
+        split = split_.get();
+        rate = wideRate_;
+    }
+    if (!split || rate <= 0.0) { return nullptr; }
+    if (!wide_) { return nullptr; }
 
     auto ch = std::make_shared<Channel>();
     ch->freqHz = freqHz;
+    // A new channel counts as live from its start; otherwise the idle and
+    // spot-hold timeouts (measured from 0) kill it on the next manager tick.
+    ch->lastSignalSec = nowSec();
     ch->keepSamples = keepSamples_;
     ch->id = nextChannelId_++;
     ch->roundSeen = roundReq_.load();
@@ -759,41 +873,50 @@ Channel* Engine::addChannel(double freqHz, double spotRatio) {
     ch->sink = std::make_unique<dsp::sink::Handler<float>>();
 
     const double offset = freqHz - rangeCenter_;
-    ch->vfo->init(ch->in.get(), wideRate_, (double)kAudioRate, cfg_.channelBwHz, offset);
-    ch->cw->init(&ch->vfo->out, cfg_.cwPitchHz, 0.0, 0.0, (double)kAudioRate);
+    ch->vfo->init(ch->in.get(), rate, (double)kAudioRate, cfg.channelBwHz, offset);
+    ch->cw->init(&ch->vfo->out, cfg.cwPitchHz, 0.0, 0.0, (double)kAudioRate);
     ch->sink->init(&ch->cw->out, &Engine::audioHandler, ch.get());
 
     ch->sink->start();
     ch->cw->start();
     ch->vfo->start();
-    split_->bindStream(ch->in.get());
+    split->bindStream(ch->in.get());
     ch->started = true;
 
-    Channel* raw = ch.get();
-    channels_.push_back(ch);
     const double addMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - addStart).count();
 { std::lock_guard<std::mutex> lck(perfMtx_); perfOpenMs_ += addMs; }
     (void)addMs;
 
-    return raw;
+    return ch;
 }
 
-void Engine::removeChannel(Channel* ch) {
-    auto it = std::find_if(channels_.begin(), channels_.end(),
-                           [ch](const std::shared_ptr<Channel>& p) { return p.get() == ch; });
-    if (it == channels_.end()) { return; }
-    if ((*it)->started) {
-        if ((*it)->vfo) { (*it)->vfo->stop(); }
-        if (split_ && (*it)->in) {
-            try { split_->unbindStream((*it)->in.get()); }
+void Engine::stopChannelDsp(const std::shared_ptr<Channel>& ch) {
+    if (!ch) { return; }
+    if (ch->started) {
+        dsp::routing::Splitter<dsp::complex_t>* split = nullptr;
+        {
+            std::lock_guard<std::mutex> lck(mtx_);
+            split = split_.get();
+        }
+        // Unbind first: a stopped VFO no longer reads ch->in, and the splitter
+        // would block on it and then drop a block for every other channel.
+        if (split && ch->in) {
+            try { split->unbindStream(ch->in.get()); }
             catch (...) {}
         }
-        if ((*it)->cw) { (*it)->cw->stop(); }
-        if ((*it)->sink) { (*it)->sink->stop(); }
-        (*it)->started = false;
+        if (ch->vfo) { ch->vfo->stop(); }
+        if (ch->cw) { ch->cw->stop(); }
+        if (ch->sink) { ch->sink->stop(); }
+        ch->started = false;
     }
-    channels_.erase(it);
+}
+
+std::vector<std::shared_ptr<Channel>> Engine::detachChannelsLocked() {
+    std::vector<std::shared_ptr<Channel>> old;
+    old.swap(channels_);
+    channelCount_.store(0);
+    return old;
 }
 
 void Engine::audioHandler(float* data, int count, void* ctx) {
@@ -804,8 +927,11 @@ void Engine::audioHandler(float* data, int count, void* ctx) {
     ch->totalSamples += count;
     // Keep enough audio for the model window plus one tick of slack, so a long
     // context window is never trimmed before it can be decoded.
+    // Trim only when the buffer is twice the size: an erase per audio block
+    // moved the whole buffer every time (8 % of the CPU with 60 channels).
+    // Readers use totalSamples - buf.size(), so a longer buffer is fine.
     const size_t keep = ch->keepSamples;
-    if (ch->buf.size() > keep) {
+    if (ch->buf.size() > 2 * keep) {
         const size_t drop = ch->buf.size() - keep;
         ch->buf.erase(ch->buf.begin(), ch->buf.begin() + (long)drop);
     }
@@ -813,32 +939,37 @@ void Engine::audioHandler(float* data, int count, void* ctx) {
 
 // One flag per model output frame: does this 30 ms slice carry keying energy?
 std::vector<uint8_t> Engine::frameActivity(const std::vector<float>& window) const {
+    const EngineConfig cfg = cfgSnap();
     std::vector<uint8_t> active;
-    if (!cfg_.frameGate) { return active; }
-    const double frameSec = cfg_.frameGateSec;
+    if (!cfg.frameGate) { return active; }
+    const double frameSec = cfg.frameGateSec;
     const int frameSamples = std::max(1, (int)std::lround(frameSec * (double)kAudioRate));
-    const int nFrames = (int)(window.size() / (size_t)frameSamples);
+    // Model frame j is centred at sample j * frameSamples (centred STFT), and
+    // there are n / frameSamples + 1 of them (401 for 12 s).
+    const int n = (int)window.size();
+    const int nFrames = n / frameSamples + 1;
     if (nFrames < 4) { return active; }
 
     active.assign((size_t)nFrames, 0);
     std::vector<double> rms((size_t)nFrames, 0.0);
     for (int i = 0; i < nFrames; i++) {
-        const float* p = window.data() + (size_t)i * (size_t)frameSamples;
+        const int a = std::max(0, i * frameSamples - frameSamples / 2);
+        const int b = std::min(n, i * frameSamples + (frameSamples + 1) / 2);
         double acc = 0.0;
-        for (int k = 0; k < frameSamples; k++) { acc += (double)p[k] * (double)p[k]; }
-        rms[(size_t)i] = std::sqrt(acc / (double)frameSamples);
+        for (int k = a; k < b; k++) { acc += (double)window[(size_t)k] * (double)window[(size_t)k]; }
+        rms[(size_t)i] = (b > a) ? std::sqrt(acc / (double)(b - a)) : 0.0;
     }
     std::vector<double> sorted = rms;
     std::sort(sorted.begin(), sorted.end());
     const double floor = sorted[(size_t)(0.10 * (double)(sorted.size() - 1))];
     const double peak = sorted[(size_t)(0.95 * (double)(sorted.size() - 1))];
     if (peak < floor * 1.5) { return active; }   // no keying in this window
-    const double thr = floor + (peak - floor) * cfg_.frameGateFrac;
+    const double thr = floor + (peak - floor) * cfg.frameGateFrac;
     for (int i = 0; i < nFrames; i++) { active[(size_t)i] = rms[(size_t)i] > thr ? 1 : 0; }
 
     // Dilate: a character is often placed on the rising or falling edge of an
     // element, where the frame itself still looks quiet.
-    const int d = cfg_.frameGateDilate;
+    const int d = cfg.frameGateDilate;
     if (d > 0) {
         std::vector<uint8_t> grown = active;
         for (int i = 0; i < nFrames; i++) {
@@ -855,8 +986,9 @@ std::vector<uint8_t> Engine::frameActivity(const std::vector<float>& window) con
 bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
                           const std::vector<float>& window,
                           double t0, double now, double lastCommit) {
+    const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
-    const double ratio = keyingRatio(window.data(), (int)window.size(), kAudioRate);
+    const double ratio = keyingRatio(window.data(), (int)window.size(), kAudioRate, cfg.cwPitchHz);
     {
         std::lock_guard<std::mutex> lck(ch->mtx);
         ch->ratio = ratio;
@@ -870,20 +1002,28 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
     }
     // Optional hard gate. Off by default: the frame gate below keeps quiet
     // stretches silent without discarding the characters around them.
-    if (cfg_.squelch > 0.0 && ratio < cfg_.squelch) {
-        std::lock_guard<std::mutex> lck(ch->mtx);
-        ch->gapPending = true;
-        return false;
-    }
-    const std::vector<uint8_t> active = frameActivity(window);
-    if (cfg_.frameGate) {
-        bool any = false;
-        for (uint8_t v : active) { if (v) { any = true; break; } }
-        if (!any) {   // dead air: nothing to decode, saves a pass
+    if (cfg.squelch > 0.0 && ratio < cfg.squelch) {
+        {
             std::lock_guard<std::mutex> lck(ch->mtx);
             ch->gapPending = true;
-            return false;
         }
+        enqueueSilentWindow(chp, t0, now);
+        return false;
+    }
+
+    // Cheap first check on the raw channel audio: no keying at all in the
+    // window means dead air, and the conditioner is not run.
+    auto anyActive = [](const std::vector<uint8_t>& a) {
+        for (uint8_t v : a) { if (v) { return true; } }
+        return false;
+    };
+    if (cfg.frameGate && !anyActive(frameActivity(window))) {
+        {
+            std::lock_guard<std::mutex> lck(ch->mtx);
+            ch->gapPending = true;
+        }
+        enqueueSilentWindow(chp, t0, now);
+        return false;
     }
 
     // Per-worker scratch: the DSP stages must not be shared between threads.
@@ -893,17 +1033,31 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
     std::vector<float>& specData = specBufs_[(size_t)worker];
 
     const auto feStart = std::chrono::steady_clock::now();
-    if (cfg_.conditioning) {
+    if (cfg.conditioning) {
         // Single band: the main tone by the screening rules the model was trained on,
         // searched only within this channel (pitch +- half the channel spacing).
         const MainTone mt = findMainTone(window.data(), (int)window.size(),
-                                           cfg_.cwPitchHz - cfg_.minChannelSpacingHz / 2,
-                                           cfg_.cwPitchHz + cfg_.minChannelSpacingHz / 2);
+                                           cfg.cwPitchHz - cfg.minChannelSpacingHz / 2,
+                                           cfg.cwPitchHz + cfg.minChannelSpacingHz / 2);
         cond.process(window.data(), (int)window.size(), conditioned, kAudioRate,
-                     mt.found ? mt.toneHz : cfg_.cwPitchHz);
+                     mt.found ? mt.toneHz : cfg.cwPitchHz);
     }
     else {
         conditioned.assign(window.begin(), window.end());
+    }
+
+    // Keying gate on the conditioned audio: the 90 Hz filter around the main
+    // tone keeps a neighbour station (inside the 1200 Hz channel) out of it.
+    const std::vector<uint8_t> active = frameActivity(conditioned);
+    if (cfg.frameGate) {
+        if (!anyActive(active)) {   // only a neighbour keys: nothing to decode
+            {
+                std::lock_guard<std::mutex> lck(ch->mtx);
+                ch->gapPending = true;
+            }
+            enqueueSilentWindow(chp, t0, now);
+            return false;
+        }
     }
 
     int frames = 0;
@@ -933,9 +1087,26 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
     return true;
 }
 
+void Engine::enqueueSilentWindow(const std::shared_ptr<Channel>& chp, double t0, double now) {
+    const EngineConfig cfg = cfgSnap();
+    if (!cfg.voteDecode) { return; }
+    {
+        std::lock_guard<std::mutex> lck(inferMtx_);
+        if (inferQueue_.size() >= 512) { return; }
+        InferJob job;
+        job.ch = chp;
+        job.t0 = t0;
+        job.now = now;
+        job.silent = true;
+        inferQueue_.push_back(std::move(job));
+    }
+    inferCv_.notify_one();
+}
+
 // Runs on the single model thread. Collects every queued window, groups them by
 // spectrogram length, and runs one model pass per group.
 void Engine::inferThread() {
+    EngineConfig cfg = cfgSnap();
     lowerThreadPriority();
     SetThreadName("tinycw_infer");
 
@@ -944,6 +1115,7 @@ void Engine::inferThread() {
     int64_t lastRound = 0;
 
     while (running_.load()) {
+        cfg = cfgSnap();
         // Wait for the next decode round, then for every worker to publish it.
         const int64_t wantRound = roundReq_.load();
         if (wantRound == lastRound) {
@@ -956,8 +1128,11 @@ void Engine::inferThread() {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(400);
             while (running_.load() && std::chrono::steady_clock::now() < deadline) {
                 bool all = true;
-                for (auto& wr : workerRound_) {
-                    if (wr && wr->load() < wantRound) { all = false; break; }
+                {
+                    std::lock_guard<std::mutex> rl(roundMtx_);
+                    for (auto& wr : workerRound_) {
+                        if (wr && wr->load() < wantRound) { all = false; break; }
+                    }
                 }
                 if (all) { break; }
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -967,8 +1142,8 @@ void Engine::inferThread() {
 
         // Drain the whole queue, one bounded chunk at a time. A round enqueues
         // far more windows than one chunk holds.
-        const size_t kMaxBatch = (size_t)std::max(1, std::min(64, cfg_.maxBatchWindows));
-        const double maxLagSec = std::max(6.0, cfg_.tickSec * 3.0);
+        const size_t kMaxBatch = (size_t)std::max(1, std::min(64, cfg.maxBatchWindows));
+        const double maxLagSec = std::max(6.0, cfg.tickSec * 3.0);
         const int classes = classCount();
 
         for (;;) {
@@ -1020,7 +1195,9 @@ void Engine::inferThread() {
             // Group by frame count: the window length is fixed, so this is one
             // group in practice.
             std::map<int, std::vector<size_t>> groups;
-            for (size_t i = 0; i < jobs.size(); i++) { groups[jobs[i].frames].push_back(i); }
+            for (size_t i = 0; i < jobs.size(); i++) {
+                if (!jobs[i].silent) { groups[jobs[i].frames].push_back(i); }
+            }
 
             std::vector<float> batchSpec;
             std::vector<float> logProbs;
@@ -1076,12 +1253,12 @@ void Engine::inferThread() {
                                     sizeof(float) * (size_t)classes);
                     }
                     const auto tCtc0 = std::chrono::steady_clock::now();
-                    if (cfg_.voteDecode) {
+                    if (cfg.voteDecode) {
                         commitChannelVote(jobs[idx[k]].ch, slice.data(), outFrames,
                                           jobs[idx[k]].t0, jobs[idx[k]].active,
                                           jobs[idx[k]].now);
                     }
-                    else if (cfg_.massEnsemble) {
+                    else if (cfg.massEnsemble) {
                         commitChannelZone(jobs[idx[k]].ch, slice.data(), outFrames,
                                           jobs[idx[k]].t0, jobs[idx[k]].active,
                                           jobs[idx[k]].now);
@@ -1109,16 +1286,25 @@ void Engine::inferThread() {
                 lastBatchSize_ = (int)n;
             }
 
+            // Silent windows after the decoded ones: the queue is in time order
+            // per channel, and a silent window must not freeze slots that an
+            // earlier window of this chunk has not voted on yet.
+            for (auto& j : jobs) {
+                if (j.silent && cfg.voteDecode) {
+                    commitChannelVote(j.ch, nullptr, 0, j.t0, j.active, j.now);
+                }
+            }
+
             const double chunkSec = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - tChunk0).count();
             busyAccum += chunkSec;
 
             // Hand the CPU back between chunks so CoreAudio can run.
-            if (cfg_.batchGapMs > 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.batchGapMs));
+            if (cfg.batchGapMs > 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(cfg.batchGapMs));
             }
-            if (cfg_.inferCpuPercent > 1.0) {
-                const double budget = chunkSec * (100.0 / cfg_.inferCpuPercent - 1.0);
+            if (cfg.inferCpuPercent > 1.0) {
+                const double budget = chunkSec * (100.0 / cfg.inferCpuPercent - 1.0);
                 if (budget > 0.002) {
                     std::this_thread::sleep_for(std::chrono::milliseconds((long)(budget * 1000.0)));
                 }
@@ -1140,13 +1326,14 @@ void Engine::inferThread() {
 void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* logProbs,
                               int outFrames, double t0, double now, double lastCommit,
                               const std::vector<uint8_t>& active) {
+    const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
     const int classes = classCount();
     std::vector<int> ids;
     std::vector<int> framesIdx;
     // Prefix beam search keeps several hypotheses per window: fewer single
     // character substitutions than greedy, no extra model work.
-    const int beam = (cfg_.ctcBeam > 1) ? cfg_.ctcBeam : 0;
+    const int beam = (cfg.ctcBeam > 1) ? cfg.ctcBeam : 0;
     if (beam > 1) { beamCtc(logProbs, outFrames, classes, beam, ids, framesIdx); }
     else { greedyCtc(logProbs, outFrames, classes, ids, framesIdx); }
 
@@ -1157,16 +1344,16 @@ void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* 
     // own frame timing to drop the duplicates leaks insertions, so each window
     // commits only its newest slice (the last tick) and the overlap is used as
     // context only.
-    const double windowSec = cfg_.windowSec;
+    const double windowSec = cfg.windowSec;
     // The provisional tail can only be re-decoded if the next window commits
     // further back than this one did. Without the overlap the rolled back
     // characters fall outside the next commit zone and are lost.
-    double tailFactor = cfg_.commitTailFactor;
-    if (cfg_.provisionalSec > 0.0 && cfg_.tickSec > 0.0) {
-        const double needed = 1.0 + cfg_.provisionalSec / cfg_.tickSec;
+    double tailFactor = cfg.commitTailFactor;
+    if (cfg.provisionalSec > 0.0 && cfg.tickSec > 0.0) {
+        const double needed = 1.0 + cfg.provisionalSec / cfg.tickSec;
         if (tailFactor < needed) { tailFactor = needed; }
     }
-    double keepFrom = t0 + windowSec - cfg_.tickSec * tailFactor - 0.10;
+    double keepFrom = t0 + windowSec - cfg.tickSec * tailFactor - 0.10;
     if (keepFrom < t0) { keepFrom = t0; }
 
     const std::vector<std::string>& tok = tokens();
@@ -1198,8 +1385,8 @@ void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* 
     }
     // The tail of the window stays provisional: it is re-decoded by the next
     // window, which has the full timing context for it.
-    double provisionalSec = cfg_.provisionalSec;
-    const double committedSpan = cfg_.tickSec * cfg_.commitTailFactor;
+    double provisionalSec = cfg.provisionalSec;
+    const double committedSpan = cfg.tickSec * cfg.commitTailFactor;
     if (provisionalSec > committedSpan * 0.5) { provisionalSec = committedSpan * 0.5; }
     const double provisionalFrom = t0 + windowSec - provisionalSec;
 
@@ -1230,7 +1417,7 @@ void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* 
         // must not test word spaces and prosigns: it would delete every one.
         const bool gapToken = (s == " " || s == "<SK>" || s == "<KN>");
         if (!gapToken && !active.empty()) {
-            const size_t idx = (size_t)std::lround((charTime - t0) / cfg_.frameGateSec);
+            const size_t idx = (size_t)std::lround((charTime - t0) / cfg.frameGateSec);
             if (idx >= active.size() || !active[idx]) { continue; }
         }
         if (s == " " && (ch->pendingText.empty() || ch->pendingText.back() == ' ')) { continue; }
@@ -1271,6 +1458,7 @@ void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* 
 void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
                                const float* logProbs, int outFrames, double t0,
                                const std::vector<uint8_t>& active, double now) {
+    const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
     const int classes = classCount();
     const std::vector<std::string>& tok = tokens();
@@ -1293,21 +1481,33 @@ void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
     }
 
     std::lock_guard<std::mutex> lck(ch->mtx);
-    ch->vote.add(gIds, gIdx, t0, framePeriod, cfg_.windowSec);
+    ch->vote.add(gIds, gIdx, t0, framePeriod, cfg.windowSec);
     const size_t before = ch->voteFrozen.text.size();
-    renderSlots(ch->vote.takeFrozen(), tok, ch->voteFrozen, ch->voteLastSec, ch->voteLastSpace);
+    const std::vector<VoteText::Slot> frozenSlots = ch->vote.takeFrozen();
+    if (slotSink_ && !frozenSlots.empty()) { slotSink_(ch->freqHz, frozenSlots); }
+    for (const VoteText::Slot& sl : frozenSlots) {
+        if (sl.id > 0 && sl.id < (int)tok.size()) { ch->calls.add(tok[(size_t)sl.id], sl.sec); }
+    }
+    ch->calls.update(t0);
+    renderSlots(frozenSlots, tok, ch->voteFrozen, ch->voteRender);
     // Batch output (CLI) gets only the final text.
     ch->pendingText += ch->voteFrozen.text.substr(before);
     ch->voteFrozen.keepLast(1000);
 
     ConfText open;
-    double lastSec = ch->voteLastSec;
-    bool lastSpace = ch->voteLastSpace;
-    renderSlots(ch->vote.open(), tok, open, lastSec, lastSpace);
+    RenderState openRender = ch->voteRender;
+    renderSlots(ch->vote.open(), tok, open, openRender);
 
     ch->rollingText = ch->voteFrozen.text + open.text;
     ch->freshText = open.text;
     ch->freshAtSec = now;
+    // A silent window (logProbs == nullptr) only ages the votes. The open tail
+    // still holds the text of earlier windows for ~12 s, so it must not count
+    // as a new decode: the row age and the waterfall marker would stay fresh
+    // long after the keying stopped. The same holds for the tail that freezes
+    // during the silence: it is old text.
+    const bool silent = (logProbs == nullptr);
+    const bool decoded = !silent && (!open.text.empty() || ch->voteFrozen.text.size() != before);
     const bool any = !ch->rollingText.empty();
     if (any) {
         const int64_t textKey = (int64_t)std::llround(ch->freqHz / 50.0);
@@ -1317,16 +1517,18 @@ void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
         e.text = ch->rollingText;
         e.conf = ch->voteFrozen.conf;
         e.conf.insert(e.conf.end(), open.conf.begin(), open.conf.end());
+        callPass(e.text, e.conf, ch->calls.calls());
+        fixWords(e.text, e.conf);
         e.fresh = open.text;
         e.freshAtSec = now;
-        if (!open.text.empty() || ch->voteFrozen.text.size() != before) {
+        if (decoded) {
             e.lastSec = now;
             ch->lastTextSec = now;
         }
     }
     ch->lastCommitSec = ch->vote.frozenSec();
     ch->provisionalTail = 0;
-    if (!open.text.empty()) {
+    if (decoded) {
         std::lock_guard<std::mutex> lck2(markerMtx_);
         markers_.noteDecode(ch->freqHz, nowSec());
     }
@@ -1335,18 +1537,19 @@ void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
 void Engine::commitChannelZone(const std::shared_ptr<Channel>& chp,
                                const float* logProbs, int outFrames, double t0,
                                const std::vector<uint8_t>& active, double now) {
+    const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
     const int classes = classCount();
     const std::vector<std::string>& tok = tokens();
     const double framePeriod = 2.0 * (double)kHop / (double)kAudioRate;   // 30 ms
-    const double lagSec = (cfg_.massLagSec > 0.0) ? cfg_.massLagSec : kZoneLagSec;
+    const double lagSec = (cfg.massLagSec > 0.0) ? cfg.massLagSec : kZoneLagSec;
 
     std::vector<int> ids, idx;
     greedyCtc(logProbs, outFrames, classes, ids, idx);
 
     std::lock_guard<std::mutex> lck(ch->mtx);
     const std::vector<ZoneChar> chars =
-        commitZone(ch->zone, ids, idx, t0, framePeriod, cfg_.windowSec, lagSec, t0 + kZoneEdgeSec);
+        commitZone(ch->zone, ids, idx, t0, framePeriod, cfg.windowSec, lagSec, t0 + kZoneEdgeSec);
 
     if (ch->gapPending) {
         ch->gapPending = false;
@@ -1446,11 +1649,12 @@ Engine::PerfStats Engine::takePerfStats() {
 }
 
 std::vector<Marker> Engine::activeMarkers() {
+    const EngineConfig cfg = cfgSnap();
     std::lock_guard<std::mutex> lck(markerMtx_);
     // Every channel decodes in the same round, so all decode markers get the
     // same timestamp and expire together. Hold must span at least two rounds,
     // otherwise a single skipped round clears the whole band at once.
-    const double hold = std::max(cfg_.markerHoldSec, cfg_.tickSec * 2.0 + 1.0);
+    const double hold = std::max(cfg.markerHoldSec, cfg.tickSec * 2.0 + 1.0);
     markers_.setHold(hold);
     std::vector<Marker> out;
     markers_.collect(nowSec(), out);
@@ -1474,9 +1678,10 @@ std::vector<Marker> Engine::activeMarkers() {
 }
 
 bool Engine::decodeChannel(const std::shared_ptr<Channel>& chp, int worker, double now) {
+    const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
-    const int windowSamples = (int)(cfg_.windowSec * kAudioRate);
-    const int tickSamples = std::max(1, (int)(cfg_.tickSec * kAudioRate));
+    const int windowSamples = (int)(cfg.windowSec * kAudioRate);
+    const int tickSamples = std::max(1, (int)(cfg.tickSec * kAudioRate));
 
     std::vector<float> window;
     double t0 = 0.0;
@@ -1505,26 +1710,45 @@ bool Engine::decodeChannel(const std::shared_ptr<Channel>& chp, int worker, doub
 }
 
 void Engine::managerThread() {
+    EngineConfig cfg = cfgSnap();
     lowerThreadPriority();
     SetThreadName("tinycw_manager");
 
     while (running_.load()) {
+        cfg = cfgSnap();
+        bool wantRebuild = false;
+        double rebuildRate = 0.0;
+        bool wantRetune = false;
+        double retuneOffset = 0.0;
+        std::vector<std::shared_ptr<Channel>> deadChannels;
+        std::vector<std::pair<double, double>> toAdd;
+        std::vector<std::pair<double, double>> carriers;
+        const auto detectStart = std::chrono::steady_clock::now();
+
+        // Only bookkeeping happens under mtx_. Starting or stopping a DSP chain
+        // joins threads and costs tens of milliseconds per channel while the UI
+        // thread needs mtx_ on every frame: doing that under the lock is what
+        // stalled the window for a second on every tick.
         {
             std::lock_guard<std::mutex> lck(mtx_);
             if (!running_.load()) { break; }
 
             if (rangeDirty_) {
                 rangeDirty_ = false;
-                destroyChannelsLocked();
-                rebuildWideChain(inRate_);
+                wantRebuild = true;
+                rebuildRate = inRate_;
+            }
+            if (wideRetune_ && !wantRebuild) {
+                wideRetune_ = false;
+                wantRetune = true;
+                retuneOffset = rangeCenter_ - centerHz_;
             }
 
             const double now = nowSec();
-            if (now - lastRoundSec_ >= cfg_.tickSec) {
+            if (!paused_.load() && now - lastRoundSec_ >= cfg.tickSec) {
                 lastRoundSec_ = now;
                 roundReq_.fetch_add(1);
             }
-            const auto detectStart = std::chrono::steady_clock::now();
 
             // Sync the channel set with the scanner's spot list, limited to the
             // range the width policy currently allows.
@@ -1546,29 +1770,36 @@ void Engine::managerThread() {
                     const double d = std::fabs(spots[i].freqHz - ch->freqHz);
                     if (d < best) { best = d; bestIdx = (int)i; }
                 }
-                if (bestIdx >= 0 && best < kChannelMatchHz) {
-                    used[(size_t)bestIdx] = 1;
-                    ch->freqHz = spots[(size_t)bestIdx].freqHz;
-                }
+                // The channel keeps its frequency: its VFO is not retuned, and
+                // a moving label split one station into several text rows.
+                if (bestIdx >= 0 && best < kChannelMatchHz) { used[(size_t)bestIdx] = 1; }
             }
 
-            if ((int)channels_.size() < maxChannels_) {
-                for (size_t i = 0; i < spots.size() && (int)channels_.size() < maxChannels_; i++) {
-                    if (used[i]) { continue; }
-                    // Never place two channels on the same station.
-                    bool tooClose = false;
-                    for (auto& ch : channels_) {
-                        if (std::fabs(ch->freqHz - spots[i].freqHz) < cfg_.minChannelSpacingHz) {
-                            tooClose = true;
-                            break;
-                        }
+            // Collect additions; they are started below, outside the lock. The
+            // pending list also keeps two spots of the same tick from landing on
+            // one station.
+            std::vector<double> pending;
+            for (size_t i = 0; i < spots.size(); i++) {
+                if ((int)(channels_.size() + toAdd.size()) >= maxChannels_) { break; }
+                if (used[i]) { continue; }
+                bool tooClose = false;
+                for (auto& ch : channels_) {
+                    if (std::fabs(ch->freqHz - spots[i].freqHz) < cfg.minChannelSpacingHz) {
+                        tooClose = true;
+                        break;
                     }
-                    if (tooClose) { continue; }
-                    addChannel(spots[i].freqHz, spots[i].ratio);
                 }
+                if (!tooClose) {
+                    for (double f : pending) {
+                        if (std::fabs(f - spots[i].freqHz) < cfg.minChannelSpacingHz) { tooClose = true; break; }
+                    }
+                }
+                if (tooClose) { continue; }
+                pending.push_back(spots[i].freqHz);
+                toAdd.emplace_back(spots[i].freqHz, spots[i].ratio);
             }
 
-            std::vector<Channel*> dead;
+            std::vector<std::shared_ptr<Channel>> dead;
             for (auto& ch : channels_) {
                 const bool inRange = (ch->freqHz >= decodeLoHz_ - kChannelMatchHz) &&
                                      (ch->freqHz <= decodeHiHz_ + kChannelMatchHz);
@@ -1576,30 +1807,90 @@ void Engine::managerThread() {
                 for (const Spot& s : spots) {
                     if (std::fabs(s.freqHz - ch->freqHz) < kChannelMatchHz) { matched = true; break; }
                 }
-                if (!inRange || (!matched && (now - ch->lastSignalSec) > cfg_.spotHoldSec)) {
-                    dead.push_back(ch.get());
+                // Three ways to die: out of the decode range, silent for the
+                // idle timeout (whatever the scanner says), or no spot anywhere
+                // near it for the shorter spot hold.
+                const bool idle = (now - ch->lastSignalSec) > cfg.channelIdleSec;
+                if (!inRange || idle ||
+                    (!matched && (now - ch->lastSignalSec) > cfg.spotHoldSec)) {
+                    dead.push_back(ch);
                 }
             }
-            for (Channel* ch : dead) { removeChannel(ch); }
+            if (!dead.empty()) {
+                channels_.erase(
+                    std::remove_if(channels_.begin(), channels_.end(),
+                                   [&dead](const std::shared_ptr<Channel>& p) {
+                                       return std::find(dead.begin(), dead.end(), p) != dead.end();
+                                   }),
+                    channels_.end());
+                deadChannels = std::move(dead);
+            }
 
             // Carrier markers follow the channel list, not the decode rounds.
             // Refreshing them only when a window is decoded makes every dot on
             // the band expire together whenever a round is skipped.
-            {
-                std::lock_guard<std::mutex> lck(markerMtx_);
-                for (auto& ch : channels_) { markers_.noteCarrier(ch->freqHz, now); }
-            }
+            for (auto& ch : channels_) { carriers.emplace_back(ch->freqHz, now); }
+        }
 
-            channelCount_.store((int)channels_.size());
-            const double detectMs = std::chrono::duration<double, std::milli>(
-                std::chrono::steady_clock::now() - detectStart).count();
+        // Heavy part one: tear down the chains that went silent.
+        for (auto& ch : deadChannels) { stopChannelDsp(ch); }
+
+        // The SDR centre moved inside the same segment: retune, no rebuild.
+        if (wantRetune) {
+            std::lock_guard<std::recursive_mutex> dl(dspMtx_);
+            if (wide_) { wide_->setOffset(retuneOffset); }
+        }
+
+        // Heavy part two: rebuild the wide chain when the band or span moved.
+        if (wantRebuild) {
+            std::vector<std::shared_ptr<Channel>> old;
             {
-                std::lock_guard<std::mutex> lck(perfMtx_);
-                perfDetectMs_ += detectMs;
-                perfDetectCh_ += (double)std::max<size_t>(1, channels_.size());
-                perfDetectTicks_ += 1;
+                std::lock_guard<std::mutex> lck(mtx_);
+                old = detachChannelsLocked();
+            }
+            for (auto& ch : old) { stopChannelDsp(ch); }
+            rebuildWideChain(rebuildRate);
+            carriers.clear();
+        }
+
+        // Heavy part three: open the chains for the new spots.
+        if (!toAdd.empty()) {
+            std::vector<std::shared_ptr<Channel>> created;
+            for (auto& p : toAdd) {
+                auto ch = startChannel(p.first, p.second);
+                if (ch) { created.push_back(ch); }
+            }
+            if (!created.empty()) {
+                std::lock_guard<std::mutex> lck(mtx_);
+                const double now = nowSec();
+                for (auto& ch : created) {
+                    channels_.push_back(ch);
+                    carriers.emplace_back(ch->freqHz, now);
+                }
             }
         }
+
+        {
+            std::lock_guard<std::mutex> lck(markerMtx_);
+            for (auto& c : carriers) { markers_.noteCarrier(c.first, c.second); }
+        }
+
+        size_t channelCount = 0;
+        {
+            std::lock_guard<std::mutex> lck(mtx_);
+            channelCount = channels_.size();
+        }
+        channelCount_.store((int)channelCount);
+
+        const double detectMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - detectStart).count();
+        {
+            std::lock_guard<std::mutex> lck(perfMtx_);
+            perfDetectMs_ += detectMs;
+            perfDetectCh_ += (double)std::max<size_t>(1, channelCount);
+            perfDetectTicks_ += 1;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
@@ -1683,9 +1974,13 @@ double Engine::busyPercent() const {
 }
 
 double Engine::cpuLoadPercent() const {
-    // Load relative to the whole machine: the model pass runs on many cores.
+    // Load relative to the whole machine, or of the single model thread when
+    // that is higher: a saturated model thread is the real limit, and on 8
+    // cores it shows as only 12.5 % of the process.
     const double t = (double)std::max(1, hardwareThreads());
-    return std::max(0.0, std::min(100.0, busyPercent() / t));
+    double load = busyPercent() / t;
+    if (inferBusy_) { load = std::max(load, inferBusy_->load()); }
+    return std::max(0.0, std::min(100.0, load));
 }
 
 std::vector<BatchLine> Engine::takeBatch() {
@@ -1696,7 +1991,7 @@ std::vector<BatchLine> Engine::takeBatch() {
         if (ch->pendingText.empty()) { continue; }
         BatchLine line;
         line.freqHz = ch->freqHz;
-        line.text = ch->pendingText;
+        line.text = fixWords(callPass(ch->pendingText, ch->calls.calls()));
         line.strength = ch->ratio;
         ch->pendingText.clear();
         out.push_back(std::move(line));
@@ -1730,9 +2025,10 @@ std::vector<Engine::DecodeLine> Engine::decodeLines(double maxAgeSec) {
 }
 
 double Engine::backlogSeconds() const {
+    const EngineConfig cfg = cfgSnap();
     std::lock_guard<std::mutex> lck(mtx_);
     double worst = 0.0;
-    const int windowSamples = (int)(cfg_.windowSec * kAudioRate);
+    const int windowSamples = (int)(cfg.windowSec * kAudioRate);
     for (auto& ch : channels_) {
         std::lock_guard<std::mutex> lck2(ch->mtx);
         const int64_t ready = ch->totalSamples - ch->consumedSamples - windowSamples;
@@ -1758,6 +2054,7 @@ int Engine::activeSignals() const {
     std::lock_guard<std::mutex> lck(mtx_);
     int n = 0;
     for (auto& ch : channels_) {
+        std::lock_guard<std::mutex> clck(ch->mtx);
         if (!ch->hasSignal) { continue; }
         n++;
     }

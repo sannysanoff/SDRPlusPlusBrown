@@ -17,6 +17,7 @@
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <atomic>
@@ -43,10 +44,12 @@
 #include <utils/flog.h>
 
 #include "tinycw_adapt.h"
+#include "tinycw_anchor.h"
 #include "tinycw_bands.h"
 #include "tinycw_engine.h"
 #include "tinycw_interface.h"
 #include "tinycw_model.h"
+#include "tinycw_textlayout.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -86,6 +89,8 @@ public:
         if (c.contains("provisionalSec")) { provisionalSec_ = c["provisionalSec"].get<double>(); }
         if (c.contains("followVfo")) { followVfo_ = c["followVfo"].get<bool>(); }
         if (c.contains("focusLagSec")) { focusLagSec_ = c["focusLagSec"].get<double>(); }
+        if (c.contains("rowHoldSec")) { engine_.setRowHoldSec(c["rowHoldSec"].get<double>()); }
+        if (c.contains("channelIdleSec")) { engine_.setChannelIdleSec(c["channelIdleSec"].get<double>()); }
         if (c.contains("decodesWindow")) { decodesWindow_ = c["decodesWindow"].get<bool>(); }
         if (c.contains("decodesPos") && c["decodesPos"].is_array() && c["decodesPos"].size() == 2) {
             decodesPos_ = ImVec2(c["decodesPos"][0].get<float>(), c["decodesPos"][1].get<float>());
@@ -136,6 +141,15 @@ public:
         gui::waterfall.onReserveOverlayHeight.bindHandler(&reserveListener_);
         gui::waterfall.refreshLayout();
 
+        // Play / stop resets all CW state. The event fires on the GUI thread;
+        // the restart joins decoder threads, so the tick thread does it.
+        playListener_.handler = [](bool playing, void* ctx) {
+            (void)playing;
+            ((TinyCWDecoderModule*)ctx)->resetReq_ = true;
+        };
+        playListener_.ctx = this;
+        gui::mainWindow.onPlayStateChange.bindHandler(&playListener_);
+
         tickThread_ = std::thread(&TinyCWDecoderModule::tickLoop, this);
         enable();
     }
@@ -144,6 +158,7 @@ public:
         disable();
         tickRunning_ = false;
         if (tickThread_.joinable()) { tickThread_.join(); }
+        gui::mainWindow.onPlayStateChange.unbindHandler(&playListener_);
         gui::waterfall.afterWaterfallDraw.unbindHandler(&waterfallListener_);
         gui::waterfall.onReserveOverlayHeight.unbindHandler(&reserveListener_);
         gui::waterfall.refreshLayout();
@@ -221,15 +236,35 @@ private:
 
     // "Decodes" window: per-round text per channel, sorted by frequency.
     // Window tail kept provisional (re-decoded by the next window), seconds.
-    double provisionalSec_ = 3.0;
-    double focusLagSec_ = 2.0;
+    // Written by drawMenu (GUI thread), read by tickLoop: atomic.
+    std::atomic<double> provisionalSec_{ 3.0 };
+    std::atomic<double> focusLagSec_{ 2.0 };
     // Separate decoder that follows the tuned VFO (CW only, batch 1, 1 s).
     bool followVfo_ = true;
     bool decodesWindow_ = false;
     ImVec2 decodesPos_{ 0, 0 };
     ImVec2 decodesSize_{ 520, 320 };
+    tinycw::RowAnchor decodesAnchor_;   // UI thread only
     std::vector<tinycw::Engine::DecodeLine> uiDecodes_;
+    uint64_t uiVersion_ = 1;   // +1 when uiDecodes_ changes (under uiMtx_)
     double uiDecodesAt_ = 0.0;
+    // UI thread only: a copy of uiDecodes_, refreshed when uiVersion_ changes,
+    // and the cached layout of each row (tinycw_textlayout.h).
+    std::vector<tinycw::Engine::DecodeLine> uiLines_;
+    uint64_t uiLinesVersion_ = 0;
+    struct RowCache {
+        tinycw::TextLayout lay;
+        char freq[32] = {};
+        float freqW = 0.0f;
+        float textRight = 0.0f;   // right edge of the text
+    };
+    std::vector<RowCache> rowCache_;
+    uint64_t rowCacheVersion_ = 0, rowCacheGlyphs_ = 0;
+    float rowCacheAvail_ = -1.0f, rowCacheFsz_ = -1.0f, rowCacheGap_ = -1.0f;
+    float glyphAdv_[256] = {};
+    const ImFont* glyphFont_ = nullptr;
+    float glyphFontSize_ = 0.0f;
+    uint64_t glyphVersion_ = 0;
 
     // <root>/tinycw/fastcw.weights overrides the embedded weights.
     std::string fastcwWeightsPath() {
@@ -261,11 +296,27 @@ private:
             std::this_thread::sleep_for(std::chrono::milliseconds(120));
             if (!tickRunning_.load()) { break; }
 
+            if (resetReq_.exchange(false)) {
+                // SDR++ play/stop: drop channels, votes, rows, markers and the
+                // focus text. stop() clears them; start() begins from nothing.
+                stopEngine();
+                {
+                    std::lock_guard<std::mutex> lck(uiMtx_);
+                    uiDecodes_.clear();
+                    uiVersion_++;
+                }
+                {
+                    std::lock_guard<std::mutex> lck(linesMtx_);
+                    testLines_.clear();
+                }
+                flog::info("[tinycw] play state changed: CW state reset");
+            }
+
             if (enabled && model_.ready()) {
                 // Live thread-count changes from the menu.
-                engine_.setDecodeThreads(threads_);
-        engine_.setProvisionalSec(provisionalSec_);
-        engine_.setFocusLagSec(focusLagSec_);
+                engine_.setDecodeThreads(threads_.load());
+                engine_.setProvisionalSec(provisionalSec_.load());
+                engine_.setFocusLagSec(focusLagSec_.load());
                 // Restart the engine if the source sample rate changed.
                 const double rate = sigpath::iqFrontEnd.getEffectiveSamplerate();
                 if (engine_.running() && std::fabs(rate - engineRate_) > 1.0) {
@@ -291,9 +342,16 @@ private:
                 }
             }
             {
-                auto lines = engine_.decodeLines(120.0);
+                auto lines = engine_.decodeLines(engine_.rowHoldSec());
                 std::lock_guard<std::mutex> lck(uiMtx_);
-                uiDecodes_ = std::move(lines);
+                auto same = [](const tinycw::Engine::DecodeLine& a, const tinycw::Engine::DecodeLine& b) {
+                    return a.freqHz == b.freqHz && a.text == b.text && a.fresh == b.fresh && a.conf == b.conf;
+                };
+                if (lines.size() != uiDecodes_.size() ||
+                    !std::equal(lines.begin(), lines.end(), uiDecodes_.begin(), same)) {
+                    uiDecodes_ = std::move(lines);
+                    uiVersion_++;
+                }
                 uiDecodesAt_ = std::chrono::duration<double>(
                     std::chrono::steady_clock::now().time_since_epoch()).count();
                 static double lastLog = 0.0;
@@ -314,11 +372,15 @@ private:
     }
 
     void syncRange() {
+        std::lock_guard<std::recursive_mutex> pl(policyMtx_);
         const double center = gui::waterfall.getCenterFrequency();
         const double span = gui::waterfall.getBandwidth();
         if (span <= 0.0) { return; }
 
-        const std::string band = currentBandName(center, span);
+        // The band of the tuned VFO, if it is in view; else the view centre.
+        double pick = vfo0Freq();
+        if (pick < center - span * 0.5 || pick > center + span * 0.5) { pick = 0.0; }
+        const std::string band = currentBandName(center, span, pick);
         double userLo = 0.0;
         double userHi = 0.0;
         auto it = bandSettings_.find(band);
@@ -327,8 +389,8 @@ private:
             userHi = it->second.second;
         }
 
-        tinycw::RangeResolution res = tinycw::resolveRange(center, span, widthPolicy_.currentHz, userLo, userHi);
-        const tinycw::RangeResolution full = tinycw::resolveRange(center, span, 0.0, userLo, userHi);
+        tinycw::RangeResolution res = tinycw::resolveRange(center, span, widthPolicy_.currentHz, userLo, userHi, pick);
+        const tinycw::RangeResolution full = tinycw::resolveRange(center, span, 0.0, userLo, userHi, pick);
         {
             std::lock_guard<std::mutex> lck(uiMtx_);
             range_ = res;
@@ -343,13 +405,11 @@ private:
         engine_.setMaxChannels(maxChannels());
     }
 
-    static std::string currentBandName(double center, double span) {
+    static std::string currentBandName(double center, double span, double pickHz = 0.0) {
         const double lo = center - span * 0.5;
         const double hi = center + span * 0.5;
-        for (const tinycw::CwBandDef& b : tinycw::cwBandTable()) {
-            if (b.loHz < hi && b.hiHz > lo) { return b.name; }
-        }
-        return {};
+        const tinycw::CwBandDef* b = tinycw::pickBand(pickHz > 0.0 ? pickHz : center, lo, hi);
+        return b ? std::string(b->name) : std::string();
     }
 
     int maxChannels() const {
@@ -361,6 +421,7 @@ private:
 
     // Adapt the decoded bandwidth to the measured CPU load, so the slider moves.
     void adaptWidth() {
+        std::lock_guard<std::recursive_mutex> pl(policyMtx_);
         widthPolicy_.ceilingHz = (maxWidthHz_ > 0.0) ? maxWidthHz_ : kDefaultMaxWidthHz;
         widthPolicy_.autoMode = autoWidth_;
         widthPolicy_.update(engine_.cpuLoadPercent());
@@ -515,30 +576,44 @@ private:
     // channel has text.
     // Draws text one byte at a time; brightness follows the vote confidence
     // (conf[i] in 0..1, nullptr = all 1): uncertain characters are darker.
-    static float drawConfText(ImDrawList* dl, ImFont* font, float fsz, ImVec2 pos,
-                              const std::string& s, const float* conf, ImVec4 base) {
-        float x = pos.x;
-        char one[2] = { 0, 0 };
-        for (size_t i = 0; i < s.size(); i++) {
-            one[0] = s[i];
-            const float c = conf ? std::clamp(conf[i], 0.0f, 1.0f) : 1.0f;
-            const float k = 0.25f + 0.75f * c;
-            const ImVec4 col(base.x * k, base.y * k, base.z * k, base.w);
-            dl->AddText(font, fsz, ImVec2(x, pos.y), ImGui::GetColorU32(col), one);
-            x += font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, one).x;
+    // UI thread: refreshes uiLines_ from uiDecodes_ when the tick thread
+    // published a change. No copy on the other frames.
+    void refreshUiLines() {
+        std::lock_guard<std::mutex> lck(uiMtx_);
+        if (uiLinesVersion_ == uiVersion_) { return; }
+        uiLines_ = uiDecodes_;
+        uiLinesVersion_ = uiVersion_;
+    }
+
+    // Glyph advances of the current font at its base size. The font has no
+    // kerning or ligatures, so a width is the sum of the advances. Rebuilt
+    // only when the font changes.
+    void refreshGlyphs(const ImFont* font) {
+        if (font == glyphFont_ && font->FontSize == glyphFontSize_) { return; }
+        for (int c = 0; c < 256; c++) { glyphAdv_[c] = font->GetCharAdvance((ImWchar)c); }
+        glyphFont_ = font;
+        glyphFontSize_ = font->FontSize;
+        glyphVersion_++;
+    }
+
+    // Draws a cached layout. Brightness follows the confidence level: uncertain
+    // characters are darker. One AddText per run.
+    static void drawLayout(ImDrawList* dl, ImFont* font, float fsz, ImVec2 pos, const tinycw::TextLayout& lay,
+                           ImVec4 base, ImVec4 freshBase) {
+        for (const tinycw::TextRun& r : lay.runs) {
+            const ImVec4& c = r.fresh ? freshBase : base;
+            const float k = 0.25f + 0.75f * ((float)r.level / (float)(tinycw::kConfLevels - 1));
+            dl->AddText(font, fsz, ImVec2(pos.x + r.x, pos.y), ImGui::GetColorU32(ImVec4(c.x * k, c.y * k, c.z * k, c.w)),
+                        lay.chars.data() + r.a, lay.chars.data() + r.b);
         }
-        return x - pos.x;
     }
 
     void drawSelectedTicker(const ImGui::WaterFall::WaterfallDrawArgs& args) {
         if (args.window == nullptr) { return; }
-        std::vector<tinycw::Engine::DecodeLine> lines;
-        {
-            std::lock_guard<std::mutex> lck(uiMtx_);
-            lines = uiDecodes_;
-        }
-        if (lines.empty()) { return; }
+        refreshUiLines();
+        const std::vector<tinycw::Engine::DecodeLine>& lines = uiLines_;
 
+        // The focus text first: it exists even when the panorama has no rows.
         std::string text;
         std::vector<float> conf;
         if (engine_.focusActive()) { engine_.focusTextConf(text, conf); }
@@ -567,13 +642,16 @@ private:
         const float x = args.fftMin.x + 6.0f * scale;
         ImFont* font = ImGui::GetFont();
         const float fsz = ImGui::GetFontSize() * 0.95f;
-        const ImVec2 tsz = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, text.c_str());
+        refreshGlyphs(font);
+        const tinycw::TextLayout lay =
+            tinycw::layoutText(text, std::string(), conf, glyphAdv_, fsz / font->FontSize, 1e9f);
+        const ImVec2 tsz(lay.width, fsz);
         ImDrawList* dl = args.window->DrawList;
         const ImVec2 bgMin(x - 3.0f * scale, y - 2.0f * scale);
         const ImVec2 bgMax(x + tsz.x + 3.0f * scale, y + tsz.y + 2.0f * scale);
         dl->AddRectFilled(bgMin, bgMax, IM_COL32(0, 0, 0, 140), 3.0f * scale);
-        drawConfText(dl, font, fsz, ImVec2(x, y), text, conf.empty() ? nullptr : conf.data(),
-                     ImVec4(1.0f, 214.0f / 255.0f, 38.0f / 255.0f, 1.0f));
+        const ImVec4 yellow(1.0f, 214.0f / 255.0f, 38.0f / 255.0f, 1.0f);
+        drawLayout(dl, font, fsz, ImVec2(x, y), lay, yellow, yellow);
     }
 
     // One row per channel: text right-aligned next to the frequency column and
@@ -590,12 +668,10 @@ private:
         decodesPos_ = ImGui::GetWindowPos();
         decodesSize_ = ImGui::GetWindowSize();
 
-        std::vector<tinycw::Engine::DecodeLine> lines;
-        {
-            std::lock_guard<std::mutex> lck(uiMtx_);
-            lines = uiDecodes_;
-        }
+        refreshUiLines();
+        const std::vector<tinycw::Engine::DecodeLine>& lines = uiLines_;
         if (lines.empty()) {
+            decodesAnchor_ = tinycw::RowAnchor();   // start again with the pad out of view
             ImGui::TextUnformatted("no decodes yet");
             ImGui::End();
             return;
@@ -616,45 +692,49 @@ private:
             ImGui::GetStyleColorVec4(ImGuiCol_Header).y,
             ImGui::GetStyleColorVec4(ImGuiCol_Header).z, 0.55f));
 
+        // The focused row keeps its screen position when rows come or go
+        // above it (tinycw_anchor.h). The scroll is set in this frame, before
+        // the rows are placed, so the row does not jump for one frame.
+        {
+            ImGuiWindow* win = ImGui::GetCurrentWindow();
+            const float pad = std::max(0.0f, win->InnerRect.GetHeight() - lineH);
+            const float cy = ImGui::GetCursorPosY();
+            win->Scroll.y = decodesAnchor_.update(win->Scroll.y, nearest,
+                                                  nearest >= 0 ? lines[(size_t)nearest].freqHz : 0.0, pad, lineH);
+            ImGui::SetCursorPosY(cy + pad);
+        }
+
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 0.0f));
+        ImFont* font = ImGui::GetFont();
+        const float fsz = ImGui::GetFontSize();
+        const float gap = ImGui::GetStyle().ItemSpacing.x;
+        refreshGlyphs(font);
+        // Lay the rows out again only when the rows, the width or the font changed.
+        if (rowCacheVersion_ != uiLinesVersion_ || rowCacheGlyphs_ != glyphVersion_ || rowCacheAvail_ != avail ||
+            rowCacheFsz_ != fsz || rowCacheGap_ != gap || rowCache_.size() != lines.size()) {
+            const float scale = fsz / font->FontSize;
+            rowCache_.assign(lines.size(), RowCache());
+            for (size_t i = 0; i < lines.size(); i++) {
+                RowCache& rc = rowCache_[i];
+                snprintf(rc.freq, sizeof rc.freq, "%9.1f kHz", lines[i].freqHz / 1000.0);
+                rc.freqW = 0.0f;
+                for (const char* c = rc.freq; *c; c++) { rc.freqW += glyphAdv_[(unsigned char)*c] * scale; }
+                rc.textRight = avail - rc.freqW - gap;
+                rc.lay = tinycw::layoutText(lines[i].text, lines[i].fresh, lines[i].conf, glyphAdv_, scale,
+                                            std::max(0.0f, rc.textRight));
+            }
+            rowCacheVersion_ = uiLinesVersion_;
+            rowCacheGlyphs_ = glyphVersion_;
+            rowCacheAvail_ = avail;
+            rowCacheFsz_ = fsz;
+            rowCacheGap_ = gap;
+        }
+        const ImVec4 textCol = ImGui::GetStyle().Colors[ImGuiCol_Text];
+        const ImVec4 freshCol(1.0f, 0.85f, 0.25f, 1.0f);
+        const ImU32 freqCol = ImGui::GetColorU32(ImGuiCol_TextDisabled);
         for (size_t i = 0; i < lines.size(); i++) {
             const auto& l = lines[i];
-            char freq[32];
-            snprintf(freq, sizeof freq, "%9.1f kHz", l.freqHz / 1000.0);
-            const float freqW = ImGui::CalcTextSize(freq).x;
-            const float gap = ImGui::GetStyle().ItemSpacing.x;
-            const float textRight = avail - freqW - gap;   // right edge of the text
-            const float textRoom = std::max(0.0f, textRight);
-
-            // The newest characters are drawn in yellow.
-            std::string tail = l.fresh;
-            std::string body = l.text;
-            bool hasConf = l.conf.size() == l.text.size();
-            size_t skip = 0;   // bytes of l.text cut from the left (for l.conf)
-            if (tail.empty()) {
-                // nothing new: the whole text is normal
-            }
-            else if (body.size() >= tail.size() &&
-                     body.compare(body.size() - tail.size(), tail.size(), tail) == 0) {
-                body.resize(body.size() - tail.size());
-            }
-            else {
-                // the soup of characters no longer ends with the new ones
-                body.clear();
-                hasConf = false;
-            }
-
-            auto widthOf = [](const std::string& t) {
-                return t.empty() ? 0.0f : ImGui::CalcTextSize(t.c_str()).x;
-            };
-            const size_t tailStart = hasConf ? l.text.size() - tail.size() : 0;   // index of tail in l.text
-            size_t tailSkip = 0;
-            while ((!body.empty() || !tail.empty()) && (widthOf(body) + widthOf(tail)) > textRoom) {
-                if (!body.empty()) { body.erase(0, 1); skip++; }
-                else { tail.erase(0, 1); tailSkip++; }
-            }
-            const float textW = widthOf(body) + widthOf(tail);
-
+            const RowCache& rc = rowCache_[i];
             const ImVec2 rowPos = ImGui::GetCursorScreenPos();
             ImGui::PushID((int)i);
             const bool clicked = ImGui::InvisibleButton("row", ImVec2(avail, lineH));
@@ -662,40 +742,21 @@ private:
                 tuneVfo0(l.freqHz);
             }
             if (ImGui::IsItemHovered()) { ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); }
+            if (!ImGui::IsItemVisible()) {   // scrolled out of view: nothing to draw
+                ImGui::PopID();
+                continue;
+            }
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
             if ((int)i == nearest) {
                 dl->AddRectFilled(rowPos, ImVec2(rowPos.x + avail, rowPos.y + lineH), hiColor);
             }
-            static double lastDbg = 0.0;
-            const double nowDbg = std::chrono::duration<double>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            if (nowDbg - lastDbg > 2.0) {
-                lastDbg = nowDbg;
-                char m[220];
-                snprintf(m, sizeof m,
-                         "draw: avail %.0f freqW %.0f textRight %.0f textW %.0f body %d tail %d text %d",
-                         avail, freqW, textRight, textW, (int)body.size(), (int)tail.size(),
-                         (int)l.text.size());
-                flog::info("[tinycw] {}", m);
-            }
-            const float textX = rowPos.x + textRight - textW;
-            ImFont* font = ImGui::GetFont();
-            const float fsz = ImGui::GetFontSize();
-            if (!body.empty()) {
-                drawConfText(dl, font, fsz, ImVec2(textX, rowPos.y), body,
-                             hasConf ? l.conf.data() + skip : nullptr,
-                             ImGui::GetStyle().Colors[ImGuiCol_Text]);
-            }
-            if (!tail.empty()) {
-                drawConfText(dl, font, fsz, ImVec2(textX + widthOf(body), rowPos.y), tail,
-                             hasConf ? l.conf.data() + tailStart + tailSkip : nullptr,
-                             ImVec4(1.0f, 0.85f, 0.25f, 1.0f));
-            }
-            dl->AddText(ImVec2(rowPos.x + avail - freqW, rowPos.y),
-                        ImGui::GetColorU32(ImGuiCol_TextDisabled), freq);
+            drawLayout(dl, font, fsz, ImVec2(rowPos.x + rc.textRight - rc.lay.width, rowPos.y), rc.lay, textCol,
+                       freshCol);
+            dl->AddText(ImVec2(rowPos.x + avail - rc.freqW, rowPos.y), freqCol, rc.freq);
             ImGui::PopID();
         }
+        ImGui::Dummy(ImVec2(1.0f, decodesAnchor_.pad));
         ImGui::PopStyleVar();
         ImGui::End();
     }
@@ -747,6 +808,7 @@ private:
     }
 
     void drawMenu() {
+        std::lock_guard<std::recursive_mutex> pl(policyMtx_);
         const float width = ImGui::GetContentRegionAvail().x;
 
         // --- model status block
@@ -779,7 +841,7 @@ private:
         ImGui::ProgressBar((float)std::clamp(busy / (100.0 * usedThreads), 0.0, 1.0),
                            ImVec2(width, 0), cpuText);
 
-        int threads = (threads_ > 0) ? threads_ : tinycw::Engine::hardwareThreads();
+        int threads = (threads_.load() > 0) ? threads_.load() : tinycw::Engine::hardwareThreads();
         const int maxThreads = tinycw::Engine::hardwareThreads();
         ImGui::SetNextItemWidth(width);
         if (ImGui::SliderInt(CONCAT("##threads_", name), &threads, 1, maxThreads, "threads: %d")) {
@@ -797,8 +859,8 @@ private:
             if (ImGui::SliderFloat(CONCAT("##prov_", name), &prov, 0.0f, 6.0f,
                                    "provisional tail: %.1f s")) {
                 provisionalSec_ = prov;
-                engine_.setProvisionalSec(provisionalSec_);
-        engine_.setFocusLagSec(focusLagSec_);
+                engine_.setProvisionalSec(provisionalSec_.load());
+                engine_.setFocusLagSec(focusLagSec_.load());
                 saveConfig();
             }
             if (ImGui::IsItemHovered()) {
@@ -846,7 +908,7 @@ private:
             if (ImGui::SliderFloat(CONCAT("##focuslag_", name), &lag, 0.0f, 20.0f,
                                    "VFO decoder lag: %.0f s")) {
                 focusLagSec_ = lag;
-                engine_.setFocusLagSec(focusLagSec_);
+                engine_.setFocusLagSec(focusLagSec_.load());
                 saveConfig();
             }
             if (ImGui::IsItemHovered()) {
@@ -950,15 +1012,18 @@ private:
     }
 
     void saveConfig() {
+        std::lock_guard<std::recursive_mutex> pl(policyMtx_);
         config.acquire();
         json& c = config.conf[name];
         c["autoWidth"] = autoWidth_;
         c["maxWidthHz"] = maxWidthHz_ > 0.0 ? maxWidthHz_ : kDefaultMaxWidthHz;
         c["paused"] = paused_;
-        c["threads"] = threads_;
-        c["provisionalSec"] = provisionalSec_;
+        c["rowHoldSec"] = engine_.rowHoldSec();
+        c["channelIdleSec"] = engine_.channelIdleSec();
+        c["threads"] = threads_.load();
+        c["provisionalSec"] = provisionalSec_.load();
         c["followVfo"] = followVfo_;
-        c["focusLagSec"] = focusLagSec_;
+        c["focusLagSec"] = focusLagSec_.load();
         c["decodesWindow"] = decodesWindow_;
         c["decodesPos"] = json::array({ decodesPos_.x, decodesPos_.y });
         c["decodesSize"] = json::array({ decodesSize_.x, decodesSize_.y });
@@ -985,10 +1050,13 @@ private:
     double maxWidthHz_ = kDefaultMaxWidthHz;
     tinycw::AdaptiveWidth widthPolicy_;
     bool paused_ = false;
-    int threads_ = 0;            // 0 = auto
+    std::atomic<int> threads_{ 0 };   // 0 = auto; GUI writes, tickLoop reads
     double engineRate_ = 0.0;
 
     mutable std::mutex uiMtx_;
+    // bandSettings_ and widthPolicy_: the menu (GUI thread) and the tick
+    // thread (syncRange/adaptWidth) both read and change them.
+    std::recursive_mutex policyMtx_;
     tinycw::RangeResolution range_;
     double centerHz_ = 0.0;
     double spanHz_ = 0.0;
@@ -1003,6 +1071,8 @@ private:
 
     EventHandler<ImGui::WaterFall::WaterfallDrawArgs> waterfallListener_;
     EventHandler<int&> reserveListener_;
+    EventHandler<bool> playListener_;
+    std::atomic_bool resetReq_{ false };
 };
 
 MOD_EXPORT void _INIT_() {

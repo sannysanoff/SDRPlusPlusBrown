@@ -67,22 +67,43 @@ struct RangeResolution {
 
 inline double clampd(double v, double lo, double hi) { return (v < lo) ? lo : ((v > hi) ? hi : v); }
 
+// Which band the operator is actually listening to.
+//
+// Only bands that overlap the visible span are candidates, but the lowest of
+// them is the wrong pick: on a wide source (10 MHz span or a zoomed-out view)
+// the view covers 60m/40m/30m at once, and "lowest" then decodes 60m no matter
+// where the VFO is. Tuning from 7 MHz to 14 MHz moved the pick from 60m to 30m
+// and never touched 20m, which looked exactly like "nothing new appears".
+// The band that contains the centre wins; if the centre sits between bands the
+// nearest edge does.
+inline const CwBandDef* pickBand(double centerHz, double spanLoHz, double spanHiHz) {
+    const CwBandDef* best = nullptr;
+    double bestDist = 1e30;
+    for (const CwBandDef& b : cwBandTable()) {
+        if (b.loHz >= spanHiHz || b.hiHz <= spanLoHz) { continue; }   // not in view
+        double d = 0.0;
+        if (centerHz < b.loHz) { d = b.loHz - centerHz; }
+        else if (centerHz > b.hiHz) { d = centerHz - b.hiHz; }
+        if (d < bestDist) { bestDist = d; best = &b; }
+    }
+    return best;
+}
+
 // Returns the effective CW decode range for the current view.
 //
 // `userLoHz`/`userHiHz` are the per-band slider values; pass 0/0 for defaults.
 // `maxWidthHz` is the global CPU guard rail (0 = unlimited).
+// `pickHz` selects the band (the tuned VFO); 0 = the view centre.
 inline RangeResolution resolveRange(double centerHz, double spanHz,
                                     double maxWidthHz,
-                                    double userLoHz = 0.0, double userHiHz = 0.0) {
+                                    double userLoHz = 0.0, double userHiHz = 0.0,
+                                    double pickHz = 0.0) {
     RangeResolution r;
     r.spanLoHz = centerHz - spanHz * 0.5;
     r.spanHiHz = centerHz + spanHz * 0.5;
 
-    // First (lowest-frequency) band that is at least partially inside the view.
-    const CwBandDef* band = nullptr;
-    for (const CwBandDef& b : cwBandTable()) {
-        if (b.loHz < r.spanHiHz && b.hiHz > r.spanLoHz) { band = &b; break; }
-    }
+    // The band the VFO (or the centre) is in (see pickBand: not the lowest one in view).
+    const CwBandDef* band = pickBand(pickHz > 0.0 ? pickHz : centerHz, r.spanLoHz, r.spanHiHz);
     if (band == nullptr) { return r; }
 
     r.valid = true;

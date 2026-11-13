@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include "tinycw_spacing.h"
+
 namespace tinycw {
 
 constexpr double kVoteTolSec = 0.10;    // gap between members of one slot (jitter is +-1-2 frames)
@@ -190,25 +192,40 @@ private:
     double newestT0_ = -1e18;
 };
 
-// Renders slots as text: skips a space after a space, and inserts "  " for a
-// pause longer than kVotePauseSec. lastSec/lastSpace carry the state across calls.
+// Render state of one text stream, carried across renderSlots() calls. Copy it
+// to render the open part without moving the committed state.
+struct RenderState {
+    double lastSec = 0.0;
+    bool lastSpace = false;
+    std::string lastSym;
+    SpaceTimer timer;      // speed and word gaps (tinycw_spacing.h)
+};
+
+// Renders slots as text: skips a space after a space, inserts "  " for a pause
+// longer than kVotePauseSec and " " where the timing shows a word gap.
 inline void renderSlots(const std::vector<VoteText::Slot>& slots, const std::vector<std::string>& tok,
-                        ConfText& out, double& lastSec, bool& lastSpace) {
+                        ConfText& out, RenderState& st) {
     for (const VoteText::Slot& s : slots) {
         if (s.id <= 0 || s.id >= (int)tok.size()) { continue; }
         const std::string& sym = tok[(size_t)s.id];
         if (sym == " ") {
-            if (out.text.empty() || lastSpace) { continue; }
+            if (out.text.empty() || st.lastSpace) { continue; }
             out.append(" ", s.conf);
-            lastSpace = true;
+            st.lastSpace = true;
             continue;
         }
-        if (lastSec > 0.0 && s.sec - lastSec > kVotePauseSec && !out.text.empty() && !lastSpace) {
-            out.append("  ", 1.0f);
+        const double dt = s.sec - st.lastSec;
+        if (st.lastSec > 0.0 && dt > kVotePauseSec) {
+            if (!out.text.empty() && !st.lastSpace) { out.append("  ", 1.0f); }
+        }
+        else if (st.lastSec > 0.0 && !st.lastSym.empty()) {
+            const bool gap = st.timer.feed(st.lastSym, sym, dt);
+            if (gap && !out.text.empty() && !st.lastSpace) { out.append(" ", 1.0f); }
         }
         out.append(sym, s.conf);
-        lastSec = s.sec;
-        lastSpace = false;
+        st.lastSec = s.sec;
+        st.lastSym = sym;
+        st.lastSpace = false;
     }
 }
 
