@@ -7,6 +7,8 @@
 #include <string>
 #include <utils/event.h>
 #include <mutex>
+#include <atomic>
+#include <thread>
 #include <gui/tuner.h>
 #include "../main_window.h"
 #include <signal_path/sink.h>
@@ -93,8 +95,9 @@ public:
     std::shared_ptr<SubWaterfall> audioWaterfall;
     std::shared_ptr<MobileMainWindowPrivate> pvt;
     dsp::stream<dsp::stereo_t> *currentAudioStream = nullptr;
-    int currentAudioStreamSampleRate = 0;
+    std::atomic<int> currentAudioStreamSampleRate{0};
     std::string currentAudioStreamName = "";
+    std::thread audioWaterfallReader;
     bool drawAudioWaterfall = false;
     EventHandler<ImGuiContext*> displayDrawHandler;
     int cwAudioFrequency = 600;
@@ -232,6 +235,7 @@ public:
     void leaveBandOrMode(int leavingFrequency);
     void selectSSBModeForBand(const std::string& band);
     void updateAudioWaterfallPipeline();
+    void stopAudioWaterfallPipeline();
     void updateDXInfo();
 
     void setBothGains(unsigned char gain);

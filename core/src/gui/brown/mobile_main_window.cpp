@@ -1593,33 +1593,45 @@ void MobileMainWindow::updateFrequencyAfterChange() {
      */
 }
 
+void MobileMainWindow::stopAudioWaterfallPipeline() {
+    if (currentAudioStream) {
+        currentAudioStream->stopReader();
+    }
+    if (audioWaterfallReader.joinable()) {
+        audioWaterfallReader.join();
+    }
+    if (currentAudioStream) {
+        sigpath::sinkManager.unbindStream(currentAudioStreamName, currentAudioStream);
+        currentAudioStream = nullptr;
+    }
+    currentAudioStreamName.clear();
+}
+
 void MobileMainWindow::updateAudioWaterfallPipeline() {
     if (gui::waterfall.selectedVFO != currentAudioStreamName) {
-        if (!currentAudioStreamName.empty()) {
-            currentAudioStream->stopReader();
-            sigpath::sinkManager.unbindStream(currentAudioStreamName, currentAudioStream);
-        }
-        currentAudioStreamName = gui::waterfall.selectedVFO;
-        if (currentAudioStreamName.empty()) {
-            currentAudioStream = nullptr;
-        } else {
-            currentAudioStreamSampleRate = (int) sigpath::sinkManager.getStreamSampleRate(currentAudioStreamName);
-            currentAudioStream = sigpath::sinkManager.bindStream(currentAudioStreamName);
-            std::thread x([&]() {
-                SetThreadName("AudioWaterfall");
-                while (true) {
-                    int rd = currentAudioStream->read();
-                    if (rd < 0) {
-                        break;
+        stopAudioWaterfallPipeline();
+        if (!gui::waterfall.selectedVFO.empty()) {
+            auto name = gui::waterfall.selectedVFO;
+            auto stream = sigpath::sinkManager.bindStream(name);
+            if (stream) {
+                currentAudioStream = stream;
+                currentAudioStreamName = name;
+                currentAudioStreamSampleRate = (int) sigpath::sinkManager.getStreamSampleRate(name);
+                audioWaterfallReader = std::thread([this, stream]() {
+                    SetThreadName("AudioWaterfall");
+                    while (true) {
+                        int rd = stream->read();
+                        if (rd < 0) {
+                            break;
+                        }
+                        audioWaterfall->addAudioSamples(stream->readBuf, rd, currentAudioStreamSampleRate.load());
+                        stream->flush();
                     }
-                    audioWaterfall->addAudioSamples(currentAudioStream->readBuf, rd, currentAudioStreamSampleRate);
-                    currentAudioStream->flush();
-                }
-            });
-            x.detach();
+                });
+            }
         }
     }
-    if (currentAudioStreamName != "") {
+    if (!currentAudioStreamName.empty()) {
         currentAudioStreamSampleRate = (int) sigpath::sinkManager.getStreamSampleRate(currentAudioStreamName);
     }
 }
@@ -2587,6 +2599,7 @@ void MobileMainWindow::updateModeFromRadio(int radioDemodId) {
 }
 
 void MobileMainWindow::end() {
+    stopAudioWaterfallPipeline();
     pvt->end();
     displaymenu::onDisplayDraw.unbindHandler(&displayDrawHandler);
     MainWindow::end();
