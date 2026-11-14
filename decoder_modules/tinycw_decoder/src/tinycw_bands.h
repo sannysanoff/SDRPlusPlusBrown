@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Typical CW segments per amateur band (IARU Region 1 band plan, 2021).
 // Hard-coded defaults, overridable per band in tinycw_config.json.

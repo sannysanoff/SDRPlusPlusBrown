@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Statistical text: windows slide by 1 s, so every moment is decoded by about
 // windowSec windows. Each window votes for the characters it sees at absolute

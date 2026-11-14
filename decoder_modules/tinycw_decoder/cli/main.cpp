@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Headless entry point for the TinyCW CW decoder.
 //
@@ -23,7 +23,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
 
 #include <dsp/stream.h>
 #include <dsp/types.h>
@@ -32,7 +31,6 @@
 
 #include "tinycw_adapt.h"
 #include "tinycw_bands.h"
-#include "tinycw_ctc.h"
 #include "tinycw_engine.h"
 #include "tinycw_model.h"
 
@@ -58,26 +56,10 @@ struct Options {
     double batchSec = 30.0;
     double speed = 0.0;            // 0 = as fast as the CPU allows
     double durationSec = 0.0;      // 0 = whole file
-    double squelch = 0.0;          // 0 = frame gate only
-    double channelBwHz = 1200.0;
-    double channelSpacingHz = 250.0;
-    int ctcBeam = 0;
-    double commitTail = 1.0;
-    double provisionalSec = 3.0;
-    double windowSec = 0.0;   // 0 = engine default
-    double tickSec = 0.0;
-    bool conditioning = true;
-    bool frameGate = true;
-    bool ensemble = true;
-    bool vote = true;
-    double frameGateFrac = 0.45;
-    int frameGateDilate = 2;
-    double cwPitchHz = 700.0;
     int channels = 0;              // 0 = auto
     int threads = 0;               // 0 = auto
     double threadsCycleSec = 0.0;  // >0: rotate the worker count (live resize smoke test)
     double restartAtSec = 0.0;     // >0: stop + start the engine once (SDR++ play/stop reset test)
-    std::string dumpSlots;         // TSV of frozen vote slots: freq_hz, sec, symbol, conf
     bool verbose = false;
 };
 
@@ -96,27 +78,11 @@ void usage() {
         "  --batch SEC         print decoded text every SEC seconds of audio (default 30)\n"
         "  --speed X           feed rate, 0 = as fast as CPU allows (default 0)\n"
         "  --duration SEC      stop after SEC seconds of audio\n"
-        "  --squelch N         optional hard window gate, 0 = off (default 0)\n"
-        "  --no-frame-gate     disable per-frame keying gate (decode everything)\n"
-        "  --no-ensemble       panorama: commit each window's newest slice, no probability averaging\n"
-        "  --no-vote           commit zones instead of per-character voting (focus and panorama)\n"
-        "  --frame-gate-frac F keying threshold between p10 floor and p95 peak (default 0.45)\n"
-        "  --frame-gate-dilate N grow the keying mask by N frames each side (default 2)\n"
         "  --channels N        max concurrent channels (default: derived from width)\n"
         "  --threads N         decode worker threads (default: auto, hw-1 capped at 4)\n"
         "  --threads-cycle SEC rotate the worker count every SEC (live resize test)\n"
-        "  --dump-slots FILE   write every frozen character (freq_hz, sec, symbol, conf) as TSV\n"
         "  --restart-at SEC    stop + start the engine at SEC of audio, as SDR++ play/stop does;\n"
         "                      exit 1 if any CW state survives or decoding does not resume\n"
-        "  --channel-bw HZ     per-signal channel bandwidth (default 1200)\n"
-        "  --channel-spacing HZ minimum spacing between channel centres (default 250)\n"
-        "  --ctc-beam N       prefix beam width, 1 = greedy (default 1)\n"
-        "  --commit-tail F    committed slice per window, in ticks (default 1.0)\n"
-        "  --provisional SEC  window tail kept provisional and re-decoded (default 3)\n"
-        "  --window SEC       model context window (default 6)\n"
-        "  --tick SEC         decode interval per channel (default 1)\n"
-        "  --no-condition     bypass the conditioner (raw channel audio)\n"
-        "  --cw-pitch HZ       audio pitch handed to the model (default 700)\n"
         "  --model PATH        FastCW weights file (default: embedded weights)\n"
         "  --no-adapt          disable adaptive width\n"
         "  --list-bands        print the CW band table and exit\n"
@@ -150,26 +116,10 @@ bool parseArgs(int argc, char** argv, Options& o) {
         else if (a == "--batch") { o.batchSec = std::atof(next("--batch").c_str()); }
         else if (a == "--speed") { o.speed = std::atof(next("--speed").c_str()); }
         else if (a == "--duration") { o.durationSec = std::atof(next("--duration").c_str()); }
-        else if (a == "--squelch") { o.squelch = std::atof(next("--squelch").c_str()); }
         else if (a == "--channels") { o.channels = std::atoi(next("--channels").c_str()); }
         else if (a == "--threads") { o.threads = std::atoi(next("--threads").c_str()); }
         else if (a == "--threads-cycle") { o.threadsCycleSec = std::atof(next("--threads-cycle").c_str()); }
         else if (a == "--restart-at") { o.restartAtSec = std::atof(next("--restart-at").c_str()); }
-        else if (a == "--dump-slots") { o.dumpSlots = next("--dump-slots"); }
-        else if (a == "--channel-bw") { o.channelBwHz = std::atof(next("--channel-bw").c_str()); }
-        else if (a == "--channel-spacing") { o.channelSpacingHz = std::atof(next("--channel-spacing").c_str()); }
-        else if (a == "--ctc-beam") { o.ctcBeam = std::atoi(next("--ctc-beam").c_str()); }
-        else if (a == "--commit-tail") { o.commitTail = std::atof(next("--commit-tail").c_str()); }
-        else if (a == "--provisional") { o.provisionalSec = std::atof(next("--provisional").c_str()); }
-        else if (a == "--window") { o.windowSec = std::atof(next("--window").c_str()); }
-        else if (a == "--tick") { o.tickSec = std::atof(next("--tick").c_str()); }
-        else if (a == "--no-condition") { o.conditioning = false; }
-        else if (a == "--no-frame-gate") { o.frameGate = false; }
-        else if (a == "--no-ensemble") { o.ensemble = false; }
-        else if (a == "--no-vote") { o.vote = false; }
-        else if (a == "--frame-gate-frac") { o.frameGateFrac = std::atof(next("--frame-gate-frac").c_str()); }
-        else if (a == "--frame-gate-dilate") { o.frameGateDilate = std::atoi(next("--frame-gate-dilate").c_str()); }
-        else if (a == "--cw-pitch") { o.cwPitchHz = std::atof(next("--cw-pitch").c_str()); }
         else if (a == "--model") { o.model = next("--model"); }
         else if (a == "--no-adapt") { /* handled in main() */ }
         else if (a == "--list-bands") {
@@ -310,40 +260,11 @@ int main(int argc, char** argv) {
     // --- engine
     tinycw::Engine engine(&model);
     engine.setDecodeThreads(opt.threads);
-    FILE* slotFile = nullptr;
-    if (!opt.dumpSlots.empty()) {
-        slotFile = std::fopen(opt.dumpSlots.c_str(), "w");
-        if (!slotFile) { std::fprintf(stderr, "cannot write %s\n", opt.dumpSlots.c_str()); finish(1); }
-        std::fprintf(slotFile, "freq_hz\tsec\tsym\tconf\n");
-        const std::vector<std::string>& tok = tinycw::tokens();
-        engine.setSlotSink([slotFile, &tok](double freqHz, const std::vector<tinycw::VoteText::Slot>& slots) {
-            for (const auto& s : slots) {
-                if (s.id <= 0 || s.id >= (int)tok.size()) { continue; }
-                const std::string sym = (tok[(size_t)s.id] == " ") ? "_" : tok[(size_t)s.id];
-                std::fprintf(slotFile, "%.1f\t%.3f\t%s\t%.3f\n", freqHz, s.sec, sym.c_str(), s.conf);
-            }
-        });
-    }
     dsp::stream<dsp::complex_t> iq("tinycw.cli.iq");
     if (!engine.start(&iq, (double)sr, err)) {
         std::fprintf(stderr, "engine start failed: %s\n", err.c_str());
         finish(1);
     }
-    engine.setSquelch(opt.squelch);
-    engine.setChannelBandwidth(opt.channelBwHz);
-    engine.setMinChannelSpacing(opt.channelSpacingHz);
-    engine.setCtcBeam(opt.ctcBeam);
-    engine.setCommitTailFactor(opt.commitTail);
-    engine.setProvisionalSec(opt.provisionalSec);
-    if (opt.windowSec > 0.0) { engine.setWindowSec(opt.windowSec); }
-    if (opt.tickSec > 0.0) { engine.setTickSec(opt.tickSec); }
-    engine.setConditioning(opt.conditioning);
-    engine.setFrameGate(opt.frameGate);
-    engine.setMassEnsemble(opt.ensemble);
-    engine.setVoteDecode(opt.vote);
-    engine.setFrameGateFrac(opt.frameGateFrac);
-    engine.setFrameGateDilate(opt.frameGateDilate);
-    engine.setCwPitch(opt.cwPitchHz);
     engine.setWideRange(center, full.valid ? full.loHz : res.loHz,
                         full.valid ? full.hiHz : res.hiHz);
     engine.setRange(center, res.loHz, res.hiHz);
@@ -454,7 +375,10 @@ int main(int argc, char** argv) {
         if (opt.restartAtSec > 0.0 && !restarted && fed >= opt.restartAtSec) {
             restarted = true;
             const size_t rowsBefore = engine.decodeLines(0.0).size();
-            const size_t focusBefore = engine.focusText().size();
+            std::string focusStr;
+            std::vector<float> focusConf;
+            engine.focusTextConf(focusStr, focusConf);
+            const size_t focusBefore = focusStr.size();
             engine.takeBatch();
             engine.stop();
             if (!engine.start(&iq, (double)sr, err)) {
@@ -463,7 +387,8 @@ int main(int argc, char** argv) {
             }
             const size_t rows = engine.decodeLines(0.0).size();
             const size_t marks = engine.activeMarkers().size();
-            const size_t focus = engine.focusText().size();
+            engine.focusTextConf(focusStr, focusConf);
+            const size_t focus = focusStr.size();
             const int chans = engine.liveChannels();
             restartClean = (rows == 0 && marks == 0 && focus == 0 && chans == 0 && engine.spotCount() == 0);
             std::printf("  [restart] at %.0f s: before rows %zu focus %zu chars | after rows %zu markers %zu "
@@ -548,7 +473,6 @@ int main(int argc, char** argv) {
     iq.stopWriter();
     if (feeder.joinable()) { feeder.join(); }
     engine.stop();
-    if (slotFile) { std::fclose(slotFile); }
 
     const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     std::printf("\nprocessed %.0f s of audio in %.1f s wall (%.1fx realtime)\n",

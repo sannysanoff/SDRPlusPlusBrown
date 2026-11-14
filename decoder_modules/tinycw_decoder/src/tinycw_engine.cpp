@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 
 // Windows.h defines min/max as macros; the DSP code below uses std::min/std::max.
 #ifndef NOMINMAX
@@ -365,15 +365,6 @@ void Engine::updateKeepSamples() {
     keepSamples_ = (size_t)(kAudioRate * sec);
 }
 
-void Engine::setWindowSec(double v) {
-    if (v <= 1.0) { return; }
-    {
-        std::lock_guard<std::mutex> cl(cfgMtx_);
-        cfg_.windowSec = v;
-    }
-    updateKeepSamples();
-}
-
 void Engine::setMaxChannels(int n) {
     std::lock_guard<std::mutex> lck(mtx_);
     maxChannels_ = std::max(1, n);
@@ -432,16 +423,11 @@ void Engine::resetFocusDecodeLocked() {
     focusBuf_.clear();
     focusTotal_ = 0;
     focusText_.clear();
-    focusFresh_.clear();
-    focusCommitSec_ = 0.0;
-    focusLastCharSec_ = 0.0;
-    focusZone_ = ZoneState();
     focusVote_ = VoteText();
     focusFrozen_ = ConfText();
     focusConf_.clear();
     focusRender_ = RenderState();
     focusCalls_ = CallLexicon();
-    focusGaps_.clear();
 }
 
 void Engine::disableFocus() {
@@ -503,22 +489,10 @@ void Engine::setFocusFreq(double absHz) {
     flog::info("[tinycw] focus decoder on");
 }
 
-std::string Engine::focusText() {
-    std::lock_guard<std::mutex> lck(focusMtx_);
-    return focusText_;
-}
-
 void Engine::focusTextConf(std::string& text, std::vector<float>& conf) {
     std::lock_guard<std::mutex> lck(focusMtx_);
     text = focusText_;
     conf = focusConf_;
-}
-
-std::string Engine::focusFresh() {
-    std::lock_guard<std::mutex> lck(focusMtx_);
-    if (focusFresh_.empty()) { return std::string(); }
-    if ((nowSec() - focusFreshAt_) > 2.0) { return std::string(); }
-    return focusFresh_;
 }
 
 void Engine::focusThread() {
@@ -553,7 +527,6 @@ void Engine::focusThread() {
         lastDecoded = endAbs;
         if (!model_) { continue; }
 
-        const auto tPass0 = std::chrono::steady_clock::now();
         // Single band: the main tone by the screening rules the model was trained on,
         // searched only within this channel (pitch +- half the channel spacing).
         const MainTone mt = findMainTone(window.data(), (int)window.size(),
@@ -581,90 +554,34 @@ void Engine::focusThread() {
         std::lock_guard<std::mutex> lck(focusMtx_);
         if (gen != focusGen_) { continue; }   // retuned during this pass: old audio
 
-        if (cfg.voteDecode) {
-            // Statistical text (tinycw_vote.h): every window votes; the last
-            // window length stays open and is re-rendered on every pass.
-            std::vector<int> vIds, vIdx;
-            greedyCtc(logProbs.data(), outFrames, classes, vIds, vIdx);
-            focusVote_.add(vIds, vIdx, startSec, framePeriod, cfg.focusWindowSec);
-            const size_t before = focusFrozen_.text.size();
-            const std::vector<VoteText::Slot> focusSlots = focusVote_.takeFrozen();
-            for (const VoteText::Slot& sl : focusSlots) {
-                if (sl.id > 0 && sl.id < (int)tok.size()) { focusCalls_.add(tok[(size_t)sl.id], sl.sec); }
-            }
-            focusCalls_.update(startSec);
-            renderSlots(focusSlots, tok, focusFrozen_, focusRender_);
-            focusFrozen_.keepLast(1000);
-            ConfText open;
-            RenderState openRender = focusRender_;
-            renderSlots(focusVote_.open(), tok, open, openRender);
-            focusText_ = focusFrozen_.text + open.text;
-            focusConf_ = focusFrozen_.conf;
-            focusConf_.insert(focusConf_.end(), open.conf.begin(), open.conf.end());
-            callPass(focusText_, focusConf_, focusCalls_.calls());
-            fixWords(focusText_, focusConf_);
-            focusFresh_ = open.text;
-            focusFreshAt_ = nowSec();
-            static double lastVoteLog = 0.0;
-            if (focusFreshAt_ - lastVoteLog > 5.0) {
-                lastVoteLog = focusFreshAt_;
-                flog::info("[tinycw] focus vote: win {} s, frozen +{}, open {}: {}", (int)startSec,
-                           (int)(focusFrozen_.text.size() - std::min(before, focusFrozen_.text.size())),
-                           (int)open.text.size(), open.text);
-            }
-            continue;
+        // Statistical text (tinycw_vote.h): every window votes; the last
+        // window length stays open and is re-rendered on every pass.
+        std::vector<int> vIds, vIdx;
+        greedyCtc(logProbs.data(), outFrames, classes, vIds, vIdx);
+        focusVote_.add(vIds, vIdx, startSec, framePeriod, cfg.focusWindowSec);
+        const size_t before = focusFrozen_.text.size();
+        const std::vector<VoteText::Slot> focusSlots = focusVote_.takeFrozen();
+        for (const VoteText::Slot& sl : focusSlots) {
+            if (sl.id > 0 && sl.id < (int)tok.size()) { focusCalls_.add(tok[(size_t)sl.id], sl.sec); }
         }
-
-        // Commit zone (tinycw_zone.h): this window commits only the characters
-        // between the previous zone end and focusLagSec before its own end.
-        std::vector<int> ids, idx;
-        greedyCtc(logProbs.data(), outFrames, classes, ids, idx);
-        const std::vector<ZoneChar> chars =
-            commitZone(focusZone_, ids, idx, startSec, framePeriod, cfg.focusWindowSec,
-                       cfg.focusLagSec, startSec + kZoneEdgeSec);
-
-        int added = 0;
-        for (const ZoneChar& c : chars) {
-            const int id = c.id;
-            if (id <= 0 || id >= (int)tok.size()) { continue; }
-            const std::string& sym = tok[(size_t)id];
-            const double charSec = c.sec;
-
-            // A really long pause is worth showing, even though the model has
-            // no silence token. Two seconds is far longer than any word gap.
-            if (!focusText_.empty() && focusLastCharSec_ > 0.0 &&
-                sym != " " && focusText_.back() != ' ') {
-                if (charSec - focusLastCharSec_ > 2.0) { focusText_ += "  "; focusFresh_ += "  "; }
-            }
-
-            if (sym == " " && (focusText_.empty() || focusText_.back() == ' ')) {
-                continue;
-            }
-            focusText_ += sym;
-            focusFresh_ += sym;
-            if (sym != " ") { focusLastCharSec_ = charSec; }
-            added++;
-        }
-
-        if (focusText_.size() > 1000) { focusText_.erase(0, focusText_.size() - 1000); }
-        if (focusFresh_.size() > 200) { focusFresh_.erase(0, focusFresh_.size() - 200); }
-        if (added > 0) { focusFreshAt_ = nowSec(); }
-
-        const double ms = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - tPass0).count();
-        static double lastLog = 0.0;
-        const double tNow = nowSec();
-        if (tNow - lastLog > 5.0) {
-            lastLog = tNow;
-            char msg[256];
-            snprintf(msg, sizeof msg,
-                     "focus pass %.1f ms, win %.0f s, lag %.1f s, frames %d chars %d, "
-                     "+%d chars, text %d: %s",
-                     ms, startSec, cfg.focusLagSec, outFrames, (int)chars.size(), added,
-                     (int)focusText_.size(),
-                     focusText_.size() > 44 ? focusText_.substr(focusText_.size() - 44).c_str()
-                                            : focusText_.c_str());
-            flog::info("[tinycw] {}", msg);
+        focusCalls_.update(startSec);
+        renderSlots(focusSlots, tok, focusFrozen_, focusRender_);
+        focusFrozen_.keepLast(1000);
+        ConfText open;
+        RenderState openRender = focusRender_;
+        renderSlots(focusVote_.open(), tok, open, openRender);
+        focusText_ = focusFrozen_.text + open.text;
+        focusConf_ = focusFrozen_.conf;
+        focusConf_.insert(focusConf_.end(), open.conf.begin(), open.conf.end());
+        callPass(focusText_, focusConf_, focusCalls_.calls());
+        fixWords(focusText_, focusConf_);
+        static double lastVoteLog = 0.0;
+        const double logNow = nowSec();
+        if (logNow - lastVoteLog > 5.0) {
+            lastVoteLog = logNow;
+            flog::info("[tinycw] focus vote: win {} s, frozen +{}, open {}: {}", (int)startSec,
+                       (int)(focusFrozen_.text.size() - std::min(before, focusFrozen_.text.size())),
+                       (int)open.text.size(), open.text);
         }
     }
 }
@@ -955,7 +872,6 @@ void Engine::audioHandler(float* data, int count, void* ctx) {
 std::vector<uint8_t> Engine::frameActivity(const std::vector<float>& window) const {
     const EngineConfig cfg = cfgSnap();
     std::vector<uint8_t> active;
-    if (!cfg.frameGate) { return active; }
     const double frameSec = cfg.frameGateSec;
     const int frameSamples = std::max(1, (int)std::lround(frameSec * (double)kAudioRate));
     // Model frame j is centred at sample j * frameSamples (centred STFT), and
@@ -999,7 +915,7 @@ std::vector<uint8_t> Engine::frameActivity(const std::vector<float>& window) con
 
 bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
                           const std::vector<float>& window,
-                          double t0, double now, double lastCommit) {
+                          double t0, double now) {
     const EngineConfig cfg = cfgSnap();
     Channel* ch = chp.get();
     const double ratio = keyingRatio(window.data(), (int)window.size(), kAudioRate, cfg.cwPitchHz);
@@ -1014,28 +930,13 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
             ch->hasSignal = false;
         }
     }
-    // Optional hard gate. Off by default: the frame gate below keeps quiet
-    // stretches silent without discarding the characters around them.
-    if (cfg.squelch > 0.0 && ratio < cfg.squelch) {
-        {
-            std::lock_guard<std::mutex> lck(ch->mtx);
-            ch->gapPending = true;
-        }
-        enqueueSilentWindow(chp, t0, now);
-        return false;
-    }
-
     // Cheap first check on the raw channel audio: no keying at all in the
     // window means dead air, and the conditioner is not run.
     auto anyActive = [](const std::vector<uint8_t>& a) {
         for (uint8_t v : a) { if (v) { return true; } }
         return false;
     };
-    if (cfg.frameGate && !anyActive(frameActivity(window))) {
-        {
-            std::lock_guard<std::mutex> lck(ch->mtx);
-            ch->gapPending = true;
-        }
+    if (!anyActive(frameActivity(window))) {
         enqueueSilentWindow(chp, t0, now);
         return false;
     }
@@ -1047,7 +948,7 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
     std::vector<float>& specData = specBufs_[(size_t)worker];
 
     const auto feStart = std::chrono::steady_clock::now();
-    if (cfg.conditioning) {
+    {
         // Single band: the main tone by the screening rules the model was trained on,
         // searched only within this channel (pitch +- half the channel spacing).
         const MainTone mt = findMainTone(window.data(), (int)window.size(),
@@ -1056,22 +957,13 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
         cond.process(window.data(), (int)window.size(), conditioned, kAudioRate,
                      mt.found ? mt.toneHz : cfg.cwPitchHz);
     }
-    else {
-        conditioned.assign(window.begin(), window.end());
-    }
 
     // Keying gate on the conditioned audio: the 90 Hz filter around the main
     // tone keeps a neighbour station (inside the 1200 Hz channel) out of it.
     const std::vector<uint8_t> active = frameActivity(conditioned);
-    if (cfg.frameGate) {
-        if (!anyActive(active)) {   // only a neighbour keys: nothing to decode
-            {
-                std::lock_guard<std::mutex> lck(ch->mtx);
-                ch->gapPending = true;
-            }
-            enqueueSilentWindow(chp, t0, now);
-            return false;
-        }
+    if (!anyActive(active)) {   // only a neighbour keys: nothing to decode
+        enqueueSilentWindow(chp, t0, now);
+        return false;
     }
 
     int frames = 0;
@@ -1092,7 +984,6 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
         job.frames = frames;
         job.t0 = t0;
         job.now = now;
-        job.lastCommit = lastCommit;
         job.feMs = feMs;
         job.active = active;
         inferQueue_.push_back(std::move(job));
@@ -1102,8 +993,6 @@ bool Engine::decodeWindow(const std::shared_ptr<Channel>& chp, int worker,
 }
 
 void Engine::enqueueSilentWindow(const std::shared_ptr<Channel>& chp, double t0, double now) {
-    const EngineConfig cfg = cfgSnap();
-    if (!cfg.voteDecode) { return; }
     {
         std::lock_guard<std::mutex> lck(inferMtx_);
         if (inferQueue_.size() >= 512) { return; }
@@ -1156,7 +1045,7 @@ void Engine::inferThread() {
 
         // Drain the whole queue, one bounded chunk at a time. A round enqueues
         // far more windows than one chunk holds.
-        const size_t kMaxBatch = (size_t)std::max(1, std::min(64, cfg.maxBatchWindows));
+        const size_t kMaxBatch = (size_t)cfg.maxBatchWindows;
         const double maxLagSec = std::max(6.0, cfg.tickSec * 3.0);
         const int classes = classCount();
 
@@ -1267,21 +1156,8 @@ void Engine::inferThread() {
                                     sizeof(float) * (size_t)classes);
                     }
                     const auto tCtc0 = std::chrono::steady_clock::now();
-                    if (cfg.voteDecode) {
-                        commitChannelVote(jobs[idx[k]].ch, slice.data(), outFrames,
-                                          jobs[idx[k]].t0, jobs[idx[k]].active,
-                                          jobs[idx[k]].now);
-                    }
-                    else if (cfg.massEnsemble) {
-                        commitChannelZone(jobs[idx[k]].ch, slice.data(), outFrames,
-                                          jobs[idx[k]].t0, jobs[idx[k]].active,
-                                          jobs[idx[k]].now);
-                    }
-                    else {
-                        applyModelOutput(jobs[idx[k]].ch, slice.data(), outFrames,
-                                         jobs[idx[k]].t0, jobs[idx[k]].now,
-                                         jobs[idx[k]].lastCommit, jobs[idx[k]].active);
-                    }
+                    commitChannelVote(jobs[idx[k]].ch, slice.data(), outFrames,
+                                      jobs[idx[k]].t0, jobs[idx[k]].active, jobs[idx[k]].now);
                     const double ctcMs = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - tCtc0).count();
                     std::lock_guard<std::mutex> lck(perfMtx_);
@@ -1304,7 +1180,7 @@ void Engine::inferThread() {
             // per channel, and a silent window must not freeze slots that an
             // earlier window of this chunk has not voted on yet.
             for (auto& j : jobs) {
-                if (j.silent && cfg.voteDecode) {
+                if (j.silent) {
                     commitChannelVote(j.ch, nullptr, 0, j.t0, j.active, j.now);
                 }
             }
@@ -1316,12 +1192,6 @@ void Engine::inferThread() {
             // Hand the CPU back between chunks so CoreAudio can run.
             if (cfg.batchGapMs > 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(cfg.batchGapMs));
-            }
-            if (cfg.inferCpuPercent > 1.0) {
-                const double budget = chunkSec * (100.0 / cfg.inferCpuPercent - 1.0);
-                if (budget > 0.002) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds((long)(budget * 1000.0)));
-                }
             }
         }
 
@@ -1335,138 +1205,6 @@ void Engine::inferThread() {
     }
 
     if (inferBusy_) { inferBusy_->store(0.0); }
-}
-
-void Engine::applyModelOutput(const std::shared_ptr<Channel>& chp, const float* logProbs,
-                              int outFrames, double t0, double now, double lastCommit,
-                              const std::vector<uint8_t>& active) {
-    const EngineConfig cfg = cfgSnap();
-    Channel* ch = chp.get();
-    const int classes = classCount();
-    std::vector<int> ids;
-    std::vector<int> framesIdx;
-    // Prefix beam search keeps several hypotheses per window: fewer single
-    // character substitutions than greedy, no extra model work.
-    const int beam = (cfg.ctcBeam > 1) ? cfg.ctcBeam : 0;
-    if (beam > 1) { beamCtc(logProbs, outFrames, classes, beam, ids, framesIdx); }
-    else { greedyCtc(logProbs, outFrames, classes, ids, framesIdx); }
-
-    // Model output frame period: hop * time_downsample.
-    const double framePeriod = 2.0 * (double)kHop / (double)kAudioRate;
-
-    // Overlapping windows re-decode most of their audio. Relying on the model's
-    // own frame timing to drop the duplicates leaks insertions, so each window
-    // commits only its newest slice (the last tick) and the overlap is used as
-    // context only.
-    const double windowSec = cfg.windowSec;
-    // The provisional tail can only be re-decoded if the next window commits
-    // further back than this one did. Without the overlap the rolled back
-    // characters fall outside the next commit zone and are lost.
-    double tailFactor = cfg.commitTailFactor;
-    if (cfg.provisionalSec > 0.0 && cfg.tickSec > 0.0) {
-        const double needed = 1.0 + cfg.provisionalSec / cfg.tickSec;
-        if (tailFactor < needed) { tailFactor = needed; }
-    }
-    double keepFrom = t0 + windowSec - cfg.tickSec * tailFactor - 0.10;
-    if (keepFrom < t0) { keepFrom = t0; }
-
-    const std::vector<std::string>& tok = tokens();
-    std::lock_guard<std::mutex> lck(ch->mtx);
-
-    // Drop the provisional tail of the previous window: those characters sat on
-    // the window edge, so the current window has the full context for them.
-    auto trimBack = [](std::string& t, int n) {
-        while (n > 0 && !t.empty()) { t.pop_back(); n--; }
-    };
-    auto trimBackForFreq = trimBack;
-    if (ch->provisionalTail > 0) {
-        // The same characters were already published for this frequency.
-        const int64_t key = (int64_t)std::llround(ch->freqHz / 50.0);
-        std::lock_guard<std::mutex> tlck(textMtx_);
-        auto it = textByFreq_.find(key);
-        if (it != textByFreq_.end()) {
-            trimBackForFreq(it->second.text, ch->provisionalTail);
-            trimBackForFreq(it->second.fresh, ch->provisionalTail);
-        }
-    }
-    double commit = lastCommit;
-    if (ch->provisionalTail > 0) {
-        trimBack(ch->rollingText, ch->provisionalTail);
-        trimBack(ch->freshText, ch->provisionalTail);
-        trimBack(ch->pendingText, ch->provisionalTail);
-        commit = ch->stableCommitSec;
-        ch->provisionalTail = 0;
-    }
-    // The tail of the window stays provisional: it is re-decoded by the next
-    // window, which has the full timing context for it.
-    double provisionalSec = cfg.provisionalSec;
-    const double committedSpan = cfg.tickSec * cfg.commitTailFactor;
-    if (provisionalSec > committedSpan * 0.5) { provisionalSec = committedSpan * 0.5; }
-    const double provisionalFrom = t0 + windowSec - provisionalSec;
-
-    auto appendText = [ch](const char* what) {
-        ch->pendingText += what;
-        ch->rollingText += what;
-        ch->freshText += what;
-    };
-    // Silence before this window: mark the break between two transmissions.
-    if (ch->gapPending) {
-        ch->gapPending = false;
-        if (!ch->rollingText.empty() && ch->rollingText.back() != ' ') {
-            appendText("  ");
-        }
-    }
-
-    for (size_t i = 0; i < ids.size(); i++) {
-        const double charTime = t0 + (double)framesIdx[i] * framePeriod;
-        if (charTime < keepFrom) { continue; }
-        // One output frame of guard: the same character shifted by a frame or
-        // two in the next window must not be appended twice.
-        if (charTime <= commit + framePeriod) { continue; }
-        commit = charTime;
-        const int id = ids[i];
-        if (id <= 0 || id >= (int)tok.size()) { continue; }
-        const std::string& s = tok[(size_t)id];
-        // Gaps between characters are silent by definition, so the keying gate
-        // must not test word spaces and prosigns: it would delete every one.
-        const bool gapToken = (s == " " || s == "<SK>" || s == "<KN>");
-        if (!gapToken && !active.empty()) {
-            const size_t idx = (size_t)std::lround((charTime - t0) / cfg.frameGateSec);
-            if (idx >= active.size() || !active[idx]) { continue; }
-        }
-        if (s == " " && (ch->pendingText.empty() || ch->pendingText.back() == ' ')) { continue; }
-        ch->pendingText += s;
-        ch->rollingText += s;
-        if (ch->freshText.size() > 0 && (nowSec() - ch->freshAtSec) > 2.0) {
-            ch->freshText.clear();   // the previous burst is no longer "new"
-        }
-        ch->freshText += s;
-        ch->freshAtSec = nowSec();
-        {
-            const int64_t key = (int64_t)std::llround(ch->freqHz / 50.0);
-            std::lock_guard<std::mutex> tlck(textMtx_);
-            FreqText& e = textByFreq_[key];
-            e.freqHz = ch->freqHz;
-            e.text = ch->rollingText;
-            e.fresh = ch->freshText;
-            e.freshAtSec = ch->freshAtSec;
-            e.lastSec = ch->lastTextSec;
-        }
-        if (charTime >= provisionalFrom) {
-            ch->provisionalTail += 1;
-        }
-        else {
-            ch->stableCommitSec = charTime;
-            ch->provisionalTail = 0;
-        }
-        if (ch->rollingText.size() > 1000) { ch->rollingText.erase(0, ch->rollingText.size() - 1000); }
-        ch->lastTextSec = nowSec();
-    }
-    ch->lastCommitSec = commit;
-    if (commit > lastCommit) {
-        std::lock_guard<std::mutex> lck2(markerMtx_);
-        markers_.noteDecode(ch->freqHz, nowSec());
-    }
 }
 
 void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
@@ -1498,7 +1236,6 @@ void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
     ch->vote.add(gIds, gIdx, t0, framePeriod, cfg.windowSec);
     const size_t before = ch->voteFrozen.text.size();
     const std::vector<VoteText::Slot> frozenSlots = ch->vote.takeFrozen();
-    if (slotSink_ && !frozenSlots.empty()) { slotSink_(ch->freqHz, frozenSlots); }
     for (const VoteText::Slot& sl : frozenSlots) {
         if (sl.id > 0 && sl.id < (int)tok.size()) { ch->calls.add(tok[(size_t)sl.id], sl.sec); }
     }
@@ -1540,88 +1277,7 @@ void Engine::commitChannelVote(const std::shared_ptr<Channel>& chp,
             ch->lastTextSec = now;
         }
     }
-    ch->lastCommitSec = ch->vote.frozenSec();
-    ch->provisionalTail = 0;
     if (decoded) {
-        std::lock_guard<std::mutex> lck2(markerMtx_);
-        markers_.noteDecode(ch->freqHz, nowSec());
-    }
-}
-
-void Engine::commitChannelZone(const std::shared_ptr<Channel>& chp,
-                               const float* logProbs, int outFrames, double t0,
-                               const std::vector<uint8_t>& active, double now) {
-    const EngineConfig cfg = cfgSnap();
-    Channel* ch = chp.get();
-    const int classes = classCount();
-    const std::vector<std::string>& tok = tokens();
-    const double framePeriod = 2.0 * (double)kHop / (double)kAudioRate;   // 30 ms
-    const double lagSec = (cfg.massLagSec > 0.0) ? cfg.massLagSec : kZoneLagSec;
-
-    std::vector<int> ids, idx;
-    greedyCtc(logProbs, outFrames, classes, ids, idx);
-
-    std::lock_guard<std::mutex> lck(ch->mtx);
-    const std::vector<ZoneChar> chars =
-        commitZone(ch->zone, ids, idx, t0, framePeriod, cfg.windowSec, lagSec, t0 + kZoneEdgeSec);
-
-    if (ch->gapPending) {
-        ch->gapPending = false;
-        if (!ch->rollingText.empty() && ch->rollingText.back() != ' ') {
-            ch->pendingText += "  ";
-            ch->rollingText += "  ";
-            ch->freshText += "  ";
-        }
-    }
-
-    const int64_t textKey = (int64_t)std::llround(ch->freqHz / 50.0);
-    bool appended = false;
-    for (const ZoneChar& c : chars) {
-        if (c.id <= 0 || c.id >= (int)tok.size()) { continue; }
-        const std::string& sym = tok[(size_t)c.id];
-        // Word spaces are silent by definition, so the keying gate must skip
-        // them; testing them would delete every word break.
-        const bool gapToken = (sym == " " || sym == "<SK>" || sym == "<KN>");
-        if (!gapToken && !active.empty() &&
-            (c.frame >= (int)active.size() || !active[(size_t)c.frame])) { continue; }
-        if (sym == " " && (ch->pendingText.empty() || ch->pendingText.back() == ' ')) { continue; }
-
-        // A pause longer than any word gap is the break between transmissions.
-        // The model has no silence token, so render it as a double space instead
-        // of gluing the next "CQ" onto the previous callsign.
-        if (sym != " " && ch->lastCharSec > 0.0 && (c.sec - ch->lastCharSec) > 2.0 &&
-            !ch->pendingText.empty() && ch->pendingText.back() != ' ') {
-            ch->pendingText += "  ";
-            ch->rollingText += "  ";
-            ch->freshText += "  ";
-        }
-        if (sym != " ") { ch->lastCharSec = c.sec; }
-
-        ch->pendingText += sym;
-        ch->rollingText += sym;
-        if (!ch->freshText.empty() && (now - ch->freshAtSec) > 2.0) { ch->freshText.clear(); }
-        ch->freshText += sym;
-        ch->freshAtSec = now;
-        appended = true;
-    }
-
-    if (appended) {
-        std::lock_guard<std::mutex> tlck(textMtx_);
-        FreqText& e = textByFreq_[textKey];
-        e.freqHz = ch->freqHz;
-        e.text = ch->rollingText;
-        e.fresh = ch->freshText;
-        e.freshAtSec = ch->freshAtSec;
-        e.lastSec = now;
-        ch->lastTextSec = now;
-    }
-    if (ch->rollingText.size() > 1000) {
-        ch->rollingText.erase(0, ch->rollingText.size() - 1000);
-    }
-
-    ch->lastCommitSec = ch->zone.zoneEndSec;
-    ch->provisionalTail = 0;
-    if (appended) {
         std::lock_guard<std::mutex> lck2(markerMtx_);
         markers_.noteDecode(ch->freqHz, nowSec());
     }
@@ -1699,7 +1355,6 @@ bool Engine::decodeChannel(const std::shared_ptr<Channel>& chp, int worker, doub
 
     std::vector<float> window;
     double t0 = 0.0;
-    double lastCommit = 0.0;
     {
         std::lock_guard<std::mutex> lck(ch->mtx);
         // Rounds arrive every tickSec of wall clock, audio arrives at its own
@@ -1718,9 +1373,8 @@ bool Engine::decodeChannel(const std::shared_ptr<Channel>& chp, int worker, doub
                       ch->buf.begin() + (long)off + windowSamples);
         t0 = (double)startCh / (double)kAudioRate;
         ch->consumedSamples = endCh;
-        lastCommit = ch->lastCommitSec;
     }
-    return decodeWindow(chp, worker, window, t0, now, lastCommit);
+    return decodeWindow(chp, worker, window, t0, now);
 }
 
 void Engine::managerThread() {

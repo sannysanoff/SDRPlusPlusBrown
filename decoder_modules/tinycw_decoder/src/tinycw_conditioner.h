@@ -1,8 +1,10 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Brent Crier (N9BC): DeepFist, the Python original
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown: this C++ port
 //
-// Port of DeepFist `deepfist/features/conditioner.py`
-// (itself the vectorized twin of the Rust live conditioner):
+// C++ port of `deepfist/features/conditioner.py` from DeepFist
+// (https://github.com/n9bc/DeepFist, commit ad9fdca). That file is a
+// vectorized twin of the Rust live decoder `cw_neural.rs` (diddle):
 //   AGC (unit RMS) -> tone AFC (FFT peak in 400..1200 Hz) ->
 //   complex downconvert -> two cascaded 1-pole LPFs (45 Hz) ->
 //   re-center to 600 Hz -> peak normalize.

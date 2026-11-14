@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Layout of one decoded line for the UI, without ImGui. The UI font has no
 // kerning or ligatures, so a text width is the sum of the glyph advances.

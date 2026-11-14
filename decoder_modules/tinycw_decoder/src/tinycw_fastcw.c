@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: MIT
  * FastCW single-band inference for the SDR++ module.
  *
- * fastcw_core.inc is an unchanged copy of DeepFist fastcw/fastcw.c (key MLP,
- * tempo search, resampling, CNN). This file adds the single-band front end
- * (DeepFist fastcw/reference.py front_end_single) and a batch entry point
- * with the ONNX output layout. */
+ * fastcw_core.inc is a copy of the TinyCW training code tinycw/tinycw.c (key
+ * MLP, tempo search, resampling, CNN), with names changed from tinycw to
+ * fastcw and Windows guards added. This file adds the single-band front end
+ * (tinycw/reference.py front_end_single) and a batch entry point with a
+ * time-major [O][batch][48] output. */
 #define FASTCW_NO_MAIN
 #include "fastcw_core.inc"
 #include "tinycw_fastcw.h"

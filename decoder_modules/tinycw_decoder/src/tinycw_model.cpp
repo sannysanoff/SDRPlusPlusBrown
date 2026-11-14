@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // tinycw::Model backed by FastCW (tinycw_fastcw.c): a plain C forward pass
 // over weights compiled into the binary, no runtime library to load.
@@ -58,11 +58,6 @@ bool Model::load(const std::string& weightsPath, std::string& err) {
     }
     ready_ = true;
     return true;
-}
-
-bool Model::infer(const float* spectrogram, int freqBins, int frames,
-                  std::vector<float>& logProbs, int& outFrames, std::string& err) {
-    return inferBatch(spectrogram, 1, freqBins, frames, logProbs, outFrames, err);
 }
 
 bool Model::inferBatch(const float* spectrogram, int batch, int freqBins, int frames,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Waterfall marker bookkeeping: keeps a carrier (keyed CW) flag and a decode
 // flag per frequency for `holdSec` after the last event. Kept separate from the

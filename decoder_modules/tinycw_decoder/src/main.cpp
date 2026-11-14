@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // TinyCW neural CW decoder module.
 //
@@ -56,7 +56,7 @@
 SDRPP_MOD_INFO{
     /* Name:            */ "tinycw_decoder",
     /* Description:     */ "TinyCW neural CW decoder (whole-band)",
-    /* Author:          */ "SDR++ Brown + DeepFist",
+    /* Author:          */ "SDR++ Brown + TinyCW",
     /* Version:         */ 0, 1, 0,
     /* Max instances    */ 1
 };
@@ -86,9 +86,7 @@ public:
         if (c.contains("maxWidthHz")) { maxWidthHz_ = c["maxWidthHz"].get<double>(); }
         if (c.contains("paused")) { paused_ = c["paused"].get<bool>(); }
         if (c.contains("threads")) { threads_ = c["threads"].get<int>(); }
-        if (c.contains("provisionalSec")) { provisionalSec_ = c["provisionalSec"].get<double>(); }
         if (c.contains("followVfo")) { followVfo_ = c["followVfo"].get<bool>(); }
-        if (c.contains("focusLagSec")) { focusLagSec_ = c["focusLagSec"].get<double>(); }
         if (c.contains("rowHoldSec")) { engine_.setRowHoldSec(c["rowHoldSec"].get<double>()); }
         if (c.contains("channelIdleSec")) { engine_.setChannelIdleSec(c["channelIdleSec"].get<double>()); }
         if (c.contains("spotGateDb")) { engine_.setSpotGateDb(c["spotGateDb"].get<double>()); }
@@ -218,8 +216,6 @@ private:
         const double rate = sigpath::iqFrontEnd.getEffectiveSamplerate();
         if (rate <= 0.0) { return; }
         engine_.setDecodeThreads(threads_);
-        engine_.setProvisionalSec(provisionalSec_);
-        engine_.setFocusLagSec(focusLagSec_);
         std::string err;
         if (!engine_.start(&iqStream_, rate, err)) {
             flog::error("[tinycw] engine start failed: {}", err);
@@ -236,10 +232,6 @@ private:
     }
 
     // "Decodes" window: per-round text per channel, sorted by frequency.
-    // Window tail kept provisional (re-decoded by the next window), seconds.
-    // Written by drawMenu (GUI thread), read by tickLoop: atomic.
-    std::atomic<double> provisionalSec_{ 3.0 };
-    std::atomic<double> focusLagSec_{ 2.0 };
     // Separate decoder that follows the tuned VFO (CW only, batch 1, 1 s).
     bool followVfo_ = true;
     bool decodesWindow_ = false;
@@ -316,8 +308,6 @@ private:
             if (enabled && model_.ready()) {
                 // Live thread-count changes from the menu.
                 engine_.setDecodeThreads(threads_.load());
-                engine_.setProvisionalSec(provisionalSec_.load());
-                engine_.setFocusLagSec(focusLagSec_.load());
                 // Restart the engine if the source sample rate changed.
                 const double rate = sigpath::iqFrontEnd.getEffectiveSamplerate();
                 if (engine_.running() && std::fabs(rate - engineRate_) > 1.0) {
@@ -854,37 +844,6 @@ private:
             }
         }
 
-        {
-            float prov = (float)provisionalSec_;
-            ImGui::SetNextItemWidth(width);
-            if (ImGui::SliderFloat(CONCAT("##prov_", name), &prov, 0.0f, 6.0f,
-                                   "provisional tail: %.1f s")) {
-                provisionalSec_ = prov;
-                engine_.setProvisionalSec(provisionalSec_.load());
-                engine_.setFocusLagSec(focusLagSec_.load());
-                saveConfig();
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::BeginTooltip();
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
-                ImGui::TextUnformatted("Provisional tail");
-                ImGui::Separator();
-                ImGui::TextUnformatted(
-                    "Characters this close to the window end are decoded without "
-                    "the audio that follows them, so their timing is not settled yet. "
-                    "They are shown immediately and re-decoded by the next window, "
-                    "which has the full context.");
-                ImGui::Spacing();
-                ImGui::TextUnformatted(
-                    "0.06 s keeps only two output frames (30 ms each). "
-                    "One CW character plus its trailing gap is 0.5-0.7 s at 18 WPM "
-                    "and up to 1-2 s for a hand-sent fist, so 3 s covers one "
-                    "character with margin.");
-                ImGui::PopTextWrapPos();
-                ImGui::EndTooltip();
-            }
-        }
-
         if (ImGui::Checkbox(CONCAT("Follow VFO decoder##follow_", name), &followVfo_)) {
             saveConfig();
             if (!followVfo_) { engine_.disableFocus(); }
@@ -896,38 +855,10 @@ private:
             ImGui::Separator();
             ImGui::TextUnformatted(
                 "Separate decoder on the tuned VFO only, CW mode only. Every second it "
-                "runs one model pass with batch 1 over the last 24 s and averages the "
-                "output frames of all overlapping windows before decoding. No squelch, "
-                "no keying gate.");
+                "runs one model pass with batch 1 over the last 12 s and votes per "
+                "character over all windows that cover it.");
             ImGui::PopTextWrapPos();
             ImGui::EndTooltip();
-        }
-
-        if (followVfo_) {
-            float lag = (float)focusLagSec_;
-            ImGui::SetNextItemWidth(width);
-            if (ImGui::SliderFloat(CONCAT("##focuslag_", name), &lag, 0.0f, 20.0f,
-                                   "VFO decoder lag: %.0f s")) {
-                focusLagSec_ = lag;
-                engine_.setFocusLagSec(focusLagSec_.load());
-                saveConfig();
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::BeginTooltip();
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
-                ImGui::TextUnformatted("VFO decoder lag");
-                ImGui::Separator();
-                ImGui::TextUnformatted(
-                    "The VFO decoder decodes a 12 s window every second. Each window "
-                    "commits only the characters that have this much audio after "
-                    "them, so the text runs this far behind live audio.");
-                ImGui::Spacing();
-                ImGui::TextUnformatted(
-                    "2 s is enough right context for one character at normal "
-                    "speeds. More lag gives slow or hand-sent CW more context.");
-                ImGui::PopTextWrapPos();
-                ImGui::EndTooltip();
-            }
         }
 
         if (ImGui::Checkbox(CONCAT("Decodes window##decwin_", name), &decodesWindow_)) {
@@ -1051,9 +982,7 @@ private:
         c["channelIdleSec"] = engine_.channelIdleSec();
         c["spotGateDb"] = engine_.spotGateDb();
         c["threads"] = threads_.load();
-        c["provisionalSec"] = provisionalSec_.load();
         c["followVfo"] = followVfo_;
-        c["focusLagSec"] = focusLagSec_.load();
         c["decodesWindow"] = decodesWindow_;
         c["decodesPos"] = json::array({ decodesPos_.x, decodesPos_.y });
         c["decodesSize"] = json::array({ decodesSize_.x, decodesSize_.y });

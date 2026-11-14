@@ -1,7 +1,9 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Brent Crier (N9BC): DeepFist, the Python original
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown: this C++ port
 //
-// Port of DeepFist `tools/squelch.py`: a keying-based signal gate.
+// Keying-based signal gate. C++ port of `tools/squelch.py` from DeepFist
+// (https://github.com/n9bc/DeepFist, commit 28a3d35).
 //
 // A steady tone (receiver AGC artefact) or noise has a flat envelope, so the
 // per-bin p90/p10 amplitude ratio stays near 4. Real CW is keyed, so its tone

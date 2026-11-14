@@ -1,7 +1,7 @@
 # TinyCW CW decoder module
 
-Whole-band CW decoder for SDR++ Brown, powered by the
-[DeepFist](https://github.com/n9bc/DeepFist) neural network (CNN + CTC).
+Whole-band CW decoder for SDR++ Brown, powered by TinyCW: a hybrid decoder
+with a small trained model (13,932 weights, plain C).
 
 Instead of decoding only the tuned VFO, the module takes the wide IQ stream,
 scans the CW segment of the band currently in view, opens one narrow channel per
@@ -30,10 +30,42 @@ queues windows.
 
 ## Model
 
-FastCW single band (DeepFist `fastcw/`), in C: `src/tinycw_fastcw.c` wraps
-`src/fastcw_core.inc` (an unchanged copy of DeepFist `fastcw/fastcw.c`). The
-weights (13,932 floats, DeepFist `runs/single_synth6k_val.weights`) are embedded
-from `src/fastcw_weights.inc`. Nothing is downloaded at configure or run time
+### History
+
+The prototype was the [DeepFist](https://github.com/n9bc/DeepFist) neural
+network (ONNX, CNN + CTC). It was too slow for a wideband decode, with one model
+pass per channel for dozens of channels. It was discarded: the DeepFist model
+is not used in this module. Some DeepFist code is used, ported to C++ (GPL-3.0-or-later,
+Brent Crier, N9BC):
+
+* `src/tinycw_conditioner.h`: `deepfist/features/conditioner.py`,
+* `src/tinycw_spectrogram.h`: `deepfist/features/spectrogram.py`,
+* `src/tinycw_ctc.h`: `deepfist/morse/alphabet.py` and `deepfist/model/decode.py`,
+* `src/tinycw_squelch.h`: `tools/squelch.py`,
+* `src/tinycw_calls.h`: the callsign pattern of `tools/rescore.py`.
+
+A hybrid decoder was trained in its place:
+
+1. **Hybrid structure.** A small key MLP reads the keying at the fixed 600 Hz
+   bin. A tempo step resamples it to 3 steps per dot. A small CNN and a greedy
+   CTC decode turn it into text.
+2. **Corpus.** About 900 off-air clips (908 wav files, 12 s each) were cut
+   from IQ recordings. A screening step kept the clips with one station and
+   no QRM.
+3. **Reference decoding.** Several open-source CW decoders decoded every clip:
+   Morse-CW-Decoder, CW Studio, signal-decoder, ggmorse and the ag1le LSTM
+   decoder.
+4. **Ground truth.** An LLM cleaned their outputs into one text per clip.
+   Unclear passages are marked `?` and match any text in training and
+   scoring.
+5. **Training.** The model was trained on 80 % of the clips (split by a name
+   hash), with augmented copies and synthetic clips. The other 20 % is the test
+   split.
+
+### Run time
+
+FastCW single band, in C: `src/tinycw_fastcw.c` wraps `src/fastcw_core.inc`.
+The weights (13,932 floats) are embedded from `src/fastcw_weights.inc`. Nothing is downloaded at configure or run time
 and no inference runtime is linked: the model is a plain C forward pass.
 `<root>/tinycw/fastcw.weights` overrides the embedded weights.
 
@@ -51,9 +83,9 @@ main tone by the rules the training clips were screened with
 The conditioner is then forced to that tone, and the model reads the fixed
 600 Hz bin (no carrier scorer, no partner search).
 
-**Accuracy** on the DeepFist test split (130 clips, best of `llm_ground` /
-`llm_ground_v1`): 12.5 % CER with this C++ chain
-(`tinycw_fastcw_check`), 12.1 % in the Python reference. The difference is
+**Accuracy** on the test split of the corpus (130 clips, against the
+LLM-cleaned ground truth, best of `llm_ground` / `llm_ground_v1`): 12.5 % CER with this C++ chain,
+12.1 % in the Python reference. The difference is
 the mapping of CNN steps to the 30 ms output grid.
 
 **Cost** per 12 s window (M-series, release): main tone 4.5 ms,
@@ -128,9 +160,7 @@ No external dependencies:
 
 ```bash
 cmake -S . -B build -DOPT_BUILD_TINYCW_DECODER=ON
-cmake --build build --target tinycw_decoder tinycw_cli tinycw_fastcw_check -j8
-# check the chain on 3200 Hz clips (path, band, tone, text, ms per stage):
-./build/decoder_modules/tinycw_decoder/tinycw_fastcw_check clip.wav
+cmake --build build --target tinycw_decoder tinycw_cli -j8
 ```
 
 ## Headless CLI (no UI)
@@ -142,8 +172,12 @@ cmake --build build --target tinycw_decoder tinycw_cli tinycw_fastcw_check -j8
 ```
 
 The CLI feeds a baseband WAV through the *same* Engine the module uses and prints
-30 s batches. Useful flags: `--focus HZ` (also run the focus decoder there), `--band 30m`, `--range 7000-7060`, `--center HZ`,
-`--channel-bw HZ`, `--squelch N`, `--no-adapt`, `--duration S`, `--list-bands`.
+30 s batches. Its switches control only the paths the GUI uses: `--focus HZ`
+(the Follow VFO decoder at HZ), `--band 30m`, `--range 7000-7060`, `--center HZ`,
+`--max-width KHZ`, `--no-adapt`, `--channels N`, `--threads N`, `--model PATH`
+(the `.weights` override), `--batch S`, `--speed X`, `--duration S`,
+`--threads-cycle S` (live thread resize), `--restart-at S` (play/stop reset),
+`--list-bands`, `--verbose`.
 
 Exit at the end of a run is immediate (`_Exit`) because SDR++ core globals have
 GL static destructors that require a live context.
@@ -175,8 +209,8 @@ for the pre-existing tests too); run it as
 * 1 worker: ~68 % of one core at 3× feed; saturates at ~4.4× realtime.
 * 4 workers: same feed at ~22 % per core; reaches ~7× realtime, 354 % of 400 % CPU.
 * Adaptive width settles around 20–40 kHz at 1× realtime on this machine.
-* Headline accuracy is DeepFist's own: ~7 % CER on real ARRL practice audio;
-  this module adds channelization and squelch on top of the same front-end.
+* Accuracy: 12.5 % CER on the 130 test clips (see Model). This module adds
+  channelization and squelch on top of the same front end.
 
 ## Limitations
 

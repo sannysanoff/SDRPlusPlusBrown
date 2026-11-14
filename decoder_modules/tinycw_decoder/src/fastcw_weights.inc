@@ -1,4 +1,5 @@
-/* FastCW single-band weights (DeepFist runs/single_synth6k_val.weights:
+/* TinyCW (FastCW single-band) weights (TinyCW training run
+ * runs/single_synth6k_val.weights:
  * key MLP + tempo params + CNN, no carrier scorer). 13932 floats, generated. */
 0x1.1d09dc0000000p-1f,0x1.c26f620000000p-3f,0x1.4288ea0000000p-1f,0x1.f59da60000000p-3f,0x1.b7931c0000000p-6f,0x1.2e45d80000000p-1f,
 -0x1.ee48360000000p-6f,0x1.d791500000000p-5f,0x1.82bb9e0000000p-2f,0x1.1614520000000p-3f,-0x1.18aa4e0000000p-4f,0x1.6e89340000000p-5f,

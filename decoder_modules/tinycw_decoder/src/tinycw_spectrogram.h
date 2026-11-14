@@ -1,7 +1,10 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Brent Crier (N9BC): DeepFist, the Python original
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown: this C++ port
 //
-// Port of DeepFist `deepfist/features/spectrogram.py`.
+// C++ port of `deepfist/features/spectrogram.py` from DeepFist
+// (https://github.com/n9bc/DeepFist, commits 5c479e2 and 107f80a). The
+// resolution follows DeepCW (e04/deepcw-engine); no DeepCW code is used.
 //
 // The model was trained on this exact front-end, so every constant and the
 // padding/window geometry must match torch:

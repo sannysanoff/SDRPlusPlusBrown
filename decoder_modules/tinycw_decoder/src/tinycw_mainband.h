@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
-// Main tone of one channel window: the rules the FastCW training clips were
-// made with (DeepFist tools/screen_clips.py screen() and
+// Main tone of one channel window: the rules the TinyCW training clips were
+// screened with (TinyCW training tools: tools/screen_clips.py screen() and
 // tools/decode_sets.py exact_tone()).
 //
 // 1. Band power: 160-point frames (50 ms, 20 Hz bands), 80-sample hop (25 ms),

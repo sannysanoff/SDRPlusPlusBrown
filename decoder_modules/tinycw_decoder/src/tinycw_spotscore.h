@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Channel detection gate. The scanner's criterion for a spot is its keying
 // ratio p90/p10 of the bin magnitude over the last 3 s, in dB. Each spot keeps

@@ -38,36 +38,4 @@ if (NOT ANDROID)
             BUILD_RPATH "$<TARGET_FILE_DIR:sdrpp_core>"
             INSTALL_RPATH "$ORIGIN")
     endif ()
-
-    # Single-channel debug probe for the statistical (multi-window) decoder.
-    add_executable(tinycw_focus_probe
-        cli/focus_probe.cpp
-        src/tinycw_model.cpp
-        src/tinycw_fastcw.c)
-    target_include_directories(tinycw_focus_probe PRIVATE "src/")
-    target_link_libraries(tinycw_focus_probe PRIVATE sdrpp_core)
-    if (MSVC)
-        target_compile_options(tinycw_focus_probe PRIVATE /std:c++17 /EHsc)
-    else ()
-        target_compile_options(tinycw_focus_probe PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O2 -std=c++17>)
-    endif ()
-    if (APPLE)
-        set_target_properties(tinycw_focus_probe PROPERTIES
-            BUILD_RPATH "$<TARGET_FILE_DIR:sdrpp_core>"
-            INSTALL_RPATH "@loader_path")
-    elseif (UNIX)
-        set_target_properties(tinycw_focus_probe PROPERTIES
-            BUILD_RPATH "$<TARGET_FILE_DIR:sdrpp_core>"
-            INSTALL_RPATH "$ORIGIN")
-    endif ()
-
-    # Whole-clip check of the single-band chain against DeepFist (Python).
-    add_executable(tinycw_fastcw_check
-        cli/fastcw_check.cpp
-        src/tinycw_model.cpp
-        src/tinycw_fastcw.c)
-    target_include_directories(tinycw_fastcw_check PRIVATE "src/")
-    if (NOT MSVC)
-        target_compile_options(tinycw_fastcw_check PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O2 -std=c++17>)
-    endif ()
 endif ()

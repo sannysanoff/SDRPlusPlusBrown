@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // End-to-end test: plays a real CW contest baseband recording through the file
 // source, lets the module decode the whole CW segment, and checks that
-//   * the model was loaded (weights present in <root>/tinycw/),
+//   * the model was loaded (the embedded weights),
 //   * the keying scanner opened channels,
 //   * decoded text arrives on the module interface,
 //   * the adaptive width policy produced a CPU measurement.

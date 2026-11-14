@@ -1,13 +1,14 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Brent Crier (N9BC): DeepFist, the Python original
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown: this C++ port
 //
-// Port of DeepFist `deepfist/morse/alphabet.py` (token order) and
-// `deepfist/model/decode.py` (greedy CTC decode).
+// C++ port of `deepfist/morse/alphabet.py` (token order, commit 5945dc8) and
+// `deepfist/model/decode.py` (greedy CTC decode, commit 8e72665) from
+// DeepFist (https://github.com/n9bc/DeepFist). TinyCW was trained with the
+// same token order.
 
 #pragma once
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -37,88 +38,6 @@ inline const std::vector<std::string>& tokens() {
 inline int blankId() { return 0; }
 inline int classCount() { return (int)tokens().size(); }
 
-
-// Prefix beam search for the CTC head. Same frame grid as greedyCtc but keeps
-// the `beam` best hypotheses, so a locally wrong frame does not cost a
-// character. With 48 classes and ~400 frames this costs well under a
-// millisecond per window.
-inline float logAdd(float a, float b) {
-    if (a == -INFINITY) { return b; }
-    if (b == -INFINITY) { return a; }
-    const float m = (a > b) ? a : b;
-    return m + std::log(std::exp(a - m) + std::exp(b - m));
-}
-
-inline void beamCtc(const float* logProbs, int T, int C, int beamWidth,
-                    std::vector<int>& ids, std::vector<int>& frames) {
-    ids.clear();
-    frames.clear();
-    if (T <= 0 || C <= 0) { return; }
-
-    struct Beam {
-        std::vector<int> prefix;
-        std::vector<int> times;
-        float pBlank = -INFINITY;
-        float pNonBlank = -INFINITY;
-    };
-    std::vector<Beam> beams(1);
-
-    for (int t = 0; t < T; t++) {
-        const float* row = logProbs + (size_t)t * (size_t)C;
-        std::vector<Beam> next;
-        auto findOrAdd = [&next](const std::vector<int>& p) -> Beam& {
-            for (auto& b : next) {
-                if (b.prefix == p) { return b; }
-            }
-            next.emplace_back();
-            next.back().prefix = p;
-            next.back().pBlank = -INFINITY;
-            next.back().pNonBlank = -INFINITY;
-            return next.back();
-        };
-
-        for (const Beam& b : beams) {
-            const float total = logAdd(b.pBlank, b.pNonBlank);
-            // stay on blank
-            {
-                Beam& nb = findOrAdd(b.prefix);
-                nb.pBlank = logAdd(nb.pBlank, total + row[blankId()]);
-                if (nb.times.size() < b.times.size()) { nb.times = b.times; }
-            }
-            // repeat the last character without a blank in between
-            if (!b.prefix.empty()) {
-                const int last = b.prefix.back();
-                Beam& nb = findOrAdd(b.prefix);
-                nb.pNonBlank = logAdd(nb.pNonBlank, b.pNonBlank + row[last]);
-                if (nb.times.size() < b.times.size()) { nb.times = b.times; }
-            }
-            // emit a new character
-            for (int c = 0; c < C; c++) {
-                if (c == blankId()) { continue; }
-                if (!b.prefix.empty() && b.prefix.back() == c) { continue; }
-                std::vector<int> p = b.prefix;
-                p.push_back(c);
-                Beam& nb = findOrAdd(p);
-                nb.pNonBlank = logAdd(nb.pNonBlank, total + row[c]);
-                nb.times = b.times;
-                nb.times.push_back(t);
-            }
-        }
-
-        std::sort(next.begin(), next.end(), [](const Beam& a, const Beam& b) {
-            return logAdd(a.pBlank, a.pNonBlank) > logAdd(b.pBlank, b.pNonBlank);
-        });
-        if ((int)next.size() > beamWidth) { next.resize((size_t)beamWidth); }
-        beams.swap(next);
-    }
-
-    const Beam* best = &beams.front();
-    for (const Beam& b : beams) {
-        if (logAdd(b.pBlank, b.pNonBlank) > logAdd(best->pBlank, best->pNonBlank)) { best = &b; }
-    }
-    ids = best->prefix;
-    frames = best->times;
-}
 
 // Greedy CTC decode of one time-step-major frame grid.
 // logProbs: [T][C], row-major.

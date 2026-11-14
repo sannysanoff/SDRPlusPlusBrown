@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Keeps the focused row of the decodes window at the same screen position
 // when rows appear or disappear above it. The list has a blank pad of one

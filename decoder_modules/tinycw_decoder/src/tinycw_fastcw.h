@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// FastCW single-band model (DeepFist fastcw/, C). Replaces the ONNX CNN+CTC.
+// FastCW single-band model: the TinyCW hybrid decoder, plain C.
 //
 // Input : spectrograms [batch][65][T] (tinycw_spectrogram.h), audio already
 //         conditioned to the channel's main tone (re-centred at 600 Hz).
-// Output: log probs [O][batch][48], O = (T + 1) / 2 -- the ONNX output layout.
+// Output: log probs [O][batch][48], O = (T + 1) / 2, time-major.
 //
 // Path per window: key MLP at the fixed 600 Hz bin -> tempo search -> 3 steps
 // per dot -> CNN -> back to the 30 ms output grid. No carrier scorer.

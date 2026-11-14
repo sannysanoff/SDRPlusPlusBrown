@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Unit tests for the TinyCW CW decoder building blocks (band plan, range
 // resolution, adaptive width policy, front-end DSP, CTC). These run headless in
@@ -31,7 +31,6 @@
 #include "../decoder_modules/tinycw_decoder/src/tinycw_squelch.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_textlayout.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_vote.h"
-#include "../decoder_modules/tinycw_decoder/src/tinycw_zone.h"
 
 #define DF_CHECK(cond)                                                       \
     do {                                                                     \
@@ -520,8 +519,6 @@ void testSquelch() {
     DF_CHECK(rs > 0.7 * rc);
 }
 
-// Commit zones: overlapping windows commit each character once, even when its
-// frame moves by a frame between windows.
 // Voting: 12 s windows every 1 s. Characters at 13.0 s (id 10) and 14.0 s
 // (id 11) jitter by +-1 frame; every 3rd window reads 14.0 s as id 12; one
 // window inserts a spurious id 13 at 15.0 s.
@@ -591,42 +588,6 @@ void testVoteText() {
     DF_CHECK(ct.text == "A<SK>");
     DF_CHECK(ct.conf.size() == ct.text.size());
     DF_CHECK(ct.conf.size() == 5 && ct.conf[0] == 1.0f && ct.conf[4] == 0.4f);
-}
-
-void testCommitZone() {
-    using tinycw::commitZone;
-    const double fp = 0.03, win = 12.0, lag = 2.0;
-    // characters at absolute 5.00, 9.50 and 9.99 s; 1 s hop between windows
-    auto decode = [&](double t0, double jitter) {
-        std::vector<int> ids, frames;
-        const double at[3] = { 5.00, 9.50, 9.99 };
-        for (int k = 0; k < 3; k++) {
-            const double rel = at[k] + jitter - t0;
-            if (rel < 0.0 || rel >= win) { continue; }
-            ids.push_back(10 + k);
-            frames.push_back((int)std::lround(rel / fp));
-        }
-        return std::make_pair(ids, frames);
-    };
-    tinycw::ZoneState st;
-    std::vector<int> got;
-    for (int w = 0; w < 6; w++) {
-        const double t0 = (double)w;                        // windows [0,12) .. [5,17)
-        const double jitter = (w % 2) ? 0.03 : -0.03;       // one frame back and forth
-        auto d = decode(t0, jitter);
-        for (const auto& c : commitZone(st, d.first, d.second, t0, fp, win, lag, t0 + 0.4)) {
-            got.push_back(c.id);
-        }
-    }
-    flog::info("[tinycw test] commit zone chars {}", (int)got.size());
-    DF_CHECK(got.size() == 3);
-    DF_CHECK(got.size() == 3 && got[0] == 10 && got[1] == 11 && got[2] == 12);
-    DF_CHECK_NEAR(st.zoneEndSec, 15.0, 1e-9);
-
-    // the same symbol within kZoneDupSec across a zone border is dropped
-    tinycw::ZoneState s2;
-    DF_CHECK(commitZone(s2, { 7 }, { 330 }, 0.0, fp, win, lag, 0.4).size() == 1);   // 9.90 s
-    DF_CHECK(commitZone(s2, { 7 }, { 300 }, 1.0, fp, win, lag, 1.4).size() == 0);   // 10.00 s
 }
 
 // Word spaces from timing: synthetic keying at 20 WPM (dit 60 ms), characters
@@ -925,7 +886,6 @@ void runAll() {
     testConditionerForcedTone();
     testSquelch();
     testVoteText();
-    testCommitZone();
     testCtc();
     testSpacing();
     testCalls();

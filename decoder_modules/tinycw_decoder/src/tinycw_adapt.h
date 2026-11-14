@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown
 //
 // Adaptive decoded-bandwidth policy shared by the GUI module and the CLI so the
 // behaviour that runs in the app is the behaviour under test.

@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 DeepFist integration for SDR++ Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Brent Crier (N9BC): DeepFist, the Python original
+// Copyright (C) 2026 TinyCW decoder for SDR++ Brown: this C++ port
 //
 // Per-channel callsign vote, then a display pass that cuts the text at the
 // voted callsigns. Runs after the timing spaces and the common-word fix
@@ -12,7 +13,7 @@
 // 1. Input: the raw frozen characters of the channel (not the rendered text),
 //    the last kLexiconChars of them, cut at pauses > kVotePauseSec.
 // 2. Candidates: every substring of 3..10 characters that passes isCall()
-//    (DeepFist tools/rescore.py is_call, plus prefixes that start with a digit
+//    (the callsign shape below, plus prefixes that start with a digit
 //    such as 5B4APL). An occurrence does not count if its extra characters are
 //    the start of a common word that follows in full ("IZ8GCBT" in
 //    "IZ8GCBTEST") or the end of one that precedes it.
@@ -44,7 +45,9 @@ constexpr int    kCallMinCount = 3;
 constexpr double kCallExtendRatio = 0.5;
 constexpr double kLexiconUpdateSec = 3.0;
 
-// Callsign shape, DeepFist tools/rescore.py CALL_RE with a digit-first prefix:
+// Callsign shape: CALL_RE and is_call() of `tools/rescore.py` from DeepFist
+// (https://github.com/n9bc/DeepFist, commit 3ef3f3a; there called "diddle's
+// liberal CALL_RE"), changed here to allow a digit-first prefix:
 //   ^([A-Z0-9]{1,3}/)?(\d[A-Z]{1,2}|[A-Z]{1,2})\d{1,3}[A-Z]{1,4}(/[A-Z0-9]{1,3})?$
 // and not a contest/QSO marker.
 inline bool isCall(const std::string& s) {
