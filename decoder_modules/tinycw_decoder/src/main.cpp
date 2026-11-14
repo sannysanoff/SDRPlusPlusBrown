@@ -16,6 +16,13 @@
 #endif
 
 #define IMGUI_DEFINE_MATH_OPERATORS
+// imgui_internal.h declares GImGui as an extern data symbol. core is built with
+// CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS, but that does not export data symbols, so a
+// module whose inline ImGui code touches GImGui fails to link on Windows. Resolve
+// it through the exported GetCurrentContext() instead, as ch_tetra_demodulator does.
+#ifndef GImGui
+#define GImGui (ImGui::GetCurrentContext())
+#endif
 #include <imgui.h>
 #include <imgui_internal.h>
 
