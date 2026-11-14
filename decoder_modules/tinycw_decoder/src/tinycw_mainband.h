@@ -183,7 +183,7 @@ inline MainTone findMainTone(const float* x, int n, double searchLoHz = mainband
     if (tops.empty()) { return r; }
 
     // on mask for the bands next to the top bands only
-    const int near = (int)std::lround(kMbNearHz / kMbBandHz);
+    const int nearBands = (int)std::lround(kMbNearHz / kMbBandHz);
     auto onAt = [&](int b, int t) {
         if (b < 0 || b >= kMbBins) { return false; }
         const double v = db[(size_t)b][(size_t)t];
@@ -191,7 +191,7 @@ inline MainTone findMainTone(const float* x, int n, double searchLoHz = mainband
         if (b > 0 && v < db[(size_t)b - 1][(size_t)t]) { return false; }
         if (b < kMbBins - 1 && v < db[(size_t)b + 1][(size_t)t]) { return false; }
         double lm = -1e300;
-        for (int k = std::max(0, b - near); k <= std::min(kMbBins - 1, b + near); k++) {
+        for (int k = std::max(0, b - nearBands); k <= std::min(kMbBins - 1, b + nearBands); k++) {
             lm = std::max(lm, db[(size_t)k][(size_t)t]);
         }
         return v >= lm - kMbLeakDb;
