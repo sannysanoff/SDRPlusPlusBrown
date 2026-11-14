@@ -35,6 +35,13 @@ option(OPT_BUILD_KCSDR_SOURCE "Build KCSDR Source Module (Dependencies: libkcsdr
 option(OPT_BUILD_DRAGONLABS_SOURCE "Build DragonLabs Source Module (Dependencies: libdlcr)" OFF)
 option(OPT_BUILD_LIMESDR_SOURCE "Build LimeSDR Source Module (Dependencies: liblimesuite)" OFF)
 option(OPT_BUILD_NETWORK_SOURCE "Build Network Source Module (no dependencies required)" ON)
+if (ANDROID)
+# D2XX does not exist for Android (FTDI ships a Java USB driver instead), so the
+# module would build but never find a device.
+option(OPT_BUILD_OSA103_SOURCE "Build OSA103 Source Module (Dependencies: FTDI D2XX, loaded at runtime)" OFF)
+else ()
+option(OPT_BUILD_OSA103_SOURCE "Build OSA103 Source Module (Dependencies: FTDI D2XX, loaded at runtime)" ON)
+endif ()
 option(OPT_BUILD_PERSEUS_SOURCE "Build Perseus Source Module (Dependencies: libperseus-sdr)" OFF)
 option(OPT_BUILD_PLUTOSDR_SOURCE "Build PlutoSDR Source Module (Dependencies: libiio, libad9361)" ON)
 option(OPT_BUILD_RFNM_SOURCE "Build RFNM Source Module (Dependencies: librfnm)" OFF)
@@ -243,6 +250,10 @@ endif (OPT_BUILD_RTL_TCP_SOURCE)
 if (OPT_BUILD_SDDC_SOURCE)
 add_subdirectory("source_modules/sddc_source")
 endif (OPT_BUILD_SDDC_SOURCE)
+
+if (OPT_BUILD_OSA103_SOURCE)
+add_subdirectory("source_modules/osa103_source")
+endif (OPT_BUILD_OSA103_SOURCE)
 
 if (OPT_BUILD_RX888_SOURCE)
 add_subdirectory("source_modules/rx888_source")

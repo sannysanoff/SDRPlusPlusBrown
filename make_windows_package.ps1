@@ -52,6 +52,10 @@ cp 'C:/Program Files/PothosSDR/bin/LimeSuite.dll' sdrpp_windows_x64/
 
 cp $build_dir/source_modules/network_source/$RELDIR/network_source.dll sdrpp_windows_x64/modules/
 
+# OSA103 is Windows-only in practice because it needs ftd2xx.dll at runtime; the
+# module dlopen()s it from the application directory or PATH.
+cp $build_dir/source_modules/osa103_source/$RELDIR/osa103_source.dll sdrpp_windows_x64/modules/
+
 cp $build_dir/source_modules/perseus_source/$RELDIR/perseus_source.dll sdrpp_windows_x64/modules/
 
 cp 'C:/Program Files/PothosSDR/bin/perseus-sdr.dll' sdrpp_windows_x64/
