@@ -91,6 +91,7 @@ public:
         if (c.contains("focusLagSec")) { focusLagSec_ = c["focusLagSec"].get<double>(); }
         if (c.contains("rowHoldSec")) { engine_.setRowHoldSec(c["rowHoldSec"].get<double>()); }
         if (c.contains("channelIdleSec")) { engine_.setChannelIdleSec(c["channelIdleSec"].get<double>()); }
+        if (c.contains("spotGateDb")) { engine_.setSpotGateDb(c["spotGateDb"].get<double>()); }
         if (c.contains("decodesWindow")) { decodesWindow_ = c["decodesWindow"].get<bool>(); }
         if (c.contains("decodesPos") && c["decodesPos"].is_array() && c["decodesPos"].size() == 2) {
             decodesPos_ = ImVec2(c["decodesPos"][0].get<float>(), c["decodesPos"][1].get<float>());
@@ -933,6 +934,34 @@ private:
             saveConfig();
         }
 
+        {
+            // Detection sensitivity: down = a higher keying-ratio gate, the
+            // weaker channels (yellow dots) close at once.
+            float sens = (float)tinycw::sensitivityFromGateDb(engine_.spotGateDb());
+            char fmt[64];
+            snprintf(fmt, sizeof fmt, "sensitivity: %%.0f (gate %.0f dB)", engine_.spotGateDb());
+            ImGui::SetNextItemWidth(width);
+            if (ImGui::SliderFloat(CONCAT("##sens_", name), &sens, 0.0f,
+                                   (float)(tinycw::kSpotGateMaxDb - tinycw::kSpotFloorDb), fmt)) {
+                engine_.setSpotGateDb(tinycw::gateDbFromSensitivity(std::round(sens)));
+                saveConfig();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::BeginTooltip();
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
+                ImGui::TextUnformatted("Channel detection sensitivity");
+                ImGui::Separator();
+                ImGui::TextUnformatted(
+                    "A carrier becomes a channel (yellow dot) when its keying ratio "
+                    "(p90/p10 of its level over 3 s, best of the last idle time) "
+                    "reaches the gate. Down: fewer, stronger channels; the dots below "
+                    "the gate go at once. Up: weaker carriers are added as soon as "
+                    "the scanner has measured them. Default 20 (gate 20 dB).");
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
+
         ImGui::TextUnformatted("Max decoded width (global)");
         float widthKHz = (float)(widthPolicy_.currentHz / 1000.0);
         ImGui::SetNextItemWidth(width);
@@ -1020,6 +1049,7 @@ private:
         c["paused"] = paused_;
         c["rowHoldSec"] = engine_.rowHoldSec();
         c["channelIdleSec"] = engine_.channelIdleSec();
+        c["spotGateDb"] = engine_.spotGateDb();
         c["threads"] = threads_.load();
         c["provisionalSec"] = provisionalSec_.load();
         c["followVfo"] = followVfo_;

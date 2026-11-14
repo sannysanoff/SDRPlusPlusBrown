@@ -27,6 +27,7 @@
 #include "../decoder_modules/tinycw_decoder/src/tinycw_markers.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_spacing.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_spectrogram.h"
+#include "../decoder_modules/tinycw_decoder/src/tinycw_spotscore.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_squelch.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_textlayout.h"
 #include "../decoder_modules/tinycw_decoder/src/tinycw_vote.h"
@@ -243,6 +244,51 @@ void testMarkerTracker() {
     DF_CHECK(out.size() == 1);
     fast.collect(1.1, out);
     DF_CHECK(out.empty());
+}
+
+void testSpotGate() {
+    using namespace tinycw;
+    // Slider mapping: default sensitivity 20 = the former fixed gate (ratio 10).
+    DF_CHECK(std::fabs(ratioDb(10.0) - 20.0) < 1e-9);
+    DF_CHECK(std::fabs(gateDbFromSensitivity(20.0) - kSpotGateDefaultDb) < 1e-9);
+    DF_CHECK(std::fabs(sensitivityFromGateDb(kSpotGateDefaultDb) - 20.0) < 1e-9);
+    DF_CHECK(gateDbFromSensitivity(100.0) == kSpotFloorDb);   // clamped to the floor
+    DF_CHECK(gateDbFromSensitivity(-5.0) == kSpotGateMaxDb);
+    DF_CHECK(ratioDb(0.0) < -1e300);
+
+    // Score = max over the window: a pause keeps the score, an old peak expires.
+    ScoreWindow w;
+    DF_CHECK(w.empty() && w.max() < -1e300);
+    w.add(0.0, 30.0, 24.0);
+    w.add(1.0, 13.0, 24.0);          // station paused: noise ratio
+    DF_CHECK(w.max() == 30.0);
+    w.add(23.9, 13.0, 24.0);
+    DF_CHECK(w.max() == 30.0);
+    w.add(24.5, 13.0, 24.0);         // the 30 dB sample is now older than 24 s
+    DF_CHECK(w.max() == 13.0);
+    w.add(25.0, 22.0, 24.0);
+    w.add(25.3, 18.0, 24.0);
+    DF_CHECK(w.max() == 22.0);
+
+    // The gate closes a channel: its yellow dot goes at once, a late decode
+    // does not bring it back, a new channel there does.
+    MarkerTracker t(5.0);
+    std::vector<Marker> out;
+    t.noteCarrier(14040000.0, 10.0);
+    t.noteCarrier(14041000.0, 10.0);
+    t.dropCarrier(14040010.0, 10.1, 3.0);
+    t.collect(10.1, out);
+    DF_CHECK(out.size() == 1 && std::fabs(out[0].freqHz - 14041000.0) < 1.0);
+    t.noteDecode(14040000.0, 10.5);              // in-flight decode of the closed channel
+    t.collect(10.6, out);
+    int yellow = 0;
+    for (auto& m : out) { if (m.carrier && std::fabs(m.freqHz - 14040000.0) < 60.0) { yellow++; } }
+    DF_CHECK(yellow == 0);
+    t.noteCarrier(14040000.0, 11.0);             // reopened (slider moved up again)
+    t.collect(11.0, out);
+    yellow = 0;
+    for (auto& m : out) { if (m.carrier && std::fabs(m.freqHz - 14040000.0) < 60.0) { yellow++; } }
+    DF_CHECK(yellow == 1);
 }
 
 // --------------------------------------------------------------------------
@@ -872,6 +918,7 @@ void runAll() {
     testRangeResolve();
     testAdaptiveWidthPolicy();
     testMarkerTracker();
+    testSpotGate();
     testSpectrogram();
     testConditioner();
     testMainTone();

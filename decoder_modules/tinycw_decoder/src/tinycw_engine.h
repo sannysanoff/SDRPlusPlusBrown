@@ -34,6 +34,7 @@
 #include "tinycw_markers.h"
 #include "tinycw_model.h"
 #include "tinycw_spectrogram.h"
+#include "tinycw_spotscore.h"
 #include "tinycw_vote.h"
 #include "tinycw_zone.h"
 
@@ -63,6 +64,9 @@ struct EngineConfig {
     // Two channels closer than this decode the same signal: one station then
     // shows up as several lines of slightly different text. Keep them apart.
     double minChannelSpacingHz = 250.0;
+    // Detection gate (tinycw_spotscore.h): a spot opens a channel, and the
+    // channel stays open, only while its keying-ratio score is >= this.
+    double spotGateDb = kSpotGateDefaultDb;
     // Each window commits only its newest part (the overlap is context). A
     // factor > 1 widens that slice: more coverage, more risk of duplicates.
     double commitTailFactor = 1.0;
@@ -225,6 +229,8 @@ public:
     void setRowHoldSec(double s) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.rowHoldSec = std::max(1.0, s); }
     double channelIdleSec() const { std::lock_guard<std::mutex> cl(cfgMtx_); return cfg_.channelIdleSec; }
     void setChannelIdleSec(double s) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.channelIdleSec = std::max(5.0, s); }
+    double spotGateDb() const { std::lock_guard<std::mutex> cl(cfgMtx_); return cfg_.spotGateDb; }
+    void setSpotGateDb(double db) { std::lock_guard<std::mutex> cl(cfgMtx_); cfg_.spotGateDb = clampGateDb(db); }
 
     bool focusActive() const { return focusActive_.load(); }
     double focusFreq() const { return focusFreq_.load(); }
@@ -395,6 +401,8 @@ private:
         double freqHz = 0.0;
         double ratio = 0.0;
         double lastSeenSec = 0.0;
+        ScoreWindow score;       // keying ratio in dB, max over the channel idle time
+        double scoreDb = 0.0;    // score.max(), copied for the manager
     };
     std::vector<Spot> spots_;
 

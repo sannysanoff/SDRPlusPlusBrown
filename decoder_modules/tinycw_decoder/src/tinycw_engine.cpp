@@ -56,7 +56,6 @@ constexpr int    kScanFrames = 30;          // ~3 s of history at 100 ms hop
 constexpr int    kScanHopMs = 100;
 constexpr double kPeakClusterHz = 150.0;  // dense contest band: do not merge neighbours
 constexpr double kChannelMatchHz = 90.0;
-constexpr int    kMinSpotRatio = 10;        // keying ratio gate
 
 int autoThreads() {
     const int hw = (int)std::thread::hardware_concurrency();
@@ -790,7 +789,7 @@ void Engine::scanThread() {
 
         for (int b = guard; b < nBins - guard; b++) {
             const double r = ratio[(size_t)b];
-            if (r < kMinSpotRatio) { continue; }
+            if (ratioDb(r) < kSpotFloorDb) { continue; }   // tracked below the gate too
             bool isPeak = true;
             for (int k = b - guard; k <= b + guard; k++) {
                 if (k == b) { continue; }
@@ -817,29 +816,44 @@ void Engine::scanThread() {
             found.push_back(s);
         }
 
+        const double scoreWindowSec = cfgSnap().channelIdleSec;
         {
             std::lock_guard<std::mutex> lck(scanMtx_);
             for (const Spot& s : found) {
-                bool merged = false;
+                // The nearest old spot takes the measurement (the latest one
+                // wins: a historical peak pinned the spot to an old position).
+                // Two peaks of this round on one spot: the stronger one wins.
+                Spot* best = nullptr;
                 for (Spot& old : spots_) {
-                    if (std::fabs(old.freqHz - s.freqHz) < kPeakClusterHz) {
-                        // The latest measurement wins: a historical peak
-                        // pinned the spot to an old position.
-                        old.freqHz = s.freqHz;
-                        old.ratio = s.ratio;
-                        old.lastSeenSec = t;
-                        merged = true;
-                        break;
-                    }
+                    const double d = std::fabs(old.freqHz - s.freqHz);
+                    if (d < kPeakClusterHz && (!best || d < std::fabs(best->freqHz - s.freqHz))) { best = &old; }
                 }
-                if (!merged) { spots_.push_back(s); }
+                if (!best) { spots_.push_back(s); continue; }
+                if (best->lastSeenSec == t && s.ratio <= best->ratio) { continue; }
+                best->freqHz = s.freqHz;
+                best->ratio = s.ratio;
+                best->lastSeenSec = t;
+            }
+            // Score every spot from this round's ratio map at its frequency
+            // (the strongest bin within the peak guard), also when it was not
+            // found as a peak: the score is the detection criterion.
+            for (Spot& sp : spots_) {
+                const int b0 = half + (int)std::lround((sp.freqHz - rangeCenter) / binHz);
+                double r = 0.0;
+                for (int b = std::max(0, b0 - guard); b <= std::min(nBins - 1, b0 + guard); b++) {
+                    r = std::max(r, ratio[(size_t)b]);
+                }
+                sp.score.add(t, ratioDb(r), scoreWindowSec);
+                sp.scoreDb = sp.score.max();
             }
             spots_.erase(std::remove_if(spots_.begin(), spots_.end(),
-                                        [t](const Spot& s) { return (t - s.lastSeenSec) > 8.0; }),
+                                        [t](const Spot& s) {
+                                            return (t - s.lastSeenSec) > 8.0 || s.scoreDb < kSpotFloorDb;
+                                        }),
                          spots_.end());
             if (spots_.size() > 128) {
                 std::sort(spots_.begin(), spots_.end(),
-                          [](const Spot& a, const Spot& b) { return a.ratio > b.ratio; });
+                          [](const Spot& a, const Spot& b) { return a.scoreDb > b.scoreDb; });
                 spots_.resize(128);
             }
         }
@@ -1723,6 +1737,7 @@ void Engine::managerThread() {
         std::vector<std::shared_ptr<Channel>> deadChannels;
         std::vector<std::pair<double, double>> toAdd;
         std::vector<std::pair<double, double>> carriers;
+        std::vector<double> gated;   // channels closed by the detection gate
         const auto detectStart = std::chrono::steady_clock::now();
 
         // Only bookkeeping happens under mtx_. Starting or stopping a DSP chain
@@ -1756,7 +1771,13 @@ void Engine::managerThread() {
             {
                 std::lock_guard<std::mutex> lck2(scanMtx_);
                 for (const Spot& s : spots_) {
-                    if (s.freqHz >= decodeLoHz_ && s.freqHz <= decodeHiHz_) { spots.push_back(s); }
+                    if (s.freqHz < decodeLoHz_ || s.freqHz > decodeHiHz_) { continue; }
+                    Spot v;   // without the score window: this copy runs 20 times a second
+                    v.freqHz = s.freqHz;
+                    v.ratio = s.ratio;
+                    v.lastSeenSec = s.lastSeenSec;
+                    v.scoreDb = s.scoreDb;
+                    spots.push_back(v);
                 }
             }
             std::sort(spots.begin(), spots.end(),
@@ -1782,6 +1803,7 @@ void Engine::managerThread() {
             for (size_t i = 0; i < spots.size(); i++) {
                 if ((int)(channels_.size() + toAdd.size()) >= maxChannels_) { break; }
                 if (used[i]) { continue; }
+                if (spots[i].scoreDb < cfg.spotGateDb) { continue; }   // below the detection gate
                 bool tooClose = false;
                 for (auto& ch : channels_) {
                     if (std::fabs(ch->freqHz - spots[i].freqHz) < cfg.minChannelSpacingHz) {
@@ -1804,8 +1826,18 @@ void Engine::managerThread() {
                 const bool inRange = (ch->freqHz >= decodeLoHz_ - kChannelMatchHz) &&
                                      (ch->freqHz <= decodeHiHz_ + kChannelMatchHz);
                 bool matched = false;
+                double nearest = 1e18, scoreDb = 0.0;
                 for (const Spot& s : spots) {
-                    if (std::fabs(s.freqHz - ch->freqHz) < kChannelMatchHz) { matched = true; break; }
+                    const double d = std::fabs(s.freqHz - ch->freqHz);
+                    if (d < kChannelMatchHz) { matched = true; }
+                    if (d < kChannelMatchHz && d < nearest) { nearest = d; scoreDb = s.scoreDb; }
+                }
+                // The detection gate closes a channel at once: the slider
+                // was moved down past its score.
+                if (matched && scoreDb < cfg.spotGateDb) {
+                    dead.push_back(ch);
+                    gated.push_back(ch->freqHz);
+                    continue;
                 }
                 // Three ways to die: out of the decode range, silent for the
                 // idle timeout (whatever the scanner says), or no spot anywhere
@@ -1872,6 +1904,8 @@ void Engine::managerThread() {
 
         {
             std::lock_guard<std::mutex> lck(markerMtx_);
+            const double now = nowSec();
+            for (double f : gated) { markers_.dropCarrier(f, now, 2.0 * cfg.tickSec + 1.0); }
             for (auto& c : carriers) { markers_.noteCarrier(c.first, c.second); }
         }
 

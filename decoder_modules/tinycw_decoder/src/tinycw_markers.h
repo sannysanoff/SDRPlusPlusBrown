@@ -28,12 +28,30 @@ public:
     void noteCarrier(double freqHz, double now) { note(freqHz, now, false); }
     void noteDecode(double freqHz, double now) { note(freqHz, now, true); }
 
+    // A channel closed by the detection gate: its yellow dot goes at once, and
+    // a decode still in flight for it does not bring the dot back for blockSec.
+    // A new channel at the same frequency (noteCarrier) lifts the block.
+    void dropCarrier(double freqHz, double now, double blockSec) {
+        for (Entry& e : entries_) {
+            if (std::fabs(e.freqHz - freqHz) < 60.0) {
+                e.carrierUntil = -1.0;
+                e.carrierBlockUntil = now + blockSec;
+            }
+        }
+    }
+
     // Drops expired entries and copies the live ones into `out`.
     void collect(double now, std::vector<Marker>& out) {
         out.clear();
         for (size_t i = 0; i < entries_.size();) {
             if (now >= entries_[i].carrierUntil && now >= entries_[i].decodeUntil) {
-                entries_.erase(entries_.begin() + (long)i);
+                // A blocked entry stays (not drawn) until its block ends.
+                if (now >= entries_[i].carrierBlockUntil) {
+                    entries_.erase(entries_.begin() + (long)i);
+                }
+                else {
+                    i++;
+                }
                 continue;
             }
             Marker m;
@@ -53,13 +71,15 @@ private:
         double freqHz = 0.0;
         double carrierUntil = -1.0;
         double decodeUntil = -1.0;
+        double carrierBlockUntil = -1.0;
     };
 
     void note(double freqHz, double now, bool decoded) {
         for (Entry& e : entries_) {
             if (std::fabs(e.freqHz - freqHz) < 60.0) {
                 e.freqHz = freqHz;
-                e.carrierUntil = now + holdSec_;
+                if (!decoded) { e.carrierBlockUntil = -1.0; }
+                if (now >= e.carrierBlockUntil) { e.carrierUntil = now + holdSec_; }
                 if (decoded) { e.decodeUntil = now + holdSec_; }
                 return;
             }
