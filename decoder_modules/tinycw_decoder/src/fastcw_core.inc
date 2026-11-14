@@ -97,12 +97,14 @@ typedef struct { float w[NW]; } Model;
 typedef struct { int on, len; } Run;
 typedef struct { int a, b, src; } Span;
 
+#ifndef FASTCW_NO_MAIN   /* the shm/sem server below is the only user of these */
 static volatile sig_atomic_t stopping=0;
 static sem_t *server_request_sem=NULL;
 static void stop_handler(int signal_number) {
     (void)signal_number;stopping=1;
     if(server_request_sem)sem_post(server_request_sem);
 }
+#endif
 
 /* k-th smallest value (0-based); partially reorders a */
 static float select_kth(float *a,int n,int k) {

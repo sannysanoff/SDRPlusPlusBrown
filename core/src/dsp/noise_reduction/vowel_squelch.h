@@ -172,8 +172,8 @@ public:
                 _open.store(true, std::memory_order_relaxed);
             }
             const double target = (_openLeft > 0) ? 1.0 : 0.0;
-            if (_gain < target) { _gain = std::min(target, _gain + _rampStep); }
-            else if (_gain > target) { _gain = std::max(target, _gain - _rampStep); }
+            if (_gain < target) { _gain = (std::min)(target, _gain + _rampStep); }
+            else if (_gain > target) { _gain = (std::max)(target, _gain - _rampStep); }
             const float g = (float)_gain;
             out[i].l = d.l * g;
             out[i].r = d.r * g;
@@ -252,10 +252,10 @@ private:
     void setup(double sampleRate) {
         std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
         _fs = (sampleRate > 1000.0) ? sampleRate : 48000.0;
-        _decim = std::max(1, (int)std::lround(_fs / kAnalysisRate));
+        _decim = (std::max)(1, (int)std::lround(_fs / kAnalysisRate));
         _fa = _fs / _decim;
         _nw = (int)std::lround(kWindowSec * _fa);
-        _hop = std::max(1, (int)std::lround(kHopSec * _fa));
+        _hop = (std::max)(1, (int)std::lround(kHopSec * _fa));
 
         _ana.assign((size_t)_nw, 0.0f);
         _anaPos = 0;
@@ -263,7 +263,7 @@ private:
         _hopCount = 0;
 
         // anti-alias before decimation
-        const int taps = std::max(21, 20 * _decim + 1);
+        const int taps = (std::max)(21, 20 * _decim + 1);
         _aaTaps = designLowpass(taps, 0.5 / _decim, 5.0);
         _aaHist.assign((size_t)taps, 0.0f);
         _aaPos = 0;
@@ -277,10 +277,10 @@ private:
         _win.assign((size_t)_nw, 0.0f);
         for (int i = 0; i < _nw; i++) { _win[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2.0 * M_PI * i / (_nw - 1))); }
 
-        _delay.assign((size_t)std::max(1, (int)std::lround(kPrerollSec * _fs)), stereo_t{ 0.0f, 0.0f });
+        _delay.assign((size_t)(std::max)(1, (int)std::lround(kPrerollSec * _fs)), stereo_t{ 0.0f, 0.0f });
         _dpos = 0;
         _gain = 0.0;
-        _rampStep = 1.0 / std::max(1.0, 0.005 * _fs);   // 5 ms ramp
+        _rampStep = 1.0 / (std::max)(1.0, 0.005 * _fs);   // 5 ms ramp
         _openLeft = 0;
         _pendingDetection = false;
         _open.store(false, std::memory_order_relaxed);
@@ -304,9 +304,9 @@ private:
         }
         for (auto& v : _envKernel) { v /= ksum; }
 
-        _peakDistance = std::max(2, (int)std::lround(35.0 / _binHz));
+        _peakDistance = (std::max)(2, (int)std::lround(35.0 / _binHz));
         _binsLow = (int)std::ceil(kBandLowHz / _binHz);
-        _binsHigh = std::min(kBins - 2, (int)std::floor(kBandHighHz / _binHz));
+        _binsHigh = (std::min)(kBins - 2, (int)std::floor(kBandHighHz / _binHz));
 
         _pitches.clear();
         for (double p = kPitchMinHz; p <= kPitchMaxHz + 1e-9; p += kPitchStepHz) { _pitches.push_back(p); }
@@ -395,7 +395,7 @@ private:
     void assign(const std::vector<double>& cost, int n, int m, std::vector<int>& result) const {
         result.assign((size_t)n, -1);
         if (n <= 0 || m <= 0) { return; }
-        const double inf = std::numeric_limits<double>::max() / 4.0;
+        const double inf = (std::numeric_limits<double>::max)() / 4.0;
         std::vector<double> u((size_t)n + 1, 0.0), v((size_t)m + 1, 0.0);
         std::vector<int> p((size_t)m + 1, 0), way((size_t)m + 1, 0);
         for (int i = 1; i <= n; i++) {
@@ -538,13 +538,13 @@ private:
             double leftMin = v, rightMin = v;
             for (int j = i - 1; j >= 0; j--) {
                 if (_logPow[(size_t)j] > v) { break; }
-                leftMin = std::min(leftMin, _logPow[(size_t)j]);
+                leftMin = (std::min)(leftMin, _logPow[(size_t)j]);
             }
             for (int j = i + 1; j < kBins; j++) {
                 if (_logPow[(size_t)j] > v) { break; }
-                rightMin = std::min(rightMin, _logPow[(size_t)j]);
+                rightMin = (std::min)(rightMin, _logPow[(size_t)j]);
             }
-            prom[k] = v - std::max(leftMin, rightMin);
+            prom[k] = v - (std::max)(leftMin, rightMin);
         }
         std::vector<int> order(maxima.size());
         for (size_t k = 0; k < order.size(); k++) { order[k] = (int)k; }
@@ -691,8 +691,8 @@ private:
                 double lo = 1e30, hi = -1e30;
                 for (int j = 0; j < t_count; j++) {
                     if (!use[(size_t)j]) { continue; }
-                    lo = std::min(lo, meanFreq[(size_t)j]);
-                    hi = std::max(hi, meanFreq[(size_t)j]);
+                    lo = (std::min)(lo, meanFreq[(size_t)j]);
+                    hi = (std::max)(hi, meanFreq[(size_t)j]);
                 }
                 const double span = hi - lo;
                 if (span < minSpanHz) { continue; }
@@ -833,8 +833,8 @@ private:
 
                 double dmin = 1e30, dmax = -1e30;
                 for (int t = 0; t < h; t++) {
-                    dmin = std::min(dmin, dilation[(size_t)t]);
-                    dmax = std::max(dmax, dilation[(size_t)t]);
+                    dmin = (std::min)(dmin, dilation[(size_t)t]);
+                    dmax = (std::max)(dmax, dilation[(size_t)t]);
                 }
                 const double pitchMotion = dmax - dmin;
                 candidate.motion = pitchMotion;
@@ -849,7 +849,7 @@ private:
                     roughSq += d2 * d2;
                     roughCount++;
                 }
-                const double roughness = std::sqrt(roughSq / std::max(1, roughCount));
+                const double roughness = std::sqrt(roughSq / (std::max)(1, roughCount));
                 const double motionSnr = pitchMotion / (motionError + 0.5);
 
                 // the strongest partial is excluded, so a carrier cannot carry the score
@@ -860,7 +860,7 @@ private:
                 const double s = 0.5 * (chosen[(size_t)(m - 2)] + chosen[(size_t)(m - 3)]);
 
                 // Compensate the shorter Hann window's broader peaks using its duration ratio.
-                const double score = (80.0 / windowMs) * s * std::min(pitchMotion / 3.0, 1.0) * std::exp(-latticeError / 3.0) *
+                const double score = (80.0 / windowMs) * s * (std::min)(pitchMotion / 3.0, 1.0) * std::exp(-latticeError / 3.0) *
                                      std::exp(-motionError / 1.5) * std::exp(-roughness / 1.5);
                 if (score > bestScore) {
                     bestScore = score;
