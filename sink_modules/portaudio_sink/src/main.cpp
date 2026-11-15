@@ -177,12 +177,15 @@ private:
 
         if (err != 0) {
             flog::error("Error while opening audio stream: ({0}) => {1}", err, Pa_GetErrorText(err));
+            stream = NULL;
             return;
         }
 
         err = Pa_StartStream(stream);
         if (err != 0) {
             flog::error("Error while starting audio stream: ({0}) => {1}", err, Pa_GetErrorText(err));
+            Pa_CloseStream(stream);
+            stream = NULL;
             return;
         }
         flog::info("Audio device open.");
@@ -199,8 +202,11 @@ private:
         stereoRB.data.stopReader();
         // monoPacker.out.stopReader();
         // stereoPacker.out.stopReader();
-        Pa_StopStream(stream);
-        Pa_CloseStream(stream);
+        if (stream) {
+            Pa_StopStream(stream);
+            Pa_CloseStream(stream);
+            stream = NULL;
+        }
         monoRB.data.clearReadStop();
         stereoRB.data.clearReadStop();
         // monoPacker.out.clearReadStop();
@@ -257,7 +263,7 @@ private:
     // dsp::Packer<dsp::stereo_t> stereoPacker;
 
     std::string _streamName;
-    PaStream* stream;
+    PaStream* stream = NULL;
 
     int srId = 0;
     int devCount;

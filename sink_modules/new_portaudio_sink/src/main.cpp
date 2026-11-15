@@ -166,13 +166,20 @@ public:
         // In case of error, abort
         if (err) {
             flog::error("PortAudio error {0}: {1}", err, Pa_GetErrorText(err));
+            devStream = nullptr;
             return;
         }
 
         flog::info("Starting PortAudio stream at {0} S/s", sampleRate);
 
         // Start stream
-        Pa_StartStream(devStream);
+        err = Pa_StartStream(devStream);
+        if (err) {
+            flog::error("PortAudio error {0}: {1}", err, Pa_GetErrorText(err));
+            Pa_CloseStream(devStream);
+            devStream = nullptr;
+            return;
+        }
 
 
         if (micInput && inputDevice.deviceNames.size() > 0) {
@@ -234,11 +241,14 @@ public:
         packer.stop();
         s2m.stop();
 
-        // Stop stream
-        Pa_AbortStream(devStream);
+        if (devStream) {
+            // Stop stream
+            Pa_AbortStream(devStream);
 
-        // Close the stream
-        Pa_CloseStream(devStream);
+            // Close the stream
+            Pa_CloseStream(devStream);
+            devStream = nullptr;
+        }
 
 
         inputDeviceInfo = "Stopped";
@@ -526,7 +536,7 @@ private:
     dsp::buffer::Packer<dsp::stereo_t> packer;
     dsp::convert::StereoToMono s2m;
 
-    PaStream* devStream;
+    PaStream* devStream = nullptr;
 
     EventHandler<bool> playStateHandler;
 };
