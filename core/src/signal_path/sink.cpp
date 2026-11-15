@@ -52,7 +52,7 @@ void SinkManager::Stream::start() {
     merger.start();
     splitter.start();
     volumeAjust.start();
-    sink->start();
+    if (sink) { sink->start(); }
     running = true;
 }
 
@@ -63,7 +63,7 @@ void SinkManager::Stream::stop() {
     splitter.stop();
     merger.stop();
     volumeAjust.stop();
-    sink->stop();
+    if (sink) { sink->stop(); }
     running = false;
 }
 
@@ -196,6 +196,7 @@ void SinkManager::unregisterStream(std::string name) {
     SinkManager::Stream* stream = streams[name];
     stream->stop();
     delete stream->sink;
+    stream->sink = nullptr;
     streams.erase(name);
     streamNames.erase(std::remove(streamNames.begin(), streamNames.end(), name), streamNames.end());
     onStreamUnregistered.emit(name);
@@ -249,6 +250,45 @@ dsp::routing::Merger<dsp::stereo_t> *SinkManager::getMerger(std::string name) {
     return streams[name]->getMerger();
 }
 
+void SinkManager::replaceStreamSink(std::string name, Stream* stream, std::string providerName) {
+    // Stop and destroy the old sink before creating the new one so hardware,
+    // config keys, and single-consumer sinkOut are released cleanly, while
+    // never leaving stream->sink dangling during prov.create().
+    if (stream->sink) {
+        if (stream->running) {
+            stream->sink->stop();
+        }
+        delete stream->sink;
+        stream->sink = nullptr;
+    }
+
+    SinkManager::SinkProvider prov = providers[providerName];
+    SinkManager::Sink* newSink = nullptr;
+    try {
+        newSink = prov.create(stream, name, prov.ctx);
+    }
+    catch (const std::exception& e) {
+        flog::error("Sink provider '{0}' threw while creating sink for stream '{1}': {2}", providerName, name, e.what());
+    }
+    catch (...) {
+        flog::error("Sink provider '{0}' threw unknown exception while creating sink for stream '{1}'", providerName, name);
+    }
+
+    if (!newSink) {
+        flog::error("Sink provider '{0}' returned no sink for stream '{1}', falling back to 'None'", providerName, name);
+        providerName = "None";
+        prov = providers["None"];
+        newSink = prov.create(stream, name, prov.ctx);
+    }
+
+    stream->providerId = std::distance(providerNames.begin(), std::find(providerNames.begin(), providerNames.end(), providerName));
+    stream->providerName = providerName;
+    stream->sink = newSink;
+    if (stream->running && stream->sink) {
+        stream->sink->start();
+    }
+}
+
 void SinkManager::setStreamSink(std::string name, std::string providerName) {
     if (streams.find(name) == streams.end()) {
         flog::error("Cannot set sink for stream '{0}'. Stream doesn't exist", name);
@@ -260,17 +300,7 @@ void SinkManager::setStreamSink(std::string name, std::string providerName) {
         return;
     }
 
-    if (stream->running) {
-        stream->sink->stop();
-    }
-    delete stream->sink;
-    stream->providerId = std::distance(providerNames.begin(), std::find(providerNames.begin(), providerNames.end(), providerName));
-    stream->providerName = providerName;
-    SinkManager::SinkProvider prov = providers[providerName];
-    stream->sink = prov.create(stream, name, prov.ctx);
-    if (stream->running) {
-        stream->sink->start();
-    }
+    replaceStreamSink(name, stream, providerName);
 }
 
 void SinkManager::setAllMuted(bool muted) {
@@ -353,17 +383,7 @@ void SinkManager::loadStreamConfig(std::string name) {
     }
     long newProvider = std::distance(providerNames.begin(), std::find(providerNames.begin(), providerNames.end(), provName));
     if (newProvider != stream->providerId) {
-        if (stream->running) {
-            stream->sink->stop();
-        }
-        delete stream->sink;
-        SinkManager::SinkProvider prov = providers[provName];
-        stream->providerId = newProvider;
-        stream->providerName = provName;
-        stream->sink = prov.create(stream, name, prov.ctx);
-        if (stream->running) {
-            stream->sink->start();
-        }
+        replaceStreamSink(name, stream, provName);
     }
     stream->setVolume(conf["volume"]);
     stream->volumeAjust.setMuted(conf["muted"]);
@@ -411,7 +431,9 @@ void SinkManager::showMenu() {
             core::configManager.release(true);
         }
 
-        stream->sink->menuHandler();
+        if (stream->sink) {
+            stream->sink->menuHandler();
+        }
 
         auto v1 = ImGui::GetContentRegionAvail();
         showVolumeSlider(name, "##_sdrpp_sink_menu_vol_", menuWidth);

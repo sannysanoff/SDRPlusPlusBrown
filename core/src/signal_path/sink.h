@@ -77,7 +77,7 @@ public:
 
         dsp::routing::Splitter<dsp::stereo_t> splitter;     // multiple outputs
         dsp::routing::Merger<dsp::stereo_t> merger;         // multiple inputs
-        SinkManager::Sink* sink;
+        SinkManager::Sink* sink = nullptr;
         dsp::stream<dsp::stereo_t> volumeInput;
         std::mutex ctrlMtx;
         float _sampleRate;
@@ -227,6 +227,7 @@ public:
     std::map<std::string, Stream*> streams;
 
 private:
+    void replaceStreamSink(std::string name, Stream* stream, std::string providerName);
     void loadStreamConfig(std::string name);
     void saveStreamConfig(std::string name);
     void refreshProviders();
