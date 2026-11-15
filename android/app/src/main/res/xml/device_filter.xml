@@ -1,15 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <resources>
-    <usb-device vendor-id="03eb" product-id="800c"  /> <!-- Airspy HF+ Discovery -->
-    <usb-device vendor-id="1d50" product-id="60a1"  /> <!--  Airspy  -->
-    <usb-device vendor-id="1df7" product-id="2500"  /> <!-- SDRRlay RSP1 -->
-    <usb-device vendor-id="1df7" product-id="3000"  /> <!-- SDRRlay RSP1a -->
-    <usb-device vendor-id="1df7" product-id="3010"  /> <!-- SDRRlay RSP2/pro -->
-    <usb-device vendor-id="1df7" product-id="3020"  /> <!-- SDRRlay RSPduo  -->
-    <usb-device vendor-id="1df7" product-id="3030"  /> <!-- SDRRlay RSPdx  -->
-    <usb-device vendor-id="1d50" product-id="6089"  /> <!--  hackrf  -->
-    <usb-device vendor-id="1d50" product-id="6108"  /> <!--  Myriad-RF LimeSDR  -->
-    <usb-device vendor-id="0bda" product-id="2838"  /> <!--  RTL-SDR  -->
-    <usb-device vendor-id="05da" product-id="2838"  /> <!--  RTL-SDR ? -->
+    <usb-device vendor-id="7504" product-id="24737" /> <!-- Airspy / HydraSDR (0x1d50:0x60a1) -->
+    <usb-device vendor-id="1003" product-id="32780" /> <!-- Airspy HF+ (0x03EB:0x800C) -->
+    <usb-device vendor-id="7504" product-id="24651" /> <!-- HackRF Jawbreaker (0x1d50:0x604b) -->
+    <usb-device vendor-id="7504" product-id="24713" /> <!-- HackRF One (0x1d50:0x6089) -->
+    <usb-device vendor-id="7504" product-id="52245" /> <!-- HackRF rad1o (0x1d50:0xcc15) -->
+    <usb-device vendor-id="14511" product-id="1" /> <!-- HydraSDR RFOne (0x38af:0x0001) -->
+    <usb-device vendor-id="7671" product-id="9472" /> <!-- SDRplay RSP1 (0x1df7:0x2500) -->
+    <usb-device vendor-id="7671" product-id="12288" /> <!-- SDRplay RSP1a (0x1df7:0x3000) -->
+    <usb-device vendor-id="7671" product-id="12304" /> <!-- SDRplay RSP2/pro (0x1df7:0x3010) -->
+    <usb-device vendor-id="7671" product-id="12320" /> <!-- SDRplay RSPduo (0x1df7:0x3020) -->
+    <usb-device vendor-id="7671" product-id="12336" /> <!-- SDRplay RSPdx (0x1df7:0x3030) -->
+    <usb-device vendor-id="7504" product-id="24840" /> <!-- Myriad-RF LimeSDR (0x1d50:0x6108) -->
+    <usb-device vendor-id="1498" product-id="10296" /> <!-- RTL-SDR ? (0x05da:0x2838) -->
+    <usb-device vendor-id="3034" product-id="10290" /> <!-- RTL-SDR (0x0bda:0x2832) -->
+    <usb-device vendor-id="3034" product-id="10296" /> <!-- RTL-SDR (0x0bda:0x2838) -->
+    <usb-device vendor-id="1043" product-id="26240" /> <!-- RTL-SDR (0x0413:0x6680) -->
+    <usb-device vendor-id="1043" product-id="28431" /> <!-- RTL-SDR (0x0413:0x6f0f) -->
+    <usb-device vendor-id="1112" product-id="28799" /> <!-- RTL-SDR (0x0458:0x707f) -->
+    <usb-device vendor-id="3277" product-id="169" /> <!-- RTL-SDR (0x0ccd:0x00a9) -->
+    <usb-device vendor-id="3277" product-id="179" /> <!-- RTL-SDR (0x0ccd:0x00b3) -->
+    <usb-device vendor-id="3277" product-id="180" /> <!-- RTL-SDR (0x0ccd:0x00b4) -->
+    <usb-device vendor-id="3277" product-id="181" /> <!-- RTL-SDR (0x0ccd:0x00b5) -->
+    <usb-device vendor-id="3277" product-id="183" /> <!-- RTL-SDR (0x0ccd:0x00b7) -->
+    <usb-device vendor-id="3277" product-id="184" /> <!-- RTL-SDR (0x0ccd:0x00b8) -->
+    <usb-device vendor-id="3277" product-id="185" /> <!-- RTL-SDR (0x0ccd:0x00b9) -->
+    <usb-device vendor-id="3277" product-id="192" /> <!-- RTL-SDR (0x0ccd:0x00c0) -->
+    <usb-device vendor-id="3277" product-id="198" /> <!-- RTL-SDR (0x0ccd:0x00c6) -->
+    <usb-device vendor-id="3277" product-id="211" /> <!-- RTL-SDR (0x0ccd:0x00d3) -->
+    <usb-device vendor-id="3277" product-id="215" /> <!-- RTL-SDR (0x0ccd:0x00d7) -->
+    <usb-device vendor-id="3277" product-id="224" /> <!-- RTL-SDR (0x0ccd:0x00e0) -->
+    <usb-device vendor-id="5460" product-id="20512" /> <!-- RTL-SDR (0x1554:0x5020) -->
+    <usb-device vendor-id="5620" product-id="305" /> <!-- RTL-SDR (0x15f4:0x0131) -->
+    <usb-device vendor-id="5620" product-id="307" /> <!-- RTL-SDR (0x15f4:0x0133) -->
+    <usb-device vendor-id="6235" product-id="1568" /> <!-- RTL-SDR (0x185b:0x0620) -->
+    <usb-device vendor-id="6235" product-id="1616" /> <!-- RTL-SDR (0x185b:0x0650) -->
+    <usb-device vendor-id="6235" product-id="1664" /> <!-- RTL-SDR (0x185b:0x0680) -->
+    <usb-device vendor-id="7040" product-id="54163" /> <!-- RTL-SDR (0x1b80:0xd393) -->
+    <usb-device vendor-id="7040" product-id="54164" /> <!-- RTL-SDR (0x1b80:0xd394) -->
+    <usb-device vendor-id="7040" product-id="54165" /> <!-- RTL-SDR (0x1b80:0xd395) -->
+    <usb-device vendor-id="7040" product-id="54167" /> <!-- RTL-SDR (0x1b80:0xd397) -->
+    <usb-device vendor-id="7040" product-id="54168" /> <!-- RTL-SDR (0x1b80:0xd398) -->
+    <usb-device vendor-id="7040" product-id="54173" /> <!-- RTL-SDR (0x1b80:0xd39d) -->
+    <usb-device vendor-id="7040" product-id="54180" /> <!-- RTL-SDR (0x1b80:0xd3a4) -->
+    <usb-device vendor-id="7040" product-id="54184" /> <!-- RTL-SDR (0x1b80:0xd3a8) -->
+    <usb-device vendor-id="7040" product-id="54191" /> <!-- RTL-SDR (0x1b80:0xd3af) -->
+    <usb-device vendor-id="7040" product-id="54192" /> <!-- RTL-SDR (0x1b80:0xd3b0) -->
+    <usb-device vendor-id="7449" product-id="4353" /> <!-- RTL-SDR (0x1d19:0x1101) -->
+    <usb-device vendor-id="7449" product-id="4354" /> <!-- RTL-SDR (0x1d19:0x1102) -->
+    <usb-device vendor-id="7449" product-id="4355" /> <!-- RTL-SDR (0x1d19:0x1103) -->
+    <usb-device vendor-id="7449" product-id="4356" /> <!-- RTL-SDR (0x1d19:0x1104) -->
+    <usb-device vendor-id="8013" product-id="43011" /> <!-- RTL-SDR (0x1f4d:0xa803) -->
+    <usb-device vendor-id="8013" product-id="47107" /> <!-- RTL-SDR (0x1f4d:0xb803) -->
+    <usb-device vendor-id="8013" product-id="51203" /> <!-- RTL-SDR (0x1f4d:0xc803) -->
+    <usb-device vendor-id="8013" product-id="53894" /> <!-- RTL-SDR (0x1f4d:0xd286) -->
+    <usb-device vendor-id="8013" product-id="55299" /> <!-- RTL-SDR (0x1f4d:0xd803) -->
 </resources>

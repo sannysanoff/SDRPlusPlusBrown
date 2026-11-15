@@ -47,6 +47,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import java.util.concurrent.LinkedBlockingQueue
+import org.xmlpull.v1.XmlPullParser
 
 
 private const val ACTION_USB_PERMISSION = "org.sdrppbrown.sdrppbrown.USB_PERMISSION";
@@ -199,6 +200,27 @@ class MainActivity : NativeActivity(), SensorEventListener {
         sensorManager.unregisterListener(this)
     }
 
+    private fun loadAllowedUsbDevices(): Set<Pair<Int, Int>> {
+        val allowed = HashSet<Pair<Int, Int>>()
+        val parser = resources.getXml(R.xml.device_filter)
+        try {
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG && parser.name == "usb-device") {
+                    val vid = parser.getAttributeValue(null, "vendor-id")?.toIntOrNull()
+                    val pid = parser.getAttributeValue(null, "product-id")?.toIntOrNull()
+                    if (vid != null && pid != null) {
+                        allowed.add(Pair(vid, pid))
+                    }
+                }
+                eventType = parser.next()
+            }
+        } finally {
+            parser.close()
+        }
+        return allowed
+    }
+
     fun proceedWithPermissions() {
         Log.w("SDR++", "PERM: Proceed with permissions...")
         if (REQUIRED_PERMISSIONS.all {
@@ -216,11 +238,9 @@ class MainActivity : NativeActivity(), SensorEventListener {
             Log.w("SDR++", "PERM: Requesting USB permissions..")
             // USB stuff
             usbManager = getSystemService(USB_SERVICE) as UsbManager;
-            val filter = IntentFilter(ACTION_USB_PERMISSION)
-            registerReceiver(usbReceiver, filter)
+            val allowedUsbDevices = loadAllowedUsbDevices()
 
-
-            // Get permission for all USB devices
+            // Get permission only for registered SDR USB devices
             usbReceiver.devList = usbManager!!.deviceList;
             Log.w("SDR++", "PERM: Dev list size: " + usbReceiver.devList.size.toString())
 
@@ -228,14 +248,11 @@ class MainActivity : NativeActivity(), SensorEventListener {
 
             for ((name, dev) in usbReceiver.devList) {
                 Log.w("SDR++", "PERM: Dev list item: $name $dev")
-                val prodName = dev.productName?.toUpperCase(Locale.US) ?: ""
-                if (prodName.indexOf("Network") != -1
-                    || prodName.indexOf("LAN") != -1
-                    || prodName.indexOf("KEYBOARD") != -1
-                    || prodName.indexOf("MOUSE") != -1
-                )
-                // ignore LAN device.
+                if (!allowedUsbDevices.contains(Pair(dev.vendorId, dev.productId))) {
                     continue
+                }
+                val filter = IntentFilter(ACTION_USB_PERMISSION)
+                registerReceiver(usbReceiver, filter)
                 Log.w("SDR++", "PERM: Req USB perm: $dev")
                 usbManager!!.requestPermission(dev, permissionIntent);
                 return
