@@ -35,6 +35,7 @@ read on below.
 
 * [Even more improved rendering performance](#improved-rendering-performance)
 * [Bundled FT8 decoder](#bundled-ft8-decoder) - extracted from MSHV code, slightly tweaked.
+* Experimental CW decoder - whole-band CW decoding, module tinycw_decoder.
 * Bundled UHF/VHF digital modes decoder - with generous help of cropinghigh.
 * [Noise Reduction](#noise-reduction) - both for audio frequency and baseband (visual noise reduction!)
 * [Hermes Lite 2 support](#hermes-lite-2-support) - hl2_source plugin (don't confuse with hermes_source).
@@ -61,6 +62,7 @@ read on below.
 * [Multiple output audio devices support](#multiple-output-audio-devices-support). Also, possibility to output to the left or right channel only. (use Brown Audio Source)
 * Android Audio Device selection (bluetooth/external headset supported in QSO).
 * [More display scaling factors](#more-display-scaling-factors). Android: Forced landscape mode, thicker sliders.
+* [Menu coloring](#menu-coloring) - per-menu font and background colors, for accessibility.
 * [Bandwidth change slider](#bandwidth-slider) to easily edit bandwidth on touch devices.
 * [TCI protocol](#tci-protocol) (basic), output only. Tested to work with MSHV software. 
 * [Frequency manager](#frequency-manager): labels rendering is now not overlapped.
@@ -223,6 +225,14 @@ You can zoom in and out with bigger choices than in main project. Also, on Andro
 which is detected on startup and brings proper scale factor right from beginning.
 
 ![](more-scaling-factors.jpg)
+
+## Menu coloring
+
+Each menu header can get its own font and background color. This helps to find a menu on a busy screen, and it raises
+contrast for users with weak eyesight. Long press or right click a menu header to open the color popup. Enable
+"Override color", then pick a font and background color from the presets. Colors are saved with the rest of the config.
+
+![](menu-colors.png)
 
 ## Small screen support
 
