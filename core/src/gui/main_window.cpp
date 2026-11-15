@@ -1,5 +1,6 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
+#include "imgui_internal.h"
 #include <implot/implot.h>
 #include <gui/main_window.h>
 #include <gui/gui.h>
@@ -745,7 +746,9 @@ void MainWindow::draw() {
         ImGui::SetColumnWidth(1, std::max<int>(winSize.x - menuWidth - (60.0f * style::uiScale), 100.0f * style::uiScale));
         ImGui::SetColumnWidth(2, 60.0f * style::uiScale);
 
+        ImGui::SetNextWindowScroll(ImVec2(0.0f, -1.0f));
         ImGui::BeginChild("Left Column");
+        ImGui::GetCurrentWindow()->ScrollMax.x = 0.0f;
 
 
         if (gui::menu.draw(firstMenuRender)) {

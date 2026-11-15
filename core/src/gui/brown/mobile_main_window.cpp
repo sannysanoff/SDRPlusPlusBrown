@@ -1797,7 +1797,9 @@ void MobileMainWindow::draw() {
 
         auto original = style.ScrollbarSize;
         style.ScrollbarSize *= (displaymenu::phoneLayout ? 3 : 1);
+        ImGui::SetNextWindowScroll(ImVec2(0.0f, -1.0f));
         ImGui::BeginChildEx("Menu", ImGui::GetID("sdrpp_menu"), menuRegion, false, 0);
+        ImGui::GetCurrentWindow()->ScrollMax.x = 0.0f;
         style.ScrollbarSize = original;
 
 
