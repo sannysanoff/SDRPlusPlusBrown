@@ -2,23 +2,19 @@
 
 Newest entries are at the top.
 
+2026.11.15
+
+* Menu headers: long-press (1 s) or right-click opens a color popup with "Override color", font color and background color, each with 16 presets plus the picker, stored per menu element.
+* TinyCW module: whole-band CW decoder that scans the CW segment in view, opens one narrow channel per keyed signal and decodes each with a small self-trained model.
+* OSA103 source module: USB driver (D2XX loaded at run time).
+* Audio sink: microphone input is one shared service, so all modules can use the same device.
+* Russian bandplan: added the 41 m SW broadcast band.
+
 2026.10.29
 
-* Vowel Squelch in the radio panel: an audio-domain squelch that opens while a voice is present and keeps noise,
-  carriers, CW, RTTY, FT8 and other data bursts muted. It tracks the partials of the audio and requires the harmonic
-  spacing to move like a spoken pitch: a carrier is one line, a rigidly drifting comb moves all partials by the same
-  number of Hz, and data bursts switch lines on and off instead of tracking them. Decay (how long it stays open) and
-  sensitivity (evidence needed to open) sliders; the audio is buffered by 1/4 s so a word is not cut. While the gate
-  is open, a harmonic lattice whose pitch continues the previous one holds it open (up to 3 times the decay after the
-  last real detection), so a continuous transmission stays audible instead of breaking up between words. A lamp on the
-  Vowel Squelch line shows the raw per-hop detection, in step with the waterfall. Measured on 6 voice and 12 non-voice
-  recordings: the gate opens 18 to 99 % of each voice recording (median 59 %) and stays shut on all 12 non-voice ones,
-  at Sensitivity 0.5.
-* RX888 MkII source module: native USB driver (SDDC firmware, ported from OnAir), HF direct sampling and the R828D VHF input, ADC clock
-  64 or 128 MHz, rates from 250 kHz to 64 MHz (OnAir's list plus 64 MHz), gain, HF attenuator, dither, randomiser, PGA, bias tee. The
-  firmware image ships with the module and is loaded into the radio's RAM, never flashed.
-* Noise reduction: "Compensation" slider (0 to 1) for the LogMMSE baseband NR and for the OMLSA audio NR2, setting how much of the
-  estimated noise is subtracted. Defaults: 1.0 baseband, 0.5 NR2.
+* Vowel Squelch (experimental) in the radio panel: an audio-domain squelch that opens while a voice is present and mutes noise, carriers, CW, RTTY, FT8 and other data bursts.
+* RX888 MkII source module: native USB driver (SDDC firmware, ported from OnAir), HF direct sampling and the R828D VHF input, ADC clock 64 or 128 MHz, 250 kHz to 64 MHz, gain, HF attenuator, dither, randomiser, PGA, bias tee, firmware loaded into RAM and never flashed.
+* Noise reduction: "Compensation" slider (0 to 1) for the LogMMSE baseband NR and for the OMLSA audio NR2, defaults 1.0 baseband and 0.5 NR2.
 * HTTP debug server is off unless --http is given; it used to listen on port 8080 by default.
 
 2026.10.24
@@ -170,8 +166,7 @@ Newest entries are at the top.
 
 2023.03.01
 
-* was playing with slow resizing (zooming) of the waterfall. Found a place to optimize it using SSE vector operations in most deep loop.
-  Gained 300% speedup. Still single-threaded, multithreaded will come later.
+* was playing with slow resizing (zooming) of the waterfall; SSE vector operations in the deep loop gained 300% speedup, still single-threaded.
 
 2023.02.15
 
