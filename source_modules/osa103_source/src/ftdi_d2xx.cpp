@@ -10,9 +10,38 @@
  */
 #include "ftdi_d2xx.h"
 #include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 
 namespace osa103 {
+
+namespace {
+
+// The runtime loader, in the four calls the module needs. D2XX is loaded at run time
+// on every platform, so the only difference is the API used to do it.
+#ifdef _WIN32
+using LibHandle = void*;
+
+LibHandle libOpen(const char* name) { return reinterpret_cast<LibHandle>(LoadLibraryA(name)); }
+void libClose(LibHandle lib) { FreeLibrary(reinterpret_cast<HMODULE>(lib)); }
+void* libSym(LibHandle lib, const char* name) { return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(lib), name)); }
+std::string libError() { return "LoadLibrary failed, error " + std::to_string((unsigned long)GetLastError()); }
+#else
+using LibHandle = void*;
+
+LibHandle libOpen(const char* name) { return dlopen(name, RTLD_NOW | RTLD_LOCAL); }
+void libClose(LibHandle lib) { dlclose(lib); }
+void* libSym(LibHandle lib, const char* name) { return dlsym(lib, name); }
+std::string libError() {
+    const char* dlerr = dlerror();
+    return dlerr ? std::string(dlerr) : std::string("unknown error");
+}
+#endif
+
+}  // namespace
 
 namespace {
 
@@ -50,7 +79,7 @@ const char* const kLibraryNames[] = {
 FtdiD2xx::~FtdiD2xx() {
     close();
     if (lib) {
-        dlclose(lib);
+        libClose(lib);
         lib = nullptr;
     }
 }
@@ -92,7 +121,7 @@ bool FtdiD2xx::load(const std::string& explicitPath, std::string& err) {
     }
 
     for (const std::string& candidate : candidates) {
-        lib = dlopen(candidate.c_str(), RTLD_NOW | RTLD_LOCAL);
+        lib = libOpen(candidate.c_str());
         if (lib) {
             path = candidate;
             break;
@@ -101,17 +130,16 @@ bool FtdiD2xx::load(const std::string& explicitPath, std::string& err) {
     if (!lib) {
         err = "Could not load the FTDI D2XX library";
         if (!explicitPath.empty()) { err += " '" + explicitPath + "'"; }
-        const char* dlerr = dlerror();
-        if (dlerr) { err += std::string(": ") + dlerr; }
+        err += ": " + libError();
         return false;
     }
 
 #define OSA103_RESOLVE(field, symbol)                                                 \
     do {                                                                              \
-        field = reinterpret_cast<decltype(field)>(dlsym(lib, symbol));                \
+        field = reinterpret_cast<decltype(field)>(libSym(lib, symbol));               \
         if (!field) {                                                                 \
             err = std::string("D2XX library is missing symbol ") + symbol;            \
-            dlclose(lib);                                                             \
+            libClose(lib);                                                            \
             lib = nullptr;                                                            \
             return false;                                                             \
         }                                                                             \

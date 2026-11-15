@@ -25,9 +25,10 @@ struct FtdiDeviceInfo {
 /*
 Minimal runtime binding to FTDI's D2XX library (ftd2xx.dll / libftd2xx.dylib /
 libftd2xx.so). Nothing is linked at build time and no FTDI headers are needed: the
-library is dlopen()ed and the handful of entry points the OSA103 needs are resolved
-by name. This is deliberately the same mechanism ExtIO_Osa.dll uses, so the module
-works with whatever D2XX build the user already has installed.
+library is loaded at run time (dlopen on macOS and Linux, LoadLibrary on Windows) and the
+handful of entry points the OSA103 needs are resolved by name. This is deliberately the same
+mechanism ExtIO_Osa.dll uses, so the module works with whatever D2XX build the user already has
+installed.
 
 Return codes are FT_STATUS values (0 = FT_OK). 32-bit integer arguments are
 zero-extended by the caller, which satisfies the LP64 `unsigned long` parameters in
