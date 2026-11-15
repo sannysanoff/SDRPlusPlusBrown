@@ -117,14 +117,17 @@ public:
     }
 
     void selectFirst() {
-        if (!devices.empty()) {
-            selectById(0);
+        for (int i = 0; i < (int)devices.size(); i++) {
+            if (!devices[i].isInput) {
+                selectById(i);
+                return;
+            }
         }
     }
 
     void selectByName(std::string name) {
-        for (int i = 0; i < devices.size(); i++) {
-            if (devices[i].name == name) {
+        for (int i = 0; i < (int)devices.size(); i++) {
+            if (!devices[i].isInput && devices[i].name == name) {
                 selectById(i);
                 return;
             }
@@ -133,7 +136,7 @@ public:
     }
 
     void selectById(int id) {
-        if (id < 0 || id >= devices.size()) { return; }
+        if (id < 0 || id >= (int)devices.size() || devices[id].isInput || devices[id].sampleRates.empty()) { return; }
         
         devId = id;
         auto& dev = devices[devId];
@@ -179,17 +182,75 @@ public:
     void menuHandler() {
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
-        // Device selection
-        ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo(("##_coreaudio_sink_dev_" + _streamName).c_str(), &devId, [](void* data, int idx, const char** out_text) {
-            auto devices = (std::vector<AudioDevice>*)data;
-            *out_text = devices->at(idx).name.c_str();
-            return true;
-        }, &devices, devices.size())) {
-            selectById(devId);
+        // The constructor only picks up the system default devices to keep startup safe.
+        // Build the full device list once, lazily, when the menu is first opened.
+        if (!fullDeviceListBuilt) {
+            fullDeviceListBuilt = true;
             config.acquire();
-            config.conf[_streamName]["device"] = devices[devId].name;
-            config.release(true);
+            std::string wanted = config.conf[_streamName]["device"];
+            std::string wantedMic = (config.conf[_streamName].contains("micDevice") && config.conf[_streamName]["micDevice"].is_string())
+                                    ? config.conf[_streamName]["micDevice"].get<std::string>()
+                                    : std::string();
+            config.release();
+            if (wanted.empty() && devId >= 0 && devId < (int)devices.size() && !devices[devId].isInput) {
+                wanted = devices[devId].name;
+            }
+            if (wantedMic.empty() && micDevId >= 0 && micDevId < (int)devices.size() && devices[micDevId].isInput) {
+                wantedMic = devices[micDevId].name;
+            }
+            AudioDeviceID prevOutId = (devId >= 0 && devId < (int)devices.size()) ? devices[devId].id : kAudioObjectUnknown;
+            double prevSampleRate = sampleRate;
+            bool wasRunning = running;
+            // Temporarily clear running so selectByName doesn't restart if the active device didn't change
+            running = false;
+            enumerateDevices();
+            micDevId = -1;
+            if (!wantedMic.empty()) {
+                for (int i = 0; i < (int)devices.size(); i++) {
+                    if (devices[i].isInput && devices[i].name == wantedMic) {
+                        micDevId = i;
+                        break;
+                    }
+                }
+            }
+            selectByName(wanted);
+            running = wasRunning;
+            if (running && devId >= 0 && devId < (int)devices.size() &&
+                (devices[devId].id != prevOutId || sampleRate != prevSampleRate)) {
+                doStop();
+                doStart();
+            }
+        }
+
+        // Output device selection (exclude input-only entries used by Microphone)
+        std::vector<int> outputIndices;
+        int currentOutIdx = 0;
+        for (int i = 0; i < (int)devices.size(); i++) {
+            if (!devices[i].isInput) {
+                if (i == devId) {
+                    currentOutIdx = (int)outputIndices.size();
+                }
+                outputIndices.push_back(i);
+            }
+        }
+
+        ImGui::SetNextItemWidth(menuWidth);
+        if (!outputIndices.empty()) {
+            struct OutputListCtx {
+                std::vector<AudioDevice>* devs;
+                std::vector<int>* idxs;
+            } listCtx = { &devices, &outputIndices };
+            if (ImGui::Combo(("##_coreaudio_sink_dev_" + _streamName).c_str(), &currentOutIdx, [](void* data, int idx, const char** out_text) {
+                auto* c = (OutputListCtx*)data;
+                *out_text = c->devs->at(c->idxs->at(idx)).name.c_str();
+                return true;
+            }, &listCtx, (int)outputIndices.size())) {
+                int selectedId = outputIndices[currentOutIdx];
+                selectById(selectedId);
+                config.acquire();
+                config.conf[_streamName]["device"] = devices[devId].name;
+                config.release(true);
+            }
         }
 
         // Sample rate selection
@@ -276,12 +337,13 @@ public:
 
 private:
     bool doStart() {
-        if (devId < 0 || devId >= devices.size()) { return false; }
-        
-        // Create output audio unit for the selected device
+        if (devId < 0 || devId >= (int)devices.size() || devices[devId].isInput) { return false; }
+
+        // Create output audio unit for the selected device. HALOutput is required:
+        // DefaultOutput always renders to the system default device and ignores the selection.
         AudioComponentDescription desc = {
             .componentType = kAudioUnitType_Output,
-            .componentSubType = kAudioUnitSubType_DefaultOutput,
+            .componentSubType = kAudioUnitSubType_HALOutput,
             .componentManufacturer = kAudioUnitManufacturer_Apple,
             .componentFlags = 0,
             .componentFlagsMask = 0
@@ -293,15 +355,25 @@ private:
             return false;
         }
 
-        if (!comp) {
-            flog::error("Could not find audio component");
-            return false;
-        }
-
         // Create the audio unit first
         OSStatus status = AudioComponentInstanceNew(comp, &audioUnit);
         if (status != noErr) {
             flog::error("Could not create audio unit instance");
+            return false;
+        }
+
+        // Bind the unit to the selected device, otherwise it renders to the default one
+        AudioDeviceID outDev = devices[devId].id;
+        status = AudioUnitSetProperty(audioUnit,
+                                    kAudioOutputUnitProperty_CurrentDevice,
+                                    kAudioUnitScope_Global,
+                                    0,
+                                    &outDev,
+                                    sizeof(outDev));
+        if (status != noErr) {
+            flog::error("Could not set output device: {0}", (int)status);
+            AudioComponentInstanceDispose(audioUnit);
+            audioUnit = nullptr;
             return false;
         }
 
@@ -326,6 +398,8 @@ private:
                                     sizeof(streamFormat));
         if (status != noErr) {
             flog::error("Could not set stream format");
+            AudioComponentInstanceDispose(audioUnit);
+            audioUnit = nullptr;
             return false;
         }
 
@@ -343,6 +417,8 @@ private:
                                     sizeof(callback));
         if (status != noErr) {
             flog::error("Could not set render callback");
+            AudioComponentInstanceDispose(audioUnit);
+            audioUnit = nullptr;
             return false;
         }
 
@@ -364,6 +440,8 @@ private:
         status = AudioUnitInitialize(audioUnit);
         if (status != noErr) {
             flog::error("Could not initialize audio unit");
+            AudioComponentInstanceDispose(audioUnit);
+            audioUnit = nullptr;
             return false;
         }
 
@@ -371,6 +449,9 @@ private:
         status = AudioOutputUnitStart(audioUnit);
         if (status != noErr) {
             flog::error("Could not start audio unit");
+            AudioUnitUninitialize(audioUnit);
+            AudioComponentInstanceDispose(audioUnit);
+            audioUnit = nullptr;
             return false;
         }
 
@@ -718,8 +799,10 @@ private:
             AudioDevice device;
             device.id = deviceIDs[i];
 
-            // Get device name
+            // Get device name. The scope must be reset: the loop leaves it set to Input
+            // from the previous iteration, which makes this query fail for some devices.
             prop.mSelector = kAudioObjectPropertyName;
+            prop.mScope = kAudioObjectPropertyScopeGlobal;
             CFStringRef name = NULL;
             size = sizeof(name);
             status = AudioObjectGetPropertyData(device.id, &prop, 0, NULL, &size, &name);
@@ -758,6 +841,7 @@ private:
                             }
                             // Sort and create text list
                             std::sort(device.sampleRates.begin(), device.sampleRates.end());
+                            device.sampleRates.erase(std::unique(device.sampleRates.begin(), device.sampleRates.end()), device.sampleRates.end());
                             for (auto sr : device.sampleRates) {
                                 device.sampleRatesTxt += std::to_string((int)sr);
                                 device.sampleRatesTxt += '\0';
@@ -881,6 +965,7 @@ private:
 
     std::string _streamName;
 
+    bool fullDeviceListBuilt = false;
     int srId = 0;
     int devId = -1;
     bool running = false;
