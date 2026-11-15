@@ -154,6 +154,14 @@ bundle_install_binary() {
         local DEP_NAME=$(basename $DEP)
         echo -n " - $DEP_NAME "
 
+        # Skip OS-provided libraries and frameworks; they must never be bundled
+        case "$DEP" in
+            /System/*|/usr/lib/*)
+                echo "skipping (system)"
+                continue
+                ;;
+        esac
+
         # Skip if this dep is blacklisted
         local NOT_TO_BE_INSTALLED=$(bundle_is_not_to_be_installed $DEP_NAME)
         if [ "$NOT_TO_BE_INSTALLED" = "1" ]; then
