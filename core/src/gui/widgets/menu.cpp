@@ -91,8 +91,8 @@ bool Menu::draw(bool updateStates) {
             bg.w = 1.0f;
             ImGui::PushStyleColor(ImGuiCol_Text, font);
             ImGui::PushStyleColor(ImGuiCol_Header, bg);
-            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(std::min(bg.x + 0.08f, 1.0f), std::min(bg.y + 0.08f, 1.0f), std::min(bg.z + 0.08f, 1.0f), 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(std::min(bg.x + 0.16f, 1.0f), std::min(bg.y + 0.16f, 1.0f), std::min(bg.z + 0.16f, 1.0f), 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4((std::min)(bg.x + 0.08f, 1.0f), (std::min)(bg.y + 0.08f, 1.0f), (std::min)(bg.z + 0.08f, 1.0f), 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4((std::min)(bg.x + 0.16f, 1.0f), (std::min)(bg.y + 0.16f, 1.0f), (std::min)(bg.z + 0.16f, 1.0f), 1.0f));
         }
 //        auto rv = ImGui::CollapsingHeader(chname, ImGuiTreeNodeFlags_FramePadding);
         auto rv = ImGui::CollapsingHeader(chname);
