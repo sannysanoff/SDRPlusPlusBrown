@@ -819,16 +819,17 @@ private:
             double centerXpos = args.min.x + std::round((bm.bookmark.frequency - args.lowFreq) * args.freqToPixelRatio);
 
             ImVec2 nameSize = ImGui::CalcTextSize(bm.bookmarkName.c_str());
-            ImVec2 rectMin;
+            ImVec2 rectMin, rectMax;
             float layoutOverlapStep = nameSize.y + 1;
             if (_this->bookmarkDisplayMode == BOOKMARK_DISP_MODE_TOP) {
                 rectMin = ImVec2(centerXpos - (nameSize.x / 2) - 5, args.min.y);
+                rectMax = ImVec2(centerXpos + (nameSize.x / 2) + 5, rectMin.y + nameSize.y);
             } else {
-                rectMin = ImVec2(centerXpos - (nameSize.x / 2) - 5, args.max.y - nameSize.y);
+                rectMax = ImVec2(centerXpos + (nameSize.x / 2) + 5, args.max.y);
+                rectMin = ImVec2(centerXpos - (nameSize.x / 2) - 5, rectMax.y - nameSize.y);
                 layoutOverlapStep = -layoutOverlapStep;
             }
 
-            ImVec2 rectMax = ImVec2(centerXpos + (nameSize.x / 2) + 5, rectMin.y + nameSize.y);
             ImVec2 clampedRectMin = ImVec2(std::clamp<double>(rectMin.x, args.min.x, args.max.x), rectMin.y);
             ImVec2 clampedRectMax = ImVec2(std::clamp<double>(rectMax.x, args.min.x, args.max.x), rectMax.y);
 
@@ -846,7 +847,7 @@ again:
                 clampedRectMin = newRect.Min;
                 rectMin.y = clampedRectMin.y;
                 rectMax.y = clampedRectMax.y;
-                if (clampedRectMin.y < args.min.y || clampedRectMax.y >= args.max.y) {
+                if (clampedRectMin.y < args.min.y || clampedRectMax.y > args.max.y) {
                     continue; // dont draw at all.
                 }
                 args.window->DrawList->AddRectFilled(clampedRectMin, clampedRectMax, bm.worked ? IM_COL32(0, 255, 0, 255) : (vfoMissing ? IM_COL32(255, 80, 80, 255) : IM_COL32(255, 255, 0, 255)));
