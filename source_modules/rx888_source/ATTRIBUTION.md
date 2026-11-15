@@ -14,6 +14,9 @@ repository `LICENSE` file holds the full text.
   `core/src/source/native_realddc.h`, `core/src/dsp/dsp_compat.cpp` (the `desamp` kernel),
   `core/include/dect2/common/window.h` (`besselI0`), `core/src/source/native_common.h` (USB error
   texts)
+- Kristijonas Adomaitis (OnAir) is listed on the Credits screen of SDR++ (`core/src/credits.cpp`).
+- If OnAir code of 4.1 or later is ported, the credit line required by its `ADDITIONAL-TERMS.md`
+  must also be shown on the Credits screen.
 - OnAir adds attribution terms under GPL section 7(b) (`ADDITIONAL-TERMS.md`). These two lines must
   stay with the code, and both are reproduced in the header of every file named above:
 
