@@ -233,13 +233,9 @@ public:
             microphonePaStream = nullptr;
         }
 
-        // Send stop signal to the streams
+        // Unblock any active reader and abort PortAudio before stopping upstream DSP
         packer.out.stopReader();
         s2m.out.stopReader();
-
-        // Stop DSP
-        packer.stop();
-        s2m.stop();
 
         if (devStream) {
             // Stop stream
@@ -249,6 +245,10 @@ public:
             Pa_CloseStream(devStream);
             devStream = nullptr;
         }
+
+        // Stop DSP
+        packer.stop();
+        s2m.stop();
 
 
         inputDeviceInfo = "Stopped";
@@ -489,40 +489,31 @@ private:
         }
     }
 
-    static int _mono_cb(const void* input, void* output, unsigned long frameCount,
-                        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
-        AudioSink* _this = (AudioSink*)userData;
+    template <typename SampleT>
+    static int nonBlockingStreamCallback(dsp::stream<SampleT>& outStream, void* output, unsigned long frameCount) {
+        memset(output, 0, frameCount * sizeof(SampleT));
 
-        // For OSX, mute audio when not playing
-        if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(float));
-            _this->s2m.out.flush();
+        if (!outStream.isDataReady()) {
             return 0;
         }
 
-        // Write to buffer
-        _this->s2m.out.read();
-        memcpy(output, _this->s2m.out.readBuf, frameCount * sizeof(float));
-        _this->s2m.out.flush();
+        int count = outStream.read();
+        if (count > 0 && gui::mainWindow.isPlaying()) {
+            int toCopy = (std::min<int>)(count, frameCount);
+            memcpy(output, outStream.readBuf, toCopy * sizeof(SampleT));
+        }
+        outStream.flush();
         return 0;
+    }
+
+    static int _mono_cb(const void* input, void* output, unsigned long frameCount,
+                        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
+        return nonBlockingStreamCallback(((AudioSink*)userData)->s2m.out, output, frameCount);
     }
 
     static int _stereo_cb(const void* input, void* output, unsigned long frameCount,
                           const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
-        AudioSink* _this = (AudioSink*)userData;
-
-        // For OSX, mute audio when not playing
-        if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(dsp::stereo_t));
-            _this->packer.out.flush();
-            return 0;
-        }
-
-        // Write to buffer
-        _this->packer.out.read();
-        memcpy(output, _this->packer.out.readBuf, frameCount * sizeof(dsp::stereo_t));
-        _this->packer.out.flush();
-        return 0;
+        return nonBlockingStreamCallback(((AudioSink*)userData)->packer.out, output, frameCount);
     }
 
     std::string _streamName;

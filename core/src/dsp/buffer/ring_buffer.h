@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include "buffer.h"
 
 #define RING_BUF_SZ 1000000
@@ -186,14 +187,20 @@ namespace dsp::buffer {
 
         void stopReader() {
             assert(_init);
-            _stopReader = true;
-            canReadVar.notify_one();
+            {
+                std::lock_guard<std::mutex> lck(_readable_mtx);
+                _stopReader = true;
+            }
+            canReadVar.notify_all();
         }
 
         void stopWriter() {
             assert(_init);
-            _stopWriter = true;
-            canWriteVar.notify_one();
+            {
+                std::lock_guard<std::mutex> lck(_writable_mtx);
+                _stopWriter = true;
+            }
+            canWriteVar.notify_all();
         }
 
         bool getReadStop() {
@@ -208,11 +215,13 @@ namespace dsp::buffer {
 
         void clearReadStop() {
             assert(_init);
+            std::lock_guard<std::mutex> lck(_readable_mtx);
             _stopReader = false;
         }
 
         void clearWriteStop() {
             assert(_init);
+            std::lock_guard<std::mutex> lck(_writable_mtx);
             _stopWriter = false;
         }
 
@@ -230,8 +239,8 @@ namespace dsp::buffer {
         int readable;
         int writable;
         int maxLatency;
-        bool _stopReader;
-        bool _stopWriter;
+        std::atomic<bool> _stopReader{ false };
+        std::atomic<bool> _stopWriter{ false };
         std::mutex _readable_mtx;
         std::mutex _writable_mtx;
         std::condition_variable canReadVar;

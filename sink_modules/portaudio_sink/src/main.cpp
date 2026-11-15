@@ -193,46 +193,48 @@ private:
     }
 
     void doStop() {
-        s2m.stop();
-        monoRB.stop();
-        stereoRB.stop();
-        // monoPacker.stop();
-        // stereoPacker.stop();
         monoRB.data.stopReader();
         stereoRB.data.stopReader();
         // monoPacker.out.stopReader();
         // stereoPacker.out.stopReader();
         if (stream) {
-            Pa_StopStream(stream);
+            Pa_AbortStream(stream);
             Pa_CloseStream(stream);
             stream = NULL;
         }
+        s2m.stop();
+        monoRB.stop();
+        stereoRB.stop();
+        // monoPacker.stop();
+        // stereoPacker.stop();
         monoRB.data.clearReadStop();
         stereoRB.data.clearReadStop();
         // monoPacker.out.clearReadStop();
         // stereoPacker.out.clearWriteStop();
     }
 
-    static int _mono_cb(const void* input, void* output, unsigned long frameCount,
-                        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
-        AudioSink* _this = (AudioSink*)userData;
+    template <typename SampleT>
+    static int nonBlockingCallback(dsp::sink::RingBuffer<SampleT>& rb, void* output, unsigned long frameCount) {
+        memset(output, 0, frameCount * sizeof(SampleT));
         if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(float));
             return 0;
         }
-        _this->monoRB.data.read((float*)output, frameCount);
+        int avail = rb.data.getReadable();
+        int toRead = (std::min<int>)(avail, frameCount);
+        if (toRead > 0 && rb.data.read((SampleT*)output, toRead) < 0) {
+            memset(output, 0, frameCount * sizeof(SampleT));
+        }
         return 0;
+    }
+
+    static int _mono_cb(const void* input, void* output, unsigned long frameCount,
+                        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
+        return nonBlockingCallback(((AudioSink*)userData)->monoRB, output, frameCount);
     }
 
     static int _stereo_cb(const void* input, void* output, unsigned long frameCount,
                           const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
-        AudioSink* _this = (AudioSink*)userData;
-        if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(dsp::stereo_t));
-            return 0;
-        }
-        _this->stereoRB.data.read((dsp::stereo_t*)output, frameCount);
-        return 0;
+        return nonBlockingCallback(((AudioSink*)userData)->stereoRB, output, frameCount);
     }
 
     // static int _mono_cb(const void *input, void *output, unsigned long frameCount,
