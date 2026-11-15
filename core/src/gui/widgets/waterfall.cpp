@@ -904,6 +904,13 @@ namespace ImGui {
             bpBottom = fftAreaMin.y + height + 1;
         }
 
+        // Bands too narrow to fit their name get it shown in a tooltip when hovered instead.
+        // Hairline-thin bands are given a minimum hit width so that they can actually be hovered.
+        bool bandplanHovered = ImGui::IsWindowHovered() && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+                               ImGui::IsMouseHoveringRect(ImVec2(fftAreaMin.x, bpBottom - height), ImVec2(fftAreaMax.x, bpBottom));
+        float mouseX = ImGui::GetMousePos().x;
+        float minHitWidth = 8.0f * style::uiScale;
+        std::vector<int> hoveredBands;
 
         for (int i = 0; i < count; i++) {
             start = bandplan->bands[i].start;
@@ -954,7 +961,22 @@ namespace ImGui {
                 window->DrawList->AddText(ImVec2(cPos - (txtSz.x / 2.0), bpBottom - (height / 2.0f) - (txtSz.y / 2.0f)),
                                           IM_COL32(255, 255, 255, 255), bandplan->bands[i].name.c_str());
             }
+            else if (bandplanHovered && width >= 1.0) {
+                float halfHitWidth = std::max<float>(width, minHitWidth) / 2.0f;
+                if (mouseX >= cPos - halfHitWidth && mouseX <= cPos + halfHitWidth) {
+                    hoveredBands.push_back(i);
+                }
+            }
         }
+
+        if (hoveredBands.empty()) { return; }
+
+        // The band plan is drawn on top of the VFOs, so its tooltip takes precedence over theirs as well.
+        ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
+        for (int n = 0; n < (int)hoveredBands.size(); n++) {
+            ImGui::TextUnformatted(bandplan->bands[hoveredBands[n]].name.c_str());
+        }
+        ImGui::EndTooltip();
     }
 
 
