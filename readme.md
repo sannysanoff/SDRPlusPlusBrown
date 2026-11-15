@@ -29,6 +29,7 @@ Thanks and due respect to:
 * Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes.
 * monolifed for his [pbkdf2 header-only implementation](https://github.com/monolifed/pbkdf2-hmac-sha256)  
 * ruse39 for his contributions on code quality
+* Kristijonas Adomaitis and OnAir contributors, for the [OnAir](https://github.com/adswill/OnAir) receiver. Its RX888 MkII driver is ported into this fork, and further OnAir parts are expected: thanks for both.
 
 ## Feedback
 
