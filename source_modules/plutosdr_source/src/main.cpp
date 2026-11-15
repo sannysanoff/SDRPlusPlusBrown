@@ -26,7 +26,8 @@ ConfigManager config;
 const std::vector<const char*> deviceWhiteList = {
     "PlutoSDR",
     "ANTSDR",
-    "LibreSDR"
+    "LibreSDR",
+    "PlutoSky"
 };
 
 class PlutoSDRSourceModule : public ModuleManager::Instance {
