@@ -13,6 +13,9 @@
 #include <config.h>
 #include <core.h>
 #include <utils/stream_tracker.h>
+#include "shared_microphone.h"
+#include "sink_config.h"
+#include "output_buffer.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -46,11 +49,7 @@ class AudioSink : SinkManager::Sink {
 public:
     StreamTracker spackerTracker;
 
-    RtAudio::DeviceInfo inputDeviceInfo;
-
-    std::vector<dsp::stereo_t> playBuffer; // hardware data is stored here before stream i/o
-
-    int underflow = 0; // 1 = small underflow, 2 = full underflow
+    std::atomic<int> underflow{0}; // 1 = small underflow, 2 = full underflow
 
     bool micInput = true;
 
@@ -59,25 +58,21 @@ public:
         _streamName = streamName;
         //        s2m.init(_stream->sinkOut);
         //        monoPacker.init(&s2m.out, 512);
-        stereoPacker.init(_stream->sinkOut, 512);
+        outputBuffer.init(_stream->sinkOut);
 
 #if RTAUDIO_VERSION_MAJOR >= 6
         audio.setErrorCallback(&errorCallback);
 #endif
 
-        bool created = false;
-        std::string device = "";
-        config.acquire();
-        if (!config.conf.contains(_streamName)) {
-            created = true;
-            config.conf[_streamName]["device"] = "";
-            config.conf[_streamName]["devices"] = json({});
+        std::string device;
+        {
+            SinkConfigLock lock(config);
+            auto& settings = sinkSettings(config.conf, _streamName);
+            device = settings["device"].get<std::string>();
+            if (settings["micInput"].is_boolean()) { micInput = settings["micInput"].get<bool>(); }
+            if (config.conf["micInput"].is_boolean()) { micInput = config.conf["micInput"].get<bool>(); }
+            lock.modified = true;
         }
-        device = config.conf[_streamName]["device"];
-        if (config.conf[_streamName].contains("micInput")) {
-            micInput = config.conf[_streamName]["micInput"];
-        }
-        config.release(created);
 
         RtAudio::DeviceInfo info;
 #if RTAUDIO_VERSION_MAJOR >= 6
@@ -88,11 +83,6 @@ public:
 #endif
             try {
                 info = audio.getDeviceInfo(i);
-                if (info.isDefaultInput) {
-                    inputDeviceInfo = info;
-                    defaultInputDeviceId = i;
-                    flog::info("Default input: {} defaultInputDeviceId={}", info.name, std::to_string(i));
-                }
 #if !defined(RTAUDIO_VERSION_MAJOR) || RTAUDIO_VERSION_MAJOR < 6
                 if (!info.probed) {
                     RtAudio::StreamParameters parameters;
@@ -140,10 +130,19 @@ public:
             }
         }
         selectByName(device);
+        instances.push_back(this);
+        if (microphoneController() == this && !microphoneConfigured) {
+            sharedMicrophone.configure(micInput, sampleRate);
+            microphoneConfigured = true;
+            SinkConfigLock lock(config);
+            config.conf["micInput"] = micInput;
+            lock.modified = true;
+        }
     }
 
     ~AudioSink() {
         stop();
+        instances.erase(std::remove(instances.begin(), instances.end(), this), instances.end());
     }
 
     void start() {
@@ -152,7 +151,6 @@ public:
     }
 
     void stop() {
-        if (!running) { return; }
         doStop();
         running = false;
     }
@@ -172,22 +170,26 @@ public:
     }
 
     void selectById(int id) {
+        if (id < 0 || id >= (int)devList.size()) { return; }
+        bool restart = running;
+        stop();
         devId = id;
-        bool created = false;
-        config.acquire();
-        if (!config.conf[_streamName]["devices"].contains(devList[id].name)) {
-            created = true;
-            config.conf[_streamName]["devices"][devList[id].name] = devList[id].preferredSampleRate;
+        {
+            SinkConfigLock lock(config);
+            auto& settings = sinkSettings(config.conf, _streamName);
+            sampleRate = sinkSampleRate(settings["devices"][devList[id].name], devList[id].preferredSampleRate);
+            lock.modified = true;
         }
-        sampleRate = config.conf[_streamName]["devices"][devList[id].name];
-        config.release(created);
 
         sampleRates = devList[id].sampleRates;
         sampleRatesTxt = "";
         char buf[256];
         bool found = false;
         unsigned int defaultId = 0;
+        sampleRates.erase(std::remove_if(sampleRates.begin(), sampleRates.end(), [](unsigned int rate) { return rate < 8000 || rate > 768000; }), sampleRates.end());
+        if (sampleRates.empty()) { sampleRates.push_back(48000); }
         unsigned int defaultSr = devList[id].preferredSampleRate;
+        if (std::find(sampleRates.begin(), sampleRates.end(), defaultSr) == sampleRates.end()) { defaultSr = sampleRates.front(); }
         for (int i = 0; i < sampleRates.size(); i++) {
             if (sampleRates[i] == sampleRate) {
                 found = true;
@@ -205,46 +207,65 @@ public:
             srId = defaultId;
         }
 
+        {
+            SinkConfigLock lock(config);
+            sinkSettings(config.conf, _streamName)["devices"][devList[id].name] = sampleRate;
+            lock.modified = true;
+        }
         _stream->setSampleRate(sampleRate);
 
-        if (running) { doStop(); }
-        if (running) { doStart(); }
+        if (microphoneController() == this) { sharedMicrophone.configure(sharedMicrophone.enabled, sampleRate); }
+        if (restart) { start(); }
     }
 
     void menuHandler() {
         float menuWidth = ImGui::GetContentRegionAvail().x;
+        if (devList.empty()) {
+            ImGui::TextUnformatted("No audio output devices available");
+            return;
+        }
 
         ImGui::SetNextItemWidth(menuWidth);
-        if (ImGui::Combo(("##_brown_audio_sink_dev_" + _streamName).c_str(), &devId, txtDevList.c_str())) {
-            selectById(devId);
-            config.acquire();
+        int selectedDevice = devId;
+        if (ImGui::Combo(("##_brown_audio_sink_dev_" + _streamName).c_str(), &selectedDevice, txtDevList.c_str())) {
+            selectById(selectedDevice);
+            SinkConfigLock lock(config);
             config.conf[_streamName]["device"] = devList[devId].name;
-            config.release(true);
+            lock.modified = true;
         }
 
         if (SinkManager::getSecondaryStreamIndex(_streamName).second == 0) {
             // only primary one has frequency selection
             if (ImGui::Combo(("##_brown_audio_sink_sr_" + _streamName).c_str(), &srId, sampleRatesTxt.c_str())) {
+                bool restart = running;
+                stop();
                 sampleRate = sampleRates[srId];
                 _stream->setSampleRate(sampleRate);
-                if (running) {
-                    doStop();
-                    doStart();
-                }
-                config.acquire();
+                if (microphoneController() == this) { sharedMicrophone.configure(sharedMicrophone.enabled, sampleRate); }
+                if (restart) { start(); }
+                SinkConfigLock lock(config);
                 config.conf[_streamName]["devices"][devList[devId].name] = sampleRate;
-                config.release(true);
+                lock.modified = true;
             }
             if (underflow != 0) {
                 ImGui::SameLine();
-                ImGui::Text("Underflow %d", underflow);
+                ImGui::Text("Underflow %d", underflow.load());
             }
-            if (ImGui::Checkbox("Mic input (restart needed)", &micInput)) {
-                config.acquire();
-                config.conf[_streamName]["micInput"] = micInput;
-                config.release(true);
-            }
-
+        }
+        bool controller = microphoneController() == this;
+        bool enabled = sharedMicrophone.enabled;
+        if (!controller) { style::beginDisabled(); }
+        if (ImGui::Checkbox(("Mic input##_brown_mic_" + _streamName).c_str(), &enabled) && controller) {
+            micInput = enabled;
+            sharedMicrophone.configure(enabled, sampleRate);
+            SinkConfigLock lock(config);
+            config.conf["micInput"] = enabled;
+            config.conf[_streamName]["micInput"] = enabled;
+            lock.modified = true;
+        }
+        if (!controller) {
+            style::endDisabled();
+            ImGui::TextUnformatted("Microphone is shared; controlled by the first primary output");
         }
     }
 
@@ -261,23 +282,26 @@ public:
             flog::warn("BrownAudioSinkModule Warning: {} ({})", errorText, (int)type);
             break;
         default:
-            throw std::runtime_error(errorText);
+            flog::error("BrownAudioSinkModule Error: {} ({})", errorText, (int)type);
         }
     }
 #endif
 
 private:
+    static AudioSink* microphoneController() {
+        for (auto* instance : instances) {
+            if (!SinkManager::isSecondaryStream(instance->_streamName)) { return instance; }
+        }
+        return nullptr;
+    }
+
     bool doStart() {
-
-        RtAudio::StreamParameters inputParameters;
-        inputParameters.deviceId = defaultInputDeviceId;
-        inputParameters.nChannels = 1;
-
+        if (devList.empty()) { return false; }
         RtAudio::StreamParameters outputParameters;
         outputParameters.deviceId = deviceIds[devId];
         outputParameters.nChannels = 2;
         unsigned int bufferFrames = sampleRate / 60;
-        playBuffer.reserve(bufferFrames);
+
         RtAudio::StreamOptions opts;
         opts.flags = RTAUDIO_MINIMIZE_LATENCY;
         opts.streamName = _streamName;
@@ -285,215 +309,67 @@ private:
 
         try {
             unsigned int microBuffer = bufferFrames / microFrames;
-            audio.openStream(&outputParameters, micInput && (defaultInputDeviceId == outputParameters.deviceId) ? &inputParameters : nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
-            stereoPacker.setSampleCount((int)bufferFrames);
+            // Capture always belongs to the shared service, including duplex devices.
+#if RTAUDIO_VERSION_MAJOR >= 6
+            if (audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts) != RTAUDIO_NO_ERROR) {
+                throw std::runtime_error("Could not open output stream");
+            }
+#else
+            audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
+#endif
+            outputBuffer.prepare((std::max)(bufferFrames, microBuffer * 2));
+            outputBuffer.start();
+#if RTAUDIO_VERSION_MAJOR >= 6
+            if (audio.startStream() != RTAUDIO_NO_ERROR) {
+                throw std::runtime_error("Could not start output stream");
+            }
+#else
             audio.startStream();
-            stereoPacker.start();
-        }
-        catch (const std::runtime_error& e) {
+#endif
+            sharedMicrophone.acquire(this);
+            return true;
+        } catch (const std::exception& e) {
             flog::error("Could not open audio device: {}", e.what());
-            return false;
         } catch (...) {
             flog::error("Could not open audio device. generic exception");
-            return false;
         }
-
-        if (SinkManager::getSecondaryStreamIndex(_streamName).second == 0 && micInput) {
-            if (defaultInputDeviceId != deviceIds[devId] && defaultInputDeviceId != -1) {
-                if (audio2RefCount.fetch_add(1) == 0) {
-                    audio2Owner = this;
-                    RtAudio::StreamOptions inputOpts;
-                    inputOpts.flags = RTAUDIO_MINIMIZE_LATENCY;
-                    inputOpts.streamName = inputDeviceInfo.name;
-                    unsigned int inputBufferFrames = sampleRate / 60 / microFrames;
-
-                    try {
-                        audio2.openStream(nullptr, &inputParameters, RTAUDIO_FLOAT32, sampleRate, &inputBufferFrames, &microphoneCallback, this, &inputOpts);
-                        audio2.startStream();
-                    }
-                    catch (const std::runtime_error& e) {
-                        flog::error("Could not open INPUT audio device: {}", e.what());
-                        audio2Owner = nullptr;
-                        audio2RefCount.fetch_sub(1);
-                        return false;
-                    } catch (...) {
-                        flog::error("Could not open audio device. generic exception");
-                        audio2Owner = nullptr;
-                        audio2RefCount.fetch_sub(1);
-                        return false;
-                    }
-                    sigpath::sinkManager.defaultInputAudio.setInput(&microphone);
-                    sigpath::sinkManager.defaultInputAudio.start();
-                }
-            }
-        }
-        return true;
+        doStop();
+        return false;
     }
-
-    dsp::stream<dsp::stereo_t> microphone = "brown_audio_sink.microphone";
-
 
     void doStop() {
-        flog::info("Stopping RtAudio stream:  {}", _streamName);
-        bool isPrimary = SinkManager::getSecondaryStreamIndex(_streamName).second == 0;
+        // Idempotent, including partially started sinks and changed UI settings.
+        sharedMicrophone.release(this);
+        outputBuffer.stop();
+        if (audio.isStreamOpen()) { audio.closeStream(); }
 
-        stereoPacker.stop();
-        stereoPacker.out.stopReader();
-        flog::info("Stopping RtAudio-1 stream p.1");
-        audio.stopStream();
-        flog::info("Stopped RtAudio stream p.1");
-        flog::info("Stopping RtAudio-1 stream p.2");
-        audio.closeStream();
-        flog::info("Stopped RtAudio stream p.2");
-        if (isPrimary && micInput) {
-            if (audio2Owner == this) {
-                flog::info("sigpath::sinkManager.defaultInputAudio.stop()");
-                sigpath::sinkManager.defaultInputAudio.stop();
-                flog::info("sigpath::sinkManager.defaultInputAudio.setInput(nullptr)");
-                sigpath::sinkManager.defaultInputAudio.setInput(nullptr);
-                flog::info("Stopping RtAudio-2 stream p.3");
-                microphone.stopWriter();
-                flog::info("Stopped RtAudio stream p.3");
-                audio2.closeStream();
-                microphone.clearWriteStop();
-                audio2Owner = nullptr;
-            }
-            audio2RefCount.fetch_sub(1);
-        }
-        stereoPacker.out.clearReadStop();
     }
 
-    static int microphoneCallback(void*, void* inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void* userData) {
+    static int callback(void* outputBuffer, void*, unsigned int nBufferFrames, double, RtAudioStreamStatus, void* userData) {
         AudioSink* _this = (AudioSink*)userData;
-        if (inputBuffer != nullptr) {
-            // single channel cometh,
-            //            static int counter = 0;
-            //            if (counter++ % 30 == 0) {
-            //                float* ib = (float*)inputBuffer;
-            //                printf("ok here input buffer2 %d: %f %f %f %f %f %f %f %f\n", nBufferFrames, ib[0], ib[1], ib[2], ib[3], ib[4], ib[5], ib[6], ib[7]);
-            //            }
-            auto outptr = (dsp::stereo_t*)_this->microphone.writeBuf;
-            if (!outptr) {
-                abort();
-            }
-            auto inptr = (float*)inputBuffer;
-            for (int q = 0; q < nBufferFrames; q++) {
-                outptr[q].l = inptr[q];
-                outptr[q].r = inptr[q];
-            }
-            _this->microphone.swap(nBufferFrames);
-            //            char buf[10000];
-            //            buf[0] = 0;
-            //            for(int i=0; i<30; i++) {
-            //                sprintf(buf + strlen(buf), "%1.8f ", inptr[i]);
-            //            }
-            //            flog::info("Got from microphone: {}", buf);
-        }
-        return 0;
-    }
-
-    std::vector<dsp::stereo_t> lastPlayedAudio;
-
-    static int callback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void* userData) {
-
-        if (inputBuffer != nullptr) {
-            static int counter = 0;
-            if (counter++ % 30 == 0) {
-                //                float* ib = (float*)inputBuffer;
-                //                printf("ok here input buffer: %f %f %f %f %f %f %f %f\n", ib[0], ib[1], ib[2], ib[3], ib[4], ib[5], ib[6], ib[7]);
-            }
-            microphoneCallback(outputBuffer, inputBuffer, nBufferFrames, streamTime, status, userData);
-        }
-
-        //        flog::info("audio callback: nBufferFrames={}", nBufferFrames);
-        AudioSink* _this = (AudioSink*)userData;
-        auto ctm = currentTimeMillis();
-
-        int receivedFromPacker = 0;
-        if (_this->playBuffer.size() < nBufferFrames && _this->stereoPacker.out.isDataReady()) {
-            //            flog::info("_this->stereoPacker.out.read()....");
-
-            int count = _this->stereoPacker.out.read(); // something has to be here
-                                                        //            flog::info("_this->stereoPacker.out.read() count={}", count);
-//            _this->spackerTracker.add(count);
-            if (count >= 0) {
-                receivedFromPacker += count;
-                if (count > 0) {
-                    int oldSize = _this->playBuffer.size();
-                    _this->playBuffer.resize(_this->playBuffer.size() + count);
-                    memmove(_this->playBuffer.data() + oldSize, _this->stereoPacker.out.readBuf, count * sizeof(dsp::stereo_t));
-                }
-                else {
-                }
-                _this->stereoPacker.out.flush();
-            }
-//            flog::info("_this->stereoPacker.out.flushed");
-        }
-
-        if (_this->playBuffer.size() >= nBufferFrames) {
-            _this->underflow = 0;
-
-            // For debug purposes only...
-            // if (nBufferFrames != count) { flog::warn("Buffer size mismatch, wanted {0}, was asked for {1}", count, nBufferFrames); }
-            // for (int i = 0; i < count; i++) {
-            //     if (_this->stereoPacker.out.readBuf[i].l == NAN || _this->stereoPacker.out.readBuf[i].r == NAN) { flog::error("NAN in audio data"); }
-            //     if (_this->stereoPacker.out.readBuf[i].l == INFINITY || _this->stereoPacker.out.readBuf[i].r == INFINITY) { flog::error("INFINITY in audio data"); }
-            //     if (_this->stereoPacker.out.readBuf[i].l == -INFINITY || _this->stereoPacker.out.readBuf[i].r == -INFINITY) { flog::error("-INFINITY in audio data"); }
-            // }
-
-
-            memcpy(outputBuffer, _this->playBuffer.data(), nBufferFrames * sizeof(dsp::stereo_t));
-            _this->lastPlayedAudio.resize(nBufferFrames);
-            memcpy(_this->lastPlayedAudio.data(), _this->playBuffer.data(), nBufferFrames * sizeof(dsp::stereo_t));
-//            flog::info("ctm={} PLAYS. Added from stereo: {}, current buffer size: {} audio wants: {} => plays.",(int64_t)ctm, receivedFromPacker, (int)_this->playBuffer.size(), (int)nBufferFrames);
-            _this->playBuffer.erase(_this->playBuffer.begin(), _this->playBuffer.begin() + nBufferFrames);
-
-            static float lastPhase = 0;
-            auto stereoOut = (dsp::stereo_t*)outputBuffer;
-            switch (sigpath::sinkManager.toneGenerator.load()) {
-            case 1:
-                float hz = 800;
-                int period = (int)(_this->sampleRate / hz);
-                float tick = M_PI * 2 / period;
-                for (int q = 0; q < nBufferFrames; q++) {
-                    stereoOut[q].r = stereoOut[q].l = sin(lastPhase);
-                    lastPhase += tick;
-                }
-            }
-            auto channel = _this->devId % 3; // 0=stereo 1=left 2=right
-            switch (channel) {
-            default:
-                break;
-            case 1: // left
-                for (int i = 0; i < nBufferFrames; i++) {
-                    stereoOut[i].r = 0;
-                }
-                break;
-            case 2: // right
-                for (int i = 0; i < nBufferFrames; i++) {
-                    stereoOut[i].l = 0;
-                }
-                break;
+        auto* output = static_cast<dsp::stereo_t*>(outputBuffer);
+        size_t received = _this->outputBuffer.consume(output, nBufferFrames);
+        _this->underflow.store(received < nBufferFrames, std::memory_order_relaxed);
+        if (sigpath::sinkManager.toneGenerator.load(std::memory_order_relaxed) == 1) {
+            float tick = 2 * M_PI * 800 / _this->sampleRate;
+            for (size_t i = 0; i < received; i++) {
+                output[i].l = output[i].r = sin(_this->lastPhase);
+                _this->lastPhase += tick;
+                if (_this->lastPhase >= 2 * M_PI) { _this->lastPhase -= 2 * M_PI; }
             }
         }
-        else {
-//            flog::info("ctm={} ZEROS. Added from stereo: {}, current buffer size: {} audio wants: {} => wrote zeros.",(int64_t)ctm, receivedFromPacker,(int) _this->playBuffer.size(), (int)nBufferFrames);
-//            if (nBufferFrames == _this->lastPlayedAudio.size()) {
-//                memcpy(outputBuffer, _this->lastPlayedAudio.data(), nBufferFrames * sizeof(dsp::stereo_t));
-//            }
-//            else {
-            _this->underflow = 1;
-            memset(outputBuffer, 0, nBufferFrames * sizeof(dsp::stereo_t));
-//            }
+        int channel = _this->devId % 3;
+        for (size_t i = 0; i < received; i++) {
+            if (channel == 1) { output[i].r = 0; }
+            if (channel == 2) { output[i].l = 0; }
         }
-
         return 0;
     }
 
     SinkManager::Stream* _stream;
     dsp::convert::StereoToMono s2m;
     dsp::buffer::Packer<float> monoPacker;
-    dsp::buffer::Packer<dsp::stereo_t> stereoPacker;
+    AudioOutputBuffer outputBuffer;
 
     std::string _streamName;
 
@@ -503,7 +379,6 @@ private:
     bool running = false;
 
     unsigned int defaultOutputDevId = 0;    // dev == index in our reduced list
-    unsigned int defaultInputDeviceId = -1; // device = index in the rtaudio devices
 
     std::vector<RtAudio::DeviceInfo> devList;
     std::vector<unsigned int> deviceIds;
@@ -514,14 +389,15 @@ private:
     unsigned int sampleRate = 48000;
 
     RtAudio audio;
-    static RtAudio audio2;
-    static std::atomic<int> audio2RefCount;
-    static AudioSink* audio2Owner;
+    float lastPhase = 0;
+    static bool microphoneConfigured;
+    static SharedMicrophone sharedMicrophone;
+    static std::vector<AudioSink*> instances;
 };
 
-RtAudio AudioSink::audio2;
-std::atomic<int> AudioSink::audio2RefCount{0};
-AudioSink* AudioSink::audio2Owner{nullptr};
+bool AudioSink::microphoneConfigured = false;
+SharedMicrophone AudioSink::sharedMicrophone;
+std::vector<AudioSink*> AudioSink::instances;
 
 class AudioSinkModule : public ModuleManager::Instance {
 public:

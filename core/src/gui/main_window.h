@@ -69,6 +69,15 @@ public:
     std::vector<std::function<void()>> mainThreadTasks;
     std::mutex mainThreadTasksMutex;
 
+    void processMainThreadTasks() {
+        std::vector<std::function<void()>> tasks;
+        {
+            std::lock_guard<std::mutex> lock(mainThreadTasksMutex);
+            tasks.swap(mainThreadTasks);
+        }
+        for (auto& task : tasks) { task(); }
+    }
+
     // Add a task to be executed on the main thread
     void addMainThreadTask(std::function<void()> task) {
         std::lock_guard<std::mutex> lock(mainThreadTasksMutex);

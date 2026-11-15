@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <string>
 #include <map>
 #include <json.hpp>
@@ -30,6 +31,13 @@ public:
         const int versionMinor;
         const int versionBuild;
         const int maxInstances;
+    };
+
+    // Optional getInterface("BackgroundDebugCommand") extension. Preparation
+    // runs on the UI thread; the returned job must not retain an Instance pointer.
+    struct BackgroundDebugCommand {
+        virtual ~BackgroundDebugCommand() = default;
+        virtual std::function<std::string()> prepareBackgroundDebugCommand(const std::string& cmd, const std::string& args) = 0;
     };
 
     class Instance {

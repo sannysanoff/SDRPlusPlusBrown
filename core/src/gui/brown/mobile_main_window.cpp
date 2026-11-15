@@ -1651,6 +1651,7 @@ static TransientBookmarkManager *getTransientBookmarkManager() {
 }
 
 void MobileMainWindow::draw() {
+    processMainThreadTasks();
 
     auto ctm = currentTimeNanos();
     handleAutostart();

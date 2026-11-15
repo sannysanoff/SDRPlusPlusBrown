@@ -33,7 +33,7 @@ ConfigManager config;
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
 
-class VhfVoiceRadioModule : public ModuleManager::Instance {
+class VhfVoiceRadioModule : public ModuleManager::Instance, public ModuleManager::BackgroundDebugCommand {
 public:
 
     std::string name;
@@ -189,19 +189,27 @@ public:
             }
             return debugStatusToJson(st, 0, false);
         }
-        if (cmd == "wait_dmr_sync_voice") {
-            std::string radioName = "Radio";
-            int stableMs = 2000;
-            int timeoutMs = 10000;
-            parseWaitArgs(args, radioName, stableMs, timeoutMs);
+        return "{}";
+    }
+
+    void* getInterface(const char* name) override {
+        if (std::string(name) == "BackgroundDebugCommand") { return static_cast<ModuleManager::BackgroundDebugCommand*>(this); }
+        return nullptr;
+    }
+
+    std::function<std::string()> prepareBackgroundDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd != "wait_dmr_sync_voice") { return {}; }
+        std::string radioName = "Radio";
+        int stableMs = 2000;
+        int timeoutMs = 10000;
+        parseWaitArgs(args, radioName, stableMs, timeoutMs);
+        return [radioName, stableMs, timeoutMs] {
             demod::DSD::DebugStatus st;
             int waitedMs = 0;
             bool ok = demod::DSD::waitForDMRSyncVoice(radioName, stableMs, timeoutMs, st, waitedMs);
             return debugStatusToJson(st, waitedMs, ok);
-        }
-        return "{}";
+        };
     }
-
 
 private:
     static void parseWaitArgs(const std::string& args, std::string& radioName, int& stableMs, int& timeoutMs) {

@@ -15,6 +15,8 @@
 #include <cstdarg>
 #include <core.h>
 #include <signal_path/signal_path.h>
+#include <gui/gui.h>
+#include <future>
 
 #ifdef __cplusplus
 #include "imgui.h"
@@ -385,6 +387,31 @@ namespace httpdebug {
     } // namespace procfs
 } // namespace httpdebug
 
+// Resolve module instances only on the UI thread; never retain raw instance
+// pointers in an HTTP request. Cancel requests that time out before execution.
+static std::string runOnMainThread(std::function<std::string()> action) {
+    auto result = std::make_shared<std::promise<std::string>>();
+    auto state = std::make_shared<std::atomic<int>>(0);
+    auto response = result->get_future();
+    gui::mainWindow.addMainThreadTask([action, result, state] {
+        int pending = 0;
+        if (!state->compare_exchange_strong(pending, 1)) { return; }
+        try {
+            result->set_value(action());
+        } catch (const std::exception& e) {
+            result->set_value(json({{"error", e.what()}}).dump());
+        } catch (...) {
+            result->set_value("{\"error\":\"debug command failed\"}");
+        }
+    });
+    if (response.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+        int pending = 0;
+        bool cancelled = state->compare_exchange_strong(pending, 2);
+        return json({{"error", cancelled ? "UI request timed out before execution" : "UI request still running"}}).dump();
+    }
+    return response.get();
+}
+
 // Implement createResponseForRequest here
 struct Response* createResponseForRequest(const struct Request* request, struct Connection* connection) {
     if (strcmp(request->path, "/log") != 0) {
@@ -520,14 +547,18 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 return responseAllocJSON("{\"error\": \"invalid JSON body\"}");
             }
         }
-        if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
-            return responseAllocJSONWithFormat(
-                "{\"error\": \"stream '%s' not found\"}", streamName.c_str());
-        }
-        sigpath::sinkManager.setStreamSink(streamName, sinkName);
-        return responseAllocJSONWithFormat(
-            "{\"status\": \"ok\", \"stream\": \"%s\", \"sink\": \"%s\"}",
-            streamName.c_str(), sinkName.c_str());
+        auto result = runOnMainThread([streamName, sinkName] {
+            if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
+                return json({{"error", "stream '" + streamName + "' not found"}}).dump();
+            }
+            auto providers = sigpath::sinkManager.getSinkProviderNames();
+            if (std::find(providers.begin(), providers.end(), sinkName) == providers.end()) {
+                return json({{"error", "unknown sink '" + sinkName + "'"}}).dump();
+            }
+            sigpath::sinkManager.setStreamSink(streamName, sinkName);
+            return json({{"status", "ok"}, {"stream", streamName}, {"sink", sinkName}}).dump();
+        });
+        return responseAllocJSON(result.c_str());
     }
 
     // Generic VFO control: /vfo/set_offset?name=TETRA%20Demodulator&offset=-686597
@@ -595,46 +626,33 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 }
                 instanceName = decoded;
 
-                auto& instances = core::moduleManager.instances;
-                auto it = instances.find(instanceName);
-                if (it == instances.end()) {
-                    return responseAllocJSONWithFormat(
-                        "{\"error\": \"instance '%s' not found\"}",
-                        instanceName.c_str());
-                }
-
-                if (isQueryEnabled) {
-                    bool enabled = it->second.instance->isEnabled();
-                    return responseAllocJSONWithFormat(
-                        "{\"instance\": \"%s\", \"enabled\": %s}",
-                        instanceName.c_str(), enabled ? "true" : "false");
-                }
-
-                if (isEnable) {
-                    if (it->second.instance->isEnabled()) {
-                        return responseAllocJSONWithFormat(
-                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true, \"note\": \"already enabled\"}",
-                            instanceName.c_str());
+                auto result = runOnMainThread([instanceName, isEnable, isQueryEnabled] {
+                    auto it = core::moduleManager.instances.find(instanceName);
+                    if (it == core::moduleManager.instances.end()) {
+                        return json({{"error", "instance '" + instanceName + "' not found"}}).dump();
                     }
-                    it->second.instance->enable();
-                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = true;
-                    return responseAllocJSONWithFormat(
-                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": true}",
-                        instanceName.c_str());
-                }
-
-                if (isDisable) {
-                    if (!it->second.instance->isEnabled()) {
-                        return responseAllocJSONWithFormat(
-                            "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false, \"note\": \"already disabled\"}",
-                            instanceName.c_str());
+                    auto* instance = it->second.instance;
+                    bool enabled = instance->isEnabled();
+                    if (isQueryEnabled) {
+                        return json({{"instance", instanceName}, {"enabled", enabled}}).dump();
                     }
-                    it->second.instance->disable();
-                    core::configManager.conf["moduleInstances"][instanceName]["enabled"] = false;
-                    return responseAllocJSONWithFormat(
-                        "{\"status\": \"ok\", \"instance\": \"%s\", \"enabled\": false}",
-                        instanceName.c_str());
-                }
+                    if (enabled == isEnable) {
+                        return json({{"status", "ok"}, {"instance", instanceName}, {"enabled", enabled},
+                                     {"note", enabled ? "already enabled" : "already disabled"}}).dump();
+                    }
+                    if (isEnable) { instance->enable(); }
+                    else { instance->disable(); }
+                    core::configManager.acquire();
+                    try {
+                        core::configManager.conf["moduleInstances"][instanceName]["enabled"] = isEnable;
+                    } catch (...) {
+                        core::configManager.release();
+                        throw;
+                    }
+                    core::configManager.release(true);
+                    return json({{"status", "ok"}, {"instance", instanceName}, {"enabled", isEnable}}).dump();
+                });
+                return responseAllocJSON(result.c_str());
             }
         }
     }
@@ -659,14 +677,6 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 }
             }
             instanceName = decoded;
-
-            auto& instances = core::moduleManager.instances;
-            auto it = instances.find(instanceName);
-            if (it == instances.end()) {
-                return responseAllocJSONWithFormat(
-                    "{\"error\": \"instance '%s' not found\"}",
-                    instanceName.c_str());
-            }
 
             std::string cmd = "command";
             std::string args = "";
@@ -693,7 +703,22 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
                 free(argsParam);
             }
 
-            std::string result = it->second.instance->handleDebugCommand(cmd, args);
+            auto background = std::make_shared<std::function<std::string()>>();
+            std::string result = runOnMainThread([instanceName, cmd, args, background] {
+                auto it = core::moduleManager.instances.find(instanceName);
+                if (it == core::moduleManager.instances.end()) {
+                    return json({{"error", "instance '" + instanceName + "' not found"}}).dump();
+                }
+                auto* provider = static_cast<ModuleManager::BackgroundDebugCommand*>(it->second.instance->getInterface("BackgroundDebugCommand"));
+                if (provider) { *background = provider->prepareBackgroundDebugCommand(cmd, args); }
+                if (*background) { return std::string("{}"); }
+                return it->second.instance->handleDebugCommand(cmd, args);
+            });
+            if (result == "{}" && *background) {
+                try { result = (*background)(); }
+                catch (const std::exception& e) { result = json({{"error", e.what()}}).dump(); }
+                catch (...) { result = "{\"error\":\"debug command failed\"}"; }
+            }
             return responseAllocJSON(result.c_str());
         }
     }

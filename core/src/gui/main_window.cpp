@@ -641,12 +641,7 @@ void MainWindow::draw() {
         }
     }
 
-    mainThreadTasksMutex.lock();
-    for (auto& task : mainThreadTasks) {
-        task();
-    }
-    mainThreadTasks.clear();
-    mainThreadTasksMutex.unlock();
+    processMainThreadTasks();
 
     if (ImGui::IsKeyReleased(ImGuiKey_Space)) {
         spacePressed = false;
