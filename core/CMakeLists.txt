@@ -27,6 +27,9 @@ if(BUILD_TESTS)
     # tests/omlsa_mcra is a standalone program built by its own run.sh, not a
     # harness test; it must not be linked into the core.
     list(FILTER TEST_SRC EXCLUDE REGEX "omlsa_mcra/")
+    # tests/brown_audio_sink holds standalone programs (own main(), fake RtAudio
+    # headers) built by its run.py, so they must not be linked into the core.
+    list(FILTER TEST_SRC EXCLUDE REGEX "brown_audio_sink/")
     set(SRC ${SRC} ${TEST_SRC})
 endif()
 

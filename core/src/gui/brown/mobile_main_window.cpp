@@ -1815,6 +1815,11 @@ void MobileMainWindow::draw() {
             for (int i = 0; i < gui::menu.order.size(); i++) {
                 arr[i]["name"] = gui::menu.order[i].name;
                 arr[i]["open"] = gui::menu.order[i].open;
+                if (gui::menu.order[i].colorsInit) {
+                    arr[i]["overrideColor"] = gui::menu.order[i].overrideColor;
+                    arr[i]["fontColor"] = Menu::colorToHex(gui::menu.order[i].fontColor);
+                    arr[i]["bgColor"] = Menu::colorToHex(gui::menu.order[i].bgColor);
+                }
             }
             core::configManager.conf["menuElements"] = arr;
 

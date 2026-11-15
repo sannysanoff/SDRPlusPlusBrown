@@ -84,6 +84,14 @@ void MainWindow::init() {
         Menu::MenuOption_t opt;
         opt.name = elem["name"];
         opt.open = elem["open"];
+        if (elem.contains("overrideColor") && elem["overrideColor"].is_boolean()) {
+            opt.overrideColor = elem["overrideColor"];
+        }
+        if (elem.contains("fontColor") && elem["fontColor"].is_string() && elem.contains("bgColor") && elem["bgColor"].is_string()) {
+            opt.fontColor = Menu::hexToColor(elem["fontColor"], opt.fontColor);
+            opt.bgColor = Menu::hexToColor(elem["bgColor"], opt.bgColor);
+            opt.colorsInit = true;
+        }
         gui::menu.order.push_back(opt);
     }
 
@@ -746,6 +754,11 @@ void MainWindow::draw() {
             for (int i = 0; i < gui::menu.order.size(); i++) {
                 arr[i]["name"] = gui::menu.order[i].name;
                 arr[i]["open"] = gui::menu.order[i].open;
+                if (gui::menu.order[i].colorsInit) {
+                    arr[i]["overrideColor"] = gui::menu.order[i].overrideColor;
+                    arr[i]["fontColor"] = Menu::colorToHex(gui::menu.order[i].fontColor);
+                    arr[i]["bgColor"] = Menu::colorToHex(gui::menu.order[i].bgColor);
+                }
             }
             core::configManager.conf["menuElements"] = arr;
 

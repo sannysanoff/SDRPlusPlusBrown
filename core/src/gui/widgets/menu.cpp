@@ -4,6 +4,56 @@
 #include <gui/style.h>
 #include "gui/menus/display.h"
 #include <core.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+// Preset colors offered in the menu header color popup (8 per row)
+static const ImU32 menuColorPalette[16] = {
+    IM_COL32(0xFF, 0xFF, 0xFF, 0xFF), IM_COL32(0xD9, 0xD9, 0xD9, 0xFF), IM_COL32(0xA6, 0xA6, 0xA6, 0xFF), IM_COL32(0x73, 0x73, 0x73, 0xFF),
+    IM_COL32(0x40, 0x40, 0x40, 0xFF), IM_COL32(0x1A, 0x1A, 0x1A, 0xFF), IM_COL32(0x00, 0x00, 0x00, 0xFF), IM_COL32(0x8D, 0x6E, 0x63, 0xFF),
+    IM_COL32(0xE5, 0x48, 0x4D, 0xFF), IM_COL32(0xF7, 0x6B, 0x15, 0xFF), IM_COL32(0xFF, 0xB2, 0x24, 0xFF), IM_COL32(0x46, 0xAE, 0xAE, 0xFF),
+    IM_COL32(0x46, 0xA7, 0x58, 0xFF), IM_COL32(0x00, 0x91, 0xFF, 0xFF), IM_COL32(0x6E, 0x56, 0xCF, 0xFF), IM_COL32(0xD6, 0x40, 0x9F, 0xFF)
+};
+
+// One "color swatch + label + 16 presets" row of the menu color popup
+static bool drawMenuColorRow(const char* label, const char* id, ImVec4& col) {
+    bool changed = false;
+    ImGui::PushID(id);
+    if (ImGui::ColorEdit3("##custom", (float*)&col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoOptions)) {
+        changed = true;
+    }
+    col.w = 1.0f;
+    ImGui::SameLine();
+    ImGui::TextUnformatted(label);
+
+    float swatchSize = ImGui::GetFrameHeight() * 0.8f;
+    for (int i = 0; i < 16; i++) {
+        if ((i % 8) == 0) { ImGui::NewLine(); }
+        else { ImGui::SameLine(); }
+        ImGui::PushID(i);
+        if (ImGui::ColorButton("##palette", ImGui::ColorConvertU32ToFloat4(menuColorPalette[i]), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop | ImGuiColorEditFlags_NoBorder, ImVec2(swatchSize, swatchSize))) {
+            col = ImGui::ColorConvertU32ToFloat4(menuColorPalette[i]);
+            col.w = 1.0f;
+            changed = true;
+        }
+        ImGui::PopID();
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+ImVec4 Menu::hexToColor(const std::string& str, const ImVec4& def) {
+    if (str.size() != 7 || str[0] != '#') { return def; }
+    if (!std::all_of(str.begin() + 1, str.end(), ::isxdigit)) { return def; }
+    return ImVec4(std::stoi(str.substr(1, 2), NULL, 16) / 255.0f, std::stoi(str.substr(3, 2), NULL, 16) / 255.0f, std::stoi(str.substr(5, 2), NULL, 16) / 255.0f, 1.0f);
+}
+
+std::string Menu::colorToHex(const ImVec4& col) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)roundf(col.x * 255.0f), (int)roundf(col.y * 255.0f), (int)roundf(col.z * 255.0f));
+    return std::string(buf);
+}
 
 Menu::Menu() {
 }
@@ -28,12 +78,25 @@ void Menu::removeEntry(std::string name) {
 
 bool Menu::draw(bool updateStates) {
 
-    static auto CollapsingHeader = [](const char *chname) -> bool {
+    static auto CollapsingHeader = [](const char *chname, const MenuOption_t* opt = NULL) -> bool {
         auto &style = ImGui::GetStyle();
         auto fp = style.FramePadding;
         style.FramePadding.y += displaymenu::phoneLayout ? style::baseFont->FontSize/3.0 : 0;
+        bool overrideColor = (opt != NULL && opt->overrideColor);
+        if (overrideColor) {
+            // Colors that were never set fall back to the live theme colors
+            ImVec4 font = opt->colorsInit ? opt->fontColor : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+            ImVec4 bg = opt->colorsInit ? opt->bgColor : ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            font.w = 1.0f;
+            bg.w = 1.0f;
+            ImGui::PushStyleColor(ImGuiCol_Text, font);
+            ImGui::PushStyleColor(ImGuiCol_Header, bg);
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(std::min(bg.x + 0.08f, 1.0f), std::min(bg.y + 0.08f, 1.0f), std::min(bg.z + 0.08f, 1.0f), 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(std::min(bg.x + 0.16f, 1.0f), std::min(bg.y + 0.16f, 1.0f), std::min(bg.z + 0.16f, 1.0f), 1.0f));
+        }
 //        auto rv = ImGui::CollapsingHeader(chname, ImGuiTreeNodeFlags_FramePadding);
         auto rv = ImGui::CollapsingHeader(chname);
+        if (overrideColor) { ImGui::PopStyleColor(4); }
         style.FramePadding = fp;
         return rv;
     };
@@ -67,7 +130,7 @@ bool Menu::draw(bool updateStates) {
             style::beginDisabled();
             ImRect orignalRect = window->WorkRect;
 
-            CollapsingHeader((draggedMenuName + "##sdrpp_main_menu_dragging").c_str());
+            CollapsingHeader((draggedMenuName + "##sdrpp_main_menu_dragging").c_str(), &draggedOpt);
 
             if (items[draggedOpt.name].inst != NULL) {
                 window->WorkRect = orignalRect;
@@ -97,12 +160,31 @@ bool Menu::draw(bool updateStates) {
         headerTops[displayedCount - 1] = posMin.y;
         optionIDs[displayedCount - 1] = rawId - 1;
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(posMin, posMax)) {
+        bool anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !anyPopupOpen && ImGui::IsMouseHoveringRect(posMin, posMax)) {
             menuClicked = true;
             clickedMenuName = opt.name;
+            pressMenuName = opt.name;
+            pressPos = ImGui::GetMousePos();
+            longPressArmed = false;
         }
 
-        bool menuDragged = (menuClicked && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedMenuName.empty() && clickedMenuName == opt.name);
+        // Long press on the header opens the color popup
+        if (pressMenuName == opt.name && !longPressArmed) {
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                pressMenuName = "";
+            }
+            else if (fabsf(ImGui::GetMousePos().x - pressPos.x) > (5.0f * style::uiScale) || fabsf(ImGui::GetMousePos().y - pressPos.y) > (5.0f * style::uiScale)) {
+                pressMenuName = ""; // The user is dragging the menu, not holding it
+            }
+            else if (ImGui::GetIO().MouseDownDuration[ImGuiMouseButton_Left] >= 1.0) {
+                longPressArmed = true;
+                openColorPopup(opt, ImVec2(posMin.x, posMax.y));
+            }
+        }
+
+        bool menuDragged = (menuClicked && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedMenuName.empty() && clickedMenuName == opt.name && pressMenuName != opt.name);
         if (menuDragged && !locked) {
             draggedMenuName = opt.name;
             draggedId = rawId - 1;
@@ -114,8 +196,22 @@ bool Menu::draw(bool updateStates) {
         }
 
         // Draw menu header and menu content. There is a lot of boilerplate because the checkbox has to be drawn before the menu, TODO: fix
-        if (updateStates) { ImGui::SetNextItemOpen(opt.open); }
-        if (CollapsingHeader((opt.name + "##sdrpp_main_menu").c_str())) {
+        bool suppressToggle = (suppressToggleName == opt.name);
+        if (suppressToggle) {
+            ImGui::SetNextItemOpen(opt.open, ImGuiCond_Always);
+        }
+        else if (updateStates) { ImGui::SetNextItemOpen(opt.open); }
+        std::string headerId = opt.name + "##sdrpp_main_menu";
+        bool headerOpen = CollapsingHeader(headerId.c_str(), &opt);
+        if (suppressToggle) {
+            // Releasing the long press over the header must not toggle it, restore the open state
+            window->DC.StateStorage->SetInt(window->GetID(headerId.c_str()), opt.open ? 1 : 0);
+            headerOpen = opt.open;
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            openColorPopup(opt, ImVec2(posMin.x, posMax.y));
+        }
+        if (headerOpen) {
             if (item.inst != NULL) {
                 window->WorkRect = orginalRect;
                 ImVec2 pos = ImGui::GetCursorPos();
@@ -201,6 +297,11 @@ bool Menu::draw(bool updateStates) {
         insertBefore = -1;
     }
 
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        pressMenuName = "";
+        longPressArmed = false;
+    }
+
     // TODO: Figure out why the hell this is needed
     if (insertBefore == displayedCount && !draggedMenuName.empty()) {
         if (updateStates) { ImGui::SetNextItemOpen(false); }
@@ -208,7 +309,7 @@ bool Menu::draw(bool updateStates) {
         ImVec2 posMax = ImVec2(posMin.x + menuWidth, posMin.y + ImGui::GetFrameHeight());
         style::beginDisabled();
         ImRect orignalRect = window->WorkRect;
-        CollapsingHeader((draggedMenuName + "##sdrpp_main_menu_dragging").c_str());
+        CollapsingHeader((draggedMenuName + "##sdrpp_main_menu_dragging").c_str(), &draggedOpt);
         if (items[draggedOpt.name].inst != NULL) {
             window->WorkRect = orignalRect;
             ImVec2 pos = ImGui::GetCursorPos();
@@ -234,6 +335,79 @@ bool Menu::draw(bool updateStates) {
         }
     }
 
+    if (drawColorPopup()) {
+        changed = true;
+    }
+
+    return changed;
+}
+
+void Menu::initColorsFromTheme(MenuOption_t& opt) {
+    if (opt.colorsInit) { return; }
+    opt.fontColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    opt.bgColor = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+    opt.fontColor.w = 1.0f;
+    opt.bgColor.w = 1.0f;
+    opt.colorsInit = true;
+}
+
+void Menu::openColorPopup(const MenuOption_t& opt, const ImVec2& pos) {
+    colorPopupName = opt.name;
+    colorPopupPos = pos;
+    colorPopupPosPending = true;
+    suppressToggleName = opt.name;
+    ImGui::OpenPopup(("##sdrpp_menu_color_" + opt.name).c_str());
+}
+
+bool Menu::drawColorPopup() {
+    if (colorPopupName.empty()) { return false; }
+
+    MenuOption_t* opt = NULL;
+    for (MenuOption_t& o : order) {
+        if (o.name == colorPopupName) {
+            opt = &o;
+            break;
+        }
+    }
+    if (opt == NULL) {
+        colorPopupName = "";
+        colorPopupPosPending = false;
+        suppressToggleName = "";
+        return false;
+    }
+
+    if (colorPopupPosPending) {
+        ImGui::SetNextWindowPos(colorPopupPos, ImGuiCond_Always);
+        colorPopupPosPending = false;
+    }
+
+    if (!ImGui::BeginPopup(("##sdrpp_menu_color_" + colorPopupName).c_str())) {
+        colorPopupName = "";
+        suppressToggleName = "";
+        return false;
+    }
+
+    bool changed = false;
+
+    initColorsFromTheme(*opt);
+
+    ImGui::TextUnformatted(opt->name.c_str());
+    ImGui::Separator();
+
+    if (ImGui::Checkbox("Override color", &opt->overrideColor)) {
+        changed = true;
+    }
+
+    ImGui::Spacing();
+    if (drawMenuColorRow("Font", "##font", opt->fontColor)) {
+        changed = true;
+    }
+    ImGui::Spacing();
+    if (drawMenuColorRow("Background", "##background", opt->bgColor)) {
+        changed = true;
+    }
+
+    ImGui::EndPopup();
     return changed;
 }
 
