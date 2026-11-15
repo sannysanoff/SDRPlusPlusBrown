@@ -2750,6 +2750,11 @@ TYPE ImGui::ScaleValueFromRatioT(ImGuiDataType data_type, float t, TYPE v_min, T
     return result;
 }
 
+// Slider armed for mouse-wheel adjustment. Only armed when the mouse moves onto the slider while
+// no container scroll gesture is active, so scrolling a menu never triggers sliders that slide under the cursor.
+static ImGuiID GWheelSliderId = 0;
+static int GWheelSliderLastFrame = -1;
+
 // FIXME: Move more of the code into SliderBehavior()
 template<typename TYPE, typename SIGNEDTYPE, typename FLOATTYPE>
 bool ImGui::SliderBehaviorT(const ImRect& bb, ImGuiID id, ImGuiDataType data_type, TYPE* v, const TYPE v_min, const TYPE v_max, const char* format, ImGuiSliderFlags flags, ImRect* out_grab_bb)
@@ -2784,8 +2789,21 @@ bool ImGui::SliderBehaviorT(const ImRect& bb, ImGuiID id, ImGuiDataType data_typ
 
     // Process interacting with the slider
     bool value_changed = false;
+    const bool slider_hovered = (g.HoveredId == id) && !g.HoveredIdDisabled && bb.Contains(g.IO.MousePos);
+    const bool mouse_moved = (g.IO.MouseDelta.x != 0.0f || g.IO.MouseDelta.y != 0.0f);
+    const bool wheeling = (g.IO.MouseWheel != 0.0f || g.IO.MouseWheelH != 0.0f || g.WheelingWindow != NULL);
+    if (GWheelSliderId == id && (!slider_hovered || g.FrameCount - GWheelSliderLastFrame > 1)) {
+        GWheelSliderId = 0;
+    }
+    if (slider_hovered && GWheelSliderId != id && mouse_moved && !wheeling) {
+        GWheelSliderId = id;
+    }
+    if (slider_hovered && GWheelSliderId == id) {
+        GWheelSliderLastFrame = g.FrameCount;
+        SetItemUsingMouseWheel();
+    }
     if (g.IO.MouseWheel != 0) {
-        if (bb.Contains(g.IO.MousePos)) {
+        if (slider_hovered && GWheelSliderId == id) {
             auto wheel = g.IO.MouseWheel;
             if (axis == ImGuiAxis_X) wheel = -wheel; // just coincidence
             auto stepPerPixel = fabs((double)v_max - (double)v_min) / std::max<float>(bb.GetHeight(), bb.GetWidth());
