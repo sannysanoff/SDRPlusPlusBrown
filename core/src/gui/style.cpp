@@ -36,6 +36,9 @@ namespace style {
         ImFontGlyphRangesBuilder baseBuilder;
         baseBuilder.AddRanges(fonts->GetGlyphRangesDefault());
         baseBuilder.AddRanges(fonts->GetGlyphRangesCyrillic());
+        // Latin Extended-A, needed for Central European device and file names
+        static const ImWchar latinExtA[] = { 0x0100, 0x017F, 0 };
+        baseBuilder.AddRanges(latinExtA);
         baseBuilder.BuildRanges(&baseRanges);
 
         // Create big font range
