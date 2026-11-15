@@ -561,6 +561,68 @@ struct Response* createResponseForRequest(const struct Request* request, struct 
         return responseAllocJSON(result.c_str());
     }
 
+    // Add secondary stream: POST /sink/add_secondary with body {"stream":"Radio"}
+    if (strcmp(request->path, "/sink/add_secondary") == 0) {
+        std::string streamName = "Radio";
+        if (request->body.length > 0 && request->body.contents) {
+            std::string body(request->body.contents, request->body.length);
+            try {
+                json j = json::parse(body);
+                if (j.contains("stream")) streamName = j["stream"];
+            } catch (...) {
+                return responseAllocJSON("{\"error\": \"invalid JSON body\"}");
+            }
+        }
+        auto result = runOnMainThread([streamName] {
+            if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
+                return json({{"error", "stream '" + streamName + "' not found"}}).dump();
+            }
+            if (SinkManager::isSecondaryStream(streamName)) {
+                return json({{"error", "cannot add secondary to secondary stream '" + streamName + "'"}}).dump();
+            }
+            std::vector<std::string> before = sigpath::sinkManager.getStreamNames();
+            sigpath::sinkManager.onAddSubstream.emit(streamName);
+            std::vector<std::string> after = sigpath::sinkManager.getStreamNames();
+            std::string created = "";
+            for (const auto& candidate : after) {
+                if (std::find(before.begin(), before.end(), candidate) == before.end()) {
+                    created = candidate;
+                    break;
+                }
+            }
+            if (created.empty()) {
+                return json({{"error", "failed to create secondary stream for '" + streamName + "'"}}).dump();
+            }
+            return json({{"status", "ok"}, {"stream", streamName}, {"secondary", created}}).dump();
+        });
+        return responseAllocJSON(result.c_str());
+    }
+
+    // Remove secondary stream: POST /sink/remove_secondary with body {"stream":"Radio__1"}
+    if (strcmp(request->path, "/sink/remove_secondary") == 0) {
+        std::string streamName = "";
+        if (request->body.length > 0 && request->body.contents) {
+            std::string body(request->body.contents, request->body.length);
+            try {
+                json j = json::parse(body);
+                if (j.contains("stream")) streamName = j["stream"];
+            } catch (...) {
+                return responseAllocJSON("{\"error\": \"invalid JSON body\"}");
+            }
+        }
+        auto result = runOnMainThread([streamName] {
+            if (sigpath::sinkManager.streams.find(streamName) == sigpath::sinkManager.streams.end()) {
+                return json({{"error", "stream '" + streamName + "' not found"}}).dump();
+            }
+            if (!SinkManager::isSecondaryStream(streamName)) {
+                return json({{"error", "stream '" + streamName + "' is not a secondary stream"}}).dump();
+            }
+            sigpath::sinkManager.onRemoveSubstream.emit(streamName);
+            return json({{"status", "ok"}, {"stream", streamName}}).dump();
+        });
+        return responseAllocJSON(result.c_str());
+    }
+
     // Generic VFO control: /vfo/set_offset?name=TETRA%20Demodulator&offset=-686597
     if (strncmp(request->path, "/vfo/set_offset", 15) == 0) {
         char* nameParam = strdupDecodeGETParam("name=", request, "");
