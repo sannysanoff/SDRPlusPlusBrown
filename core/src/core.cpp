@@ -847,6 +847,26 @@ int sdrpp_main(int argc, char* argv[]) {
 
     core::configManager.release(true);
 
+#if defined(__linux__) && !defined(__ANDROID__)
+    // AppImage: absolute install paths from config (e.g. /usr/share/sdrpp_brown) live under $APPDIR.
+    // Remap in memory only (not saved), since the mount point changes on each run.
+    if (const char* appDir = getenv("APPDIR")) {
+        core::configManager.acquire();
+        for (const char* key : { "resourcesDirectory", "modulesDirectory" }) {
+            std::string p = core::configManager.conf[key];
+            if (p.empty() || p[0] != '/') { continue; }
+            std::error_code aec;
+            if (std::filesystem::is_directory(p, aec) || std::filesystem::is_directory(core::getMigrationPath(p, "sdrpp", "sdrpp_brown"), aec)) { continue; }
+            std::string remapped = std::string(appDir) + p;
+            if (std::filesystem::is_directory(remapped, aec) || std::filesystem::is_directory(core::getMigrationPath(remapped, "sdrpp", "sdrpp_brown"), aec)) {
+                flog::info("AppImage: remapping {} '{}' -> '{}'", key, p, remapped);
+                core::configManager.conf[key] = remapped;
+            }
+        }
+        core::configManager.release();
+    }
+#endif
+
     if (serverMode) { return server::main(); }
 
     core::configManager.acquire();
