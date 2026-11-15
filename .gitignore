@@ -15,6 +15,7 @@ CMakeSettings.json
 poggers_decoder
 m17_decoder/libcorrect
 SDR++.app
+SDR++Brown.app
 android/deps
 android/app/assets
 android/app/bin
