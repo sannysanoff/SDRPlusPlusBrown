@@ -394,6 +394,9 @@ namespace ImGui {
 
         // Height in pixels of the band reserved above the waterfall.
         int overlayBand = 0;
+
+    private:
+        std::vector<float> vfoSignalFFTValues;
     };
 
 

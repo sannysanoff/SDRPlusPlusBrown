@@ -702,7 +702,7 @@ namespace ImGui {
     }
 
     bool WaterFall::calculateVFOSignalInfo(float* fftLine, WaterfallVFO* _vfo, float& strength, float& snr) {
-        if (fftLine == NULL || fftLines <= 0) { return false; }
+        if (fftLine == NULL || fftLines <= 0 || rawFFTSize <= 0 || wholeBandwidth <= 0.0) { return false; }
 
         // Calculate FFT index data
         double vfoMinSizeFreq = _vfo->centerOffset - _vfo->bandwidth;
@@ -715,9 +715,6 @@ namespace ImGui {
         int vfoMaxOffset = rawFFTIndex(vfoMaxFreq);
         int vfoMaxSideOffset = rawFFTIndex(vfoMaxSizeFreq);
 
-        // PRODUCTION DEFENSIVE LAYER: Ensure raw indices are sane before parsing array fields
-        // We use rawFFTIndex with the maximum possible span to find our absolute buffer limit anchor safely
-        int maxBufferCeiling = rawFFTIndex(_vfo->centerOffset + (_vfo->bandwidth * 4.0)); // fallback sizing
         if (vfoMinSideOffset < 0 || vfoMinOffset < 0 || vfoMaxOffset < 0 || vfoMaxSideOffset < 0) {
             return false;
         }
@@ -726,7 +723,7 @@ namespace ImGui {
         float max = -INFINITY;
         int avgCount = 0;
 
-        static std::vector<float> fftValues;
+        auto& fftValues = vfoSignalFFTValues;
         fftValues.clear();
 
         // Calculate Left average with safe boundary guards
@@ -775,7 +772,9 @@ namespace ImGui {
     }
 
     int WaterFall::rawFFTIndex(double frequency) const {
-        return std::clamp<int>(((frequency / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize);
+        if (rawFFTSize <= 0 || wholeBandwidth <= 0.0) { return 0; }
+        // Clamp to last valid index (rawFFTSize - 1) so inclusive loops in calculateVFOSignalInfo cannot read past the row.
+        return std::clamp<int>(((frequency / (wholeBandwidth / 2.0)) * (double)(rawFFTSize / 2)) + (rawFFTSize / 2), 0, rawFFTSize - 1);
     }
 
     /**
