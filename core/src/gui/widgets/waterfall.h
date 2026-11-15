@@ -1,5 +1,6 @@
 #pragma once
 #include <core.h>
+#include <atomic>
 #include <vector>
 #include <mutex>
 #include <gui/widgets/bandplan.h>
@@ -96,6 +97,7 @@ namespace ImGui {
         void draw();
         float* getFFTBuffer();
         void pushFFT();
+        uint64_t getFFTCount() const { return fftCount.load(std::memory_order_relaxed); }
 
         // Forces the next frame to recompute the layout (e.g. after an overlay
         // changed its reserved height).
@@ -334,6 +336,7 @@ namespace ImGui {
         float* smoothingBuf = NULL;
         int currentFFTLine = 0;
         int fftLines = 0;
+        std::atomic<uint64_t> fftCount{ 0 };
 
         uint32_t* waterfallFb;
         float* tempDataForUpdateWaterfallFb;

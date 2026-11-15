@@ -167,6 +167,12 @@ public:
         if (err) {
             flog::error("PortAudio error {0}: {1}", err, Pa_GetErrorText(err));
             devStream = nullptr;
+            packer.out.stopReader();
+            s2m.out.stopReader();
+            packer.stop();
+            s2m.stop();
+            packer.out.clearReadStop();
+            s2m.out.clearReadStop();
             return;
         }
 
@@ -178,6 +184,12 @@ public:
             flog::error("PortAudio error {0}: {1}", err, Pa_GetErrorText(err));
             Pa_CloseStream(devStream);
             devStream = nullptr;
+            packer.out.stopReader();
+            s2m.out.stopReader();
+            packer.stop();
+            s2m.stop();
+            packer.out.clearReadStop();
+            s2m.out.clearReadStop();
             return;
         }
 

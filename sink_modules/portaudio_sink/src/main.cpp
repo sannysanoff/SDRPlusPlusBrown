@@ -7,6 +7,7 @@
 #include <dsp/convert/stereo_to_mono.h>
 #include <dsp/sink/ring_buffer.h>
 #include <utils/flog.h>
+#include <config.h>
 #include <core.h>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
@@ -19,6 +20,8 @@ SDRPP_MOD_INFO{
     /* Max instances    */ 1
 };
 
+ConfigManager config;
+
 class AudioSink : SinkManager::Sink {
 public:
     struct AudioDevice_t {
@@ -26,6 +29,7 @@ public:
         int index;
         int channels;
         int srId;
+        int defaultSrId;
         std::vector<double> sampleRates;
         std::string txtSampleRates;
     };
@@ -40,6 +44,25 @@ public:
         // monoPacker.init(&s2m.out, 240);
         // stereoPacker.init(_stream->sinkOut, 240);
 
+        bool created = false;
+        std::string savedDev = "";
+        config.acquire();
+        if (!config.conf.contains(_streamName) || !config.conf[_streamName].is_object()) {
+            created = true;
+            config.conf[_streamName]["device"] = "";
+            config.conf[_streamName]["devices"] = json({});
+        }
+        if (!config.conf[_streamName].contains("device") || !config.conf[_streamName]["device"].is_string()) {
+            created = true;
+            config.conf[_streamName]["device"] = "";
+        }
+        if (!config.conf[_streamName].contains("devices") || !config.conf[_streamName]["devices"].is_object()) {
+            created = true;
+            config.conf[_streamName]["devices"] = json({});
+        }
+        savedDev = config.conf[_streamName]["device"];
+        config.release(created);
+
         // Initialize PortAudio
         devCount = Pa_GetDeviceCount();
         devId = Pa_GetDefaultOutputDevice();
@@ -51,13 +74,14 @@ public:
         // Gather hardware info
         for (int i = 0; i < devCount; i++) {
             deviceInfo = Pa_GetDeviceInfo(i);
-            if (deviceInfo->maxOutputChannels < 1) {
+            if (!deviceInfo || deviceInfo->maxOutputChannels < 1) {
                 continue;
             }
             AudioDevice_t dev;
             dev.name = deviceInfo->name;
             dev.index = i;
             dev.channels = std::min<int>(deviceInfo->maxOutputChannels, 2);
+            dev.defaultSrId = 0;
             dev.sampleRates.clear();
             dev.txtSampleRates = "";
             for (int j = 0; j < 6; j++) {
@@ -67,6 +91,9 @@ public:
                 PaError err = Pa_IsFormatSupported(NULL, &outputParams, POSSIBLE_SAMP_RATE[j]);
                 if (err != paFormatIsSupported) {
                     continue;
+                }
+                if (POSSIBLE_SAMP_RATE[j] == deviceInfo->defaultSampleRate) {
+                    dev.defaultSrId = (int)dev.sampleRates.size();
                 }
                 dev.sampleRates.push_back(POSSIBLE_SAMP_RATE[j]);
                 dev.txtSampleRates += std::to_string((int)POSSIBLE_SAMP_RATE[j]);
@@ -78,9 +105,8 @@ public:
             if (i == devId) {
                 devListId = devices.size();
                 defaultDev = devListId;
-                _stream->setSampleRate(dev.sampleRates[0]);
             }
-            dev.srId = 0;
+            dev.srId = dev.defaultSrId;
 
             AudioDevice_t* _dev = new AudioDevice_t;
             *_dev = dev;
@@ -92,20 +118,21 @@ public:
         }
 
         // Load config from file
+        selectByName(savedDev);
     }
 
     ~AudioSink() {
+        stop();
         for (auto const& dev : devices) {
             delete dev;
         }
     }
 
     void start() {
-        if (running) {
+        if (running || devices.empty()) {
             return;
         }
-        doStart();
-        running = true;
+        running = doStart();
     }
 
     void stop() {
@@ -116,17 +143,62 @@ public:
         running = false;
     }
 
+    void selectById(int id) {
+        if (id < 0 || id >= (int)devices.size()) {
+            return;
+        }
+        devListId = id;
+        AudioDevice_t* dev = devices[devListId];
+
+        bool created = false;
+        config.acquire();
+        if (!config.conf[_streamName]["devices"].contains(dev->name)) {
+            created = true;
+            config.conf[_streamName]["devices"][dev->name] = dev->sampleRates[dev->defaultSrId];
+        }
+        double savedSr = config.conf[_streamName]["devices"][dev->name];
+        config.release(created);
+
+        int matched = dev->defaultSrId;
+        for (int i = 0; i < (int)dev->sampleRates.size(); i++) {
+            if (dev->sampleRates[i] == savedSr) {
+                matched = i;
+                break;
+            }
+        }
+        dev->srId = matched;
+        _stream->setSampleRate(dev->sampleRates[dev->srId]);
+    }
+
+    void selectByName(const std::string& name) {
+        if (!name.empty()) {
+            for (int i = 0; i < (int)devices.size(); i++) {
+                if (devices[i]->name == name) {
+                    selectById(i);
+                    return;
+                }
+            }
+        }
+        selectById(defaultDev);
+    }
+
     void menuHandler() {
+        if (devices.empty()) {
+            ImGui::TextUnformatted("No audio devices");
+            return;
+        }
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_dev_" + _streamName).c_str(), &devListId, txtDevList.c_str())) {
-            // TODO: Load SR from config
+            selectById(devListId);
             if (running) {
                 doStop();
-                doStart();
+                running = doStart();
             }
-            // TODO: Save to config
+            config.acquire();
+            config.conf[_streamName]["device"] = devices[devListId]->name;
+            config.release(true);
         }
 
         AudioDevice_t* dev = devices[devListId];
@@ -136,23 +208,25 @@ public:
             _stream->setSampleRate(dev->sampleRates[dev->srId]);
             if (running) {
                 doStop();
-                doStart();
+                running = doStart();
             }
-            // TODO: Save to config
+            config.acquire();
+            config.conf[_streamName]["devices"][dev->name] = dev->sampleRates[dev->srId];
+            config.release(true);
         }
     }
 
 private:
-    void doStart() {
+    bool doStart() {
         const PaDeviceInfo* deviceInfo;
         AudioDevice_t* dev = devices[devListId];
         PaStreamParameters outputParams;
         deviceInfo = Pa_GetDeviceInfo(dev->index);
-        outputParams.channelCount = 2;
+        outputParams.channelCount = dev->channels;
         outputParams.sampleFormat = paFloat32;
         outputParams.hostApiSpecificStreamInfo = NULL;
         outputParams.device = dev->index;
-        outputParams.suggestedLatency = Pa_GetDeviceInfo(outputParams.device)->defaultLowOutputLatency;
+        outputParams.suggestedLatency = deviceInfo->defaultLowOutputLatency;
         PaError err;
 
         float sampleRate = dev->sampleRates[dev->srId];
@@ -167,6 +241,7 @@ private:
             //err = Pa_OpenStream(&stream, NULL, &outputParams, sampleRate, bufferSize, 0, _stereo_cb, this);
         }
         else {
+            s2m.start();
             monoRB.data.setMaxLatency(bufferSize * 2);
             monoRB.start();
             // stereoPacker.setSampleCount(bufferSize);
@@ -178,7 +253,8 @@ private:
         if (err != 0) {
             flog::error("Error while opening audio stream: ({0}) => {1}", err, Pa_GetErrorText(err));
             stream = NULL;
-            return;
+            doStop();
+            return false;
         }
 
         err = Pa_StartStream(stream);
@@ -186,10 +262,11 @@ private:
             flog::error("Error while starting audio stream: ({0}) => {1}", err, Pa_GetErrorText(err));
             Pa_CloseStream(stream);
             stream = NULL;
-            return;
+            doStop();
+            return false;
         }
         flog::info("Audio device open.");
-        running = true;
+        return true;
     }
 
     void doStop() {
@@ -330,8 +407,10 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
-    // Nothing here
-    // TODO: Do instancing here (in source modules as well) to prevent multiple loads
+    json def = json({});
+    config.setPath(std::string(core::getRoot()) + "/audio_sink_config.json");
+    config.load(def);
+    config.enableAutoSave();
 }
 
 MOD_EXPORT void* _CREATE_INSTANCE_(std::string name) {
@@ -339,8 +418,11 @@ MOD_EXPORT void* _CREATE_INSTANCE_(std::string name) {
     return instance;
 }
 
-MOD_EXPORT void _DELETE_INSTANCE_() {
+MOD_EXPORT void _DELETE_INSTANCE_(void* instance) {
+    delete (AudioSinkModule*)instance;
 }
 
 MOD_EXPORT void _END_() {
+    config.disableAutoSave();
+    config.save();
 }

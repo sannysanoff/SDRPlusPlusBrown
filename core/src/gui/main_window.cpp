@@ -40,6 +40,7 @@
 #include "brown/imgui-notify/imgui_notify.h"
 #include "utils/proto/brown_ai.h"
 #include "../../decoder_modules/radio/src/radio_interface.h"
+#include <http_debug_server.h>
 
 static BrownAIClient brownAIClient;
 
@@ -103,6 +104,10 @@ void MainWindow::init() {
     gui::menu.registerEntry("Theme", thememenu::draw, NULL);
     gui::menu.registerEntry("VFO Color", vfo_color_menu::draw, NULL);
     gui::menu.registerEntry("Module Manager", module_manager_menu::draw, NULL);
+
+    httpdebug::procfs::registerEndpoint("/waterfall/fft_count", []() {
+        return std::to_string(gui::waterfall.getFFTCount());
+    });
 
     gui::freqSelect.init();
 

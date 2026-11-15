@@ -8,10 +8,12 @@ void CommandArgsParser::defineAll() {
     define('c', "con", "Show console on Windows");
 #elif defined(IS_MACOS_BUNDLE)
     std::string root = (std::string)getenv("HOME") + "/Library/Application Support/sdrpp-brown";
+    define('c', "con", "No-op on non-Windows platforms");
 #elif defined(__ANDROID__)
     std::string root = "/storage/self/primary/sdrpp-brown";
 #else
     std::string root = (std::string)getenv("HOME") + "/.config/sdrpp-brown";
+    define('c', "con", "No-op on non-Windows platforms");
 #endif
 
     std::string tempPath = "/tmp";

@@ -130,6 +130,7 @@ namespace backend {
 
 #endif
 
+#ifndef __APPLE__
         // Load app icon
         if (!std::filesystem::is_regular_file(resDir + "/icons/sdrpp.png")) {
             flog::error("Icon file '{0}' doesn't exist!", resDir + "/icons/sdrpp.png");
@@ -170,6 +171,7 @@ namespace backend {
         for (int i = 1; i < 10; i++) {
             free(icons[i].pixels);
         }
+#endif
 
         // Add callback for max/min if GLFW supports it
 #if (GLFW_VERSION_MAJOR == 3) && (GLFW_VERSION_MINOR >= 3)

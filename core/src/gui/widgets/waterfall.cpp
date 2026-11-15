@@ -1260,6 +1260,7 @@ namespace ImGui {
     void WaterFall::pushFFT() {
         if (rawFFTs == NULL) { return; }
         MEASURE_LOCK_GUARD(latestFFTMtx);
+        fftCount.fetch_add(1, std::memory_order_relaxed);
 
         double offsetRatio = viewOffset / (wholeBandwidth / 2.0);
         int drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
