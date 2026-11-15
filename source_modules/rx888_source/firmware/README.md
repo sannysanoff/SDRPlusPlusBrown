@@ -11,10 +11,17 @@ tools and HDSDR load.
 
 ## Where the code and the image come from
 
-- **SDR++ module** (`source_modules/rx888_source`): a port of the native RX888 driver of the OnAir
-  receiver, <https://github.com/adswill/OnAir> (MIT). The USB protocol, the firmware upload and the
-  gain mapping are OnAir's work: `core/src/source/source_rx888.cpp` and `core/src/source/rx888_usb.h`.
-  The DSP (tuning and decimation) is SDR++'s own.
+- **SDR++ module** (`source_modules/rx888_source`): the source code is based on the original OnAir
+  receiver source, <https://github.com/adswill/OnAir> (GPL-3.0-or-later). The USB protocol, the
+  firmware upload and the gain mapping are OnAir's work: `core/src/source/source_rx888.cpp` and
+  `core/src/source/rx888_usb.h`. The DSP (tuning and decimation) is SDR++'s own.
+
+  OnAir is Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors, and asks for two lines
+  to travel with the code (GPL section 7(b), see OnAir's `ADDITIONAL-TERMS.md`):
+
+  > Based on OnAir by Kristijonas Adomaitis - https://on-air.dev
+  > OnAir contributors: https://github.com/adswill/OnAir/blob/main/CONTRIBUTORS.md
+
 - **Protocol and firmware**: the SDDC project — Oscar Steila ik1xpv's
   [ExtIO_sddc](https://github.com/ik1xpv/ExtIO_sddc) / libsddc, and
   [renardspark/SDDC_Driver](https://github.com/renardspark/SDDC_Driver) (MIT).

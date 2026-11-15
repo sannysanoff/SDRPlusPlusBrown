@@ -1,6 +1,21 @@
+// Source code based on the original OnAir receiver source:
+// https://github.com/adswill/OnAir
+//
+// Based on OnAir by Kristijonas Adomaitis - https://on-air.dev
+// OnAir contributors: https://github.com/adswill/OnAir/blob/main/CONTRIBUTORS.md
+//
+// SPDX-FileCopyrightText: Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors
+// SPDX-FileCopyrightText: Copyright (c) 2017-2020 Oscar Steila ik1xpv <ik1xpv@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// This file is part of SDR++. SDR++ is free software under the GNU General Public
+// License version 3; the repository LICENSE file holds the full text.
+//
+// The MIT notice that covers the SDDC-derived USB protocol is stated in rx888_usb.h.
+//
 // libusb side of the RX888 MkII driver, the firmware image and the gain tables.
 //
-// Ported from the OnAir receiver (https://github.com/adswill/OnAir, MIT): the libusb, firmware and gain
+// Ported from the OnAir receiver (https://github.com/adswill/OnAir, GPL-3.0-or-later): the libusb, firmware and gain
 // sections of core/src/source/source_rx888.cpp plus core/src/source/rx888_usb.h. The only changes are the
 // namespace, the logging (OnAir writes to stderr, this uses flog) and the folder list of the firmware,
 // which the module passes in.

@@ -1,7 +1,19 @@
+// Source code based on the original OnAir receiver source:
+// https://github.com/adswill/OnAir
+//
+// Based on OnAir by Kristijonas Adomaitis - https://on-air.dev
+// OnAir contributors: https://github.com/adswill/OnAir/blob/main/CONTRIBUTORS.md
+//
+// SPDX-FileCopyrightText: Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// This file is part of SDR++. SDR++ is free software under the GNU General Public
+// License version 3; the repository LICENSE file holds the full text.
+//
 // Real samples at fsHz -> complex baseband: a decimating FIR with complex taps. Shared by the native radios
 // that sample a real signal directly (the Fobos SDR's HF inputs, the RX888's ADC).
 //
-// Ported from the OnAir receiver (https://github.com/adswill/OnAir, MIT):
+// Ported from the OnAir receiver (https://github.com/adswill/OnAir, GPL-3.0-or-later):
 // core/src/source/native_realddc.h, with the portable `desamp` kernel of core/src/dsp/dsp_compat.cpp and
 // besselI0 of core/include/dect2/common/window.h. The only changes are the namespace and the removal of
 // OnAir's C++/Accelerate split.

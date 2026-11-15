@@ -1,14 +1,27 @@
+// Source code based on the original OnAir receiver source:
+// https://github.com/adswill/OnAir
+//
+// Based on OnAir by Kristijonas Adomaitis - https://on-air.dev
+// OnAir contributors: https://github.com/adswill/OnAir/blob/main/CONTRIBUTORS.md
+//
+// SPDX-FileCopyrightText: Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// This file is part of SDR++. SDR++ is free software under the GNU General Public
+// License version 3; the repository LICENSE file holds the full text.
+//
 // RX888 MkII source module for SDR++.
 //
 // Native driver for the RX888 MkII (a Cypress FX3 USB 3 board: an LTC2208-class 16-bit converter that samples the HF input directly, up to
 // 130 Msps, and an R828D tuner behind the VHF input). No vendor library is used: the radio is driven over USB (libusb) with the protocol of the
 // SDDC firmware, written from the MIT-licensed renardspark/SDDC_Driver (Interface.h, Core/usb/*, Core/radio/RX888R2Radio.cpp), which is ik1xpv's
-// ExtIO_sddc / libsddc. See rx888_usb.h for the requests.
+// ExtIO_sddc / libsddc. See rx888_usb.h for the requests and the MIT notice that covers them.
 //
-// Ported from the OnAir receiver (https://github.com/adswill/OnAir, MIT), core/src/source/source_rx888.cpp: the driver logic, the ADC clock and
+// Ported from the OnAir receiver (https://github.com/adswill/OnAir, GPL-3.0-or-later), core/src/source/source_rx888.cpp: the driver logic, the ADC clock and
 // decimation plan, the HF/VHF switching order, the gain mapping and the Windows failure messages are OnAir's. What SDR++ supplies is the module
 // wrapper, the menu and the sample stream (dsp::stream<dsp::complex_t>, the same convention as the other source modules).
-//
+// The MIT notice that covers the SDDC-derived USB protocol is stated in rx888_usb.h.
+////
 // - The FX3 has no firmware of its own: it enumerates as 04b4:00f3 until the image of the SDDC project (SDDC_FX3.img) is written into its
 //   RAM, then as 04b4:00f1 "RX888mk2". The image is installed next to the module (share/sdrpp/firmware, and Resources on macOS);
 //   SDRPP_RX888_FIRMWARE points at a file instead. Loading the image makes the chip drop off the bus and come back at a new address. On

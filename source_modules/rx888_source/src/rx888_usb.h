@@ -1,6 +1,34 @@
+// Source code based on the original OnAir receiver source:
+// https://github.com/adswill/OnAir
+//
+// Based on OnAir by Kristijonas Adomaitis - https://on-air.dev
+// OnAir contributors: https://github.com/adswill/OnAir/blob/main/CONTRIBUTORS.md
+//
+// SPDX-FileCopyrightText: Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors
+// SPDX-FileCopyrightText: Copyright (c) 2017-2020 Oscar Steila ik1xpv <ik1xpv@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// This file is part of SDR++. SDR++ is free software under the GNU General Public
+// License version 3; the repository LICENSE file holds the full text.
+//
+// MIT notice, for the part derived from the SDDC project (renardspark/SDDC_Driver,
+// Interface.h, Core/usb, Core/radio/RX888R2Radio.cpp). The full text is in
+// firmware/LICENSE-SDDC_Driver.txt, installed next to this module:
+//
+//   The MIT License (MIT)
+//   Copyright (c) 2017-2020 Oscar Steila ik1xpv<at>gmail.com
+//   Permission is hereby granted, free of charge, to any person obtaining a copy of
+//   this software and associated documentation files (the "Software"), to deal in
+//   the Software without restriction, including without limitation the rights to use,
+//   copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+//   Software, and to permit persons to whom the Software is furnished to do so,
+//   subject to the following conditions: the above copyright notice and this
+//   permission notice shall be included in all copies or substantial portions of the
+//   Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+//
 // The USB side of the RX888 MkII driver (main.cpp), behind two small interfaces: rx888Usb() is libusb.
 //
-// Ported from the OnAir receiver (https://github.com/adswill/OnAir, MIT), core/src/source/rx888_usb.h,
+// Ported from the OnAir receiver (https://github.com/adswill/OnAir, GPL-3.0-or-later), core/src/source/rx888_usb.h,
 // and the USB error texts of its core/src/source/native_common.h. The radio is a Cypress FX3 with the
 // SDDC firmware (ik1xpv's ExtIO_sddc, libsddc; the protocol below is that of the MIT-licensed
 // renardspark/SDDC_Driver, Core/usb and Core/radio/RX888R2Radio.cpp, Interface.h). The FX3 enumerates as
