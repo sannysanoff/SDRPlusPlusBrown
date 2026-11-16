@@ -8,6 +8,7 @@ namespace sdrpp_credits {
         "Benjamin Kyd",
         "Benjamin Vernoux",
         "Cropinghigh",
+        "Davide Belloli (dbdexter-dev)",
         "Fred F4EED",
         "Howard0su",
         "John Donkersley",

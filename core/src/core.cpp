@@ -699,6 +699,10 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = false;
     defConfig["moduleInstances"]["CW Decoder"]["module"] = "tinycw_decoder";
     defConfig["moduleInstances"]["CW Decoder"]["enabled"] = false;
+#ifdef __ANDROID__
+    defConfig["moduleInstances"]["Radiosonde Decoder"]["module"] = "radiosonde_decoder";
+    defConfig["moduleInstances"]["Radiosonde Decoder"]["enabled"] = false;
+#endif
     // defConfig["moduleInstances"]["Rigctl Client"] = "rigctl_client";
     // TODO: Enable rigctl_client when ready
     // defConfig["moduleInstances"]["Scanner"] = "scanner";
@@ -816,6 +820,7 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.conf["modules"][modCount++] = "ch_extravhf_decoder.so";
     core::configManager.conf["modules"][modCount++] = "ch_tetra_demodulator.so";
     core::configManager.conf["modules"][modCount++] = "tinycw_decoder.so";
+    core::configManager.conf["modules"][modCount++] = "radiosonde_decoder.so";
     core::configManager.conf["modules"][modCount++] = "reports_monitor.so";
 #endif
 
@@ -831,6 +836,11 @@ int sdrpp_main(int argc, char* argv[]) {
     if (!core::configManager.conf["moduleInstances"].contains("CW Decoder")) {
         core::configManager.conf["moduleInstances"]["CW Decoder"] = defConfig["moduleInstances"]["CW Decoder"];
     }
+#ifdef __ANDROID__
+    if (!core::configManager.conf["moduleInstances"].contains("Radiosonde Decoder")) {
+        core::configManager.conf["moduleInstances"]["Radiosonde Decoder"] = defConfig["moduleInstances"]["Radiosonde Decoder"];
+    }
+#endif
 
     // Update to new module representation in config if needed
     for (auto [_name, inst] : core::configManager.conf["moduleInstances"].items()) {

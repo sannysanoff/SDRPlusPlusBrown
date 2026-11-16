@@ -29,6 +29,7 @@ Thanks and due respect to:
 * Cropinghigh / Indir for his [work](github.com/cropinghigh/sdrpp-vhfvoiceradio) on extra VHF modes.
 * monolifed for his [pbkdf2 header-only implementation](https://github.com/monolifed/pbkdf2-hmac-sha256)  
 * Kristijonas Adomaitis and OnAir contributors, for the rx888 and future OnAir parts that may end up here
+* Davide Belloli ([dbdexter-dev](https://github.com/dbdexter-dev)) for his [sdrpp_radiosonde](https://github.com/dbdexter-dev/sdrpp_radiosonde) module and [sondedump](https://github.com/dbdexter-dev/sondedump) library
 * ruse39 for his contributions on code quality
 
 ## Feedback
