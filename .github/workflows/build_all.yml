@@ -548,17 +548,45 @@ jobs:
 
         - name: Recover Deb Archive
           working-directory: ${{runner.workspace}}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_debian_resolute_amd64.deb
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_resolute_amd64.deb
 
         - name: Save Deb Archive
           uses: actions/upload-artifact@v4
           with:
-              name: sdrpp_debian_resolute_amd64
-              path: ${{runner.workspace}}/sdrpp_debian_resolute_amd64.deb
+              name: sdrpp_ubuntu_resolute_amd64
+              path: ${{runner.workspace}}/sdrpp_ubuntu_resolute_amd64.deb
 
         - name: Update Nightly
           if: github.ref == 'refs/heads/master'
-          run: gh release upload rolling ${{runner.workspace}}/sdrpp_debian_resolute_amd64.deb -R ${{github.repository}} --clobber
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_resolute_amd64.deb -R ${{github.repository}} --clobber
+
+
+    build_ubuntu_resolute_aarch64:
+        if: ${{ !contains(github.ref_name, 'windows') && !contains(github.ref_name, 'macos') }}
+        runs-on: ubuntu-24.04-arm
+
+        steps:
+        - uses: actions/checkout@v4
+
+        - name: Create Docker Image
+          run: cd $GITHUB_WORKSPACE/docker_builds/ubuntu_resolute && docker build . --tag sdrpp_build
+
+        - name: Run Container
+          run: docker run --name build -v $GITHUB_WORKSPACE:/root/SDRPlusPlus --env BUILD_NO="-$GITHUB_RUN_NUMBER" sdrpp_build /root/do_build.sh
+
+        - name: Recover Deb Archive
+          working-directory: ${{runner.workspace}}
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_amd64.deb ./sdrpp_ubuntu_resolute_aarch64.deb
+
+        - name: Save Deb Archive
+          uses: actions/upload-artifact@v4
+          with:
+              name: sdrpp_ubuntu_resolute_aarch64
+              path: ${{runner.workspace}}/sdrpp_ubuntu_resolute_aarch64.deb
+
+        - name: Update Nightly
+          if: github.ref == 'refs/heads/master'
+          run: gh release upload rolling ${{runner.workspace}}/sdrpp_ubuntu_resolute_aarch64.deb -R ${{github.repository}} --clobber
 
 
     build_debian_bookworm:
