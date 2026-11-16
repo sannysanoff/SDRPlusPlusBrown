@@ -399,13 +399,25 @@ private:
         int blockSize = std::min((int)(sampleRate / 200.0f), (int)STREAM_BUFFER_SIZE);
         int16_t* inBuf = new int16_t[blockSize * 2];
 
+        // 8-bit recordings (rtl_sdr and SDR# dumps) hold unsigned samples; widen
+        // them into the int16 block the stream path expects.
+        const bool eightBit = (_this->reader->getBitDepth() == 8);
+        uint8_t* inBuf8 = eightBit ? new uint8_t[blockSize * 2] : NULL;
+        if (eightBit) { flog::info("FileSourceModule '{0}': 8-bit samples, widening to 16-bit", _this->name); }
+
         long long samplesRead = 0;
         sigpath::iqFrontEnd.setCurrentStreamTime(_this->streamStartTime);
         auto serverMode = core::args["server"].b();
 
         auto ctm = currentTimeMillis();
         while (true) {
-            _this->reader->readSamples(inBuf, blockSize * 2 * sizeof(int16_t));
+            if (eightBit) {
+                _this->reader->readSamples(inBuf8, blockSize * 2);
+                for (int i = 0; i < blockSize * 2; i++) { inBuf[i] = int16_t((int(inBuf8[i]) - 128) * 256); }
+            }
+            else {
+                _this->reader->readSamples(inBuf, blockSize * 2 * sizeof(int16_t));
+            }
             volk_16i_s32f_convert_32f((float*)_this->stream.writeBuf, inBuf, 32768.0f, blockSize * 2);
             if (!_this->stream.swap(blockSize)) { break; };
 
@@ -426,6 +438,7 @@ private:
         }
 
         delete[] inBuf;
+        if (inBuf8 != NULL) { delete[] inBuf8; }
     }
 
     static void floatWorker(void* ctx) {

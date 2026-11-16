@@ -49,6 +49,12 @@ namespace demod {
         virtual bool getNBAllowed() = 0;
         virtual void setFrozen(bool frozen) {};
         virtual dsp::stream<dsp::stereo_t>* getOutput() = 0;
+        // Commands the radio does not recognise are offered to the selected
+        // demodulator, which answers with JSON or an empty string. Lets a mode
+        // that carries its own state (DAB) be driven from the debug API.
+        virtual std::string handleDebugCommand(const std::string& cmd, const std::string& args) { return ""; }
+        // Room this mode wants beside the waterfall for its own panels.
+        virtual float getExtraMenuWidth() { return 0.0f; }
     };
 }
 

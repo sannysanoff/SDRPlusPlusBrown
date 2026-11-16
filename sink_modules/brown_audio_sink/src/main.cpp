@@ -31,6 +31,22 @@ ConfigManager config;
 
 static bool rtaudioCallbackError;
 
+// Length of one output period, i.e. how much audio the device keeps ahead of the
+// speaker. The device period applies to every application sharing this output,
+// not just to SDR++, so it also sets how much slack the audio system has when
+// the machine stalls for a moment (disk, Wi-Fi, GPU, scheduler). A short period
+// with RTAUDIO_MINIMIZE_LATENCY - which makes RtAudio ask the device for its
+// smallest buffer - leaves almost no slack, and those stalls then become audible
+// clicks in whatever is playing. 20 ms is inaudible for listening.
+static constexpr unsigned int DEVICE_BUFFER_MS = 20;
+
+// The ring between the DSP chain and the device has to cover how bursty the
+// producer is, not the device period: a DAB+ service emits a 120 ms superframe's
+// worth of audio at once and then nothing until the next one, so a ring of a few
+// device periods starves in between and the sink underflows. This is latency the
+// listener pays once, at the start.
+static constexpr unsigned int JITTER_BUFFER_MS = 300;
+
 #if !defined(RTAUDIO_VERSION_MAJOR) || RTAUDIO_VERSION_MAJOR < 6
 
 static void rtaudioCallback(RtAudioError::Type type, const std::string& errorText) {
@@ -50,6 +66,18 @@ public:
     StreamTracker spackerTracker;
 
     std::atomic<int> underflow{0}; // 1 = small underflow, 2 = full underflow
+    // Callbacks that found less audio than the device asked for, for diagnosis.
+    static std::atomic<uint64_t> underflowCallbacks;
+    // Diagnosis only: written by the audio and DSP threads, read by the status
+    // command. Rates are computed by the caller from two samples.
+    static uint64_t callbackCount;
+    static uint64_t consumedFrames;
+    static uint64_t writtenFrames;
+    static uint64_t zeroFilledFrames;
+    static uint64_t writeBlocks;
+    static unsigned minCallbackFrames;
+    static unsigned maxCallbackFrames;
+    static unsigned maxWriteFrames;
 
     bool micInput = true;
 
@@ -269,8 +297,6 @@ public:
         }
     }
 
-    const int microFrames = 4;
-
 #if RTAUDIO_VERSION_MAJOR >= 6
     static void errorCallback(RtAudioErrorType type, const std::string& errorText) {
         switch (type) {
@@ -300,24 +326,24 @@ private:
         RtAudio::StreamParameters outputParameters;
         outputParameters.deviceId = deviceIds[devId];
         outputParameters.nChannels = 2;
-        unsigned int bufferFrames = sampleRate / 60;
+        unsigned int bufferFrames = (sampleRate * DEVICE_BUFFER_MS) / 1000;
 
         RtAudio::StreamOptions opts;
-        opts.flags = RTAUDIO_MINIMIZE_LATENCY;
         opts.streamName = _streamName;
         std::replace(opts.streamName.begin(), opts.streamName.end(), '#', '_');
 
         try {
-            unsigned int microBuffer = bufferFrames / microFrames;
+            unsigned int periodFrames = bufferFrames;
             // Capture always belongs to the shared service, including duplex devices.
 #if RTAUDIO_VERSION_MAJOR >= 6
-            if (audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts) != RTAUDIO_NO_ERROR) {
+            if (audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &periodFrames, &callback, this, &opts) != RTAUDIO_NO_ERROR) {
                 throw std::runtime_error("Could not open output stream");
             }
 #else
             audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
 #endif
-            outputBuffer.prepare((std::max)(bufferFrames, microBuffer * 2));
+            this->periodFrames = periodFrames;
+            outputBuffer.prepare((std::max)(size_t(bufferFrames), size_t(sampleRate) * JITTER_BUFFER_MS / 1000));
             outputBuffer.start();
 #if RTAUDIO_VERSION_MAJOR >= 6
             if (audio.startStream() != RTAUDIO_NO_ERROR) {
@@ -349,7 +375,13 @@ private:
         AudioSink* _this = (AudioSink*)userData;
         auto* output = static_cast<dsp::stereo_t*>(outputBuffer);
         size_t received = _this->outputBuffer.consume(output, nBufferFrames);
+        callbackCount++;
+        consumedFrames += received;
+        zeroFilledFrames += nBufferFrames - received;
+        if (nBufferFrames < minCallbackFrames) { minCallbackFrames = nBufferFrames; }
+        if (nBufferFrames > maxCallbackFrames) { maxCallbackFrames = nBufferFrames; }
         _this->underflow.store(received < nBufferFrames, std::memory_order_relaxed);
+        if (received < nBufferFrames) { underflowCallbacks.fetch_add(1, std::memory_order_relaxed); }
         if (sigpath::sinkManager.toneGenerator.load(std::memory_order_relaxed) == 1) {
             float tick = 2 * M_PI * 800 / _this->sampleRate;
             for (size_t i = 0; i < received; i++) {
@@ -380,6 +412,8 @@ private:
 
     unsigned int defaultOutputDevId = 0;    // dev == index in our reduced list
 
+    friend class AudioSinkModule;
+
     std::vector<RtAudio::DeviceInfo> devList;
     std::vector<unsigned int> deviceIds;
     std::string txtDevList;
@@ -387,6 +421,7 @@ private:
     std::vector<unsigned int> sampleRates;
     std::string sampleRatesTxt;
     unsigned int sampleRate = 48000;
+    unsigned int periodFrames = 0;   // what RtAudio actually negotiated
 
     RtAudio audio;
     float lastPhase = 0;
@@ -395,6 +430,15 @@ private:
     static std::vector<AudioSink*> instances;
 };
 
+std::atomic<uint64_t> AudioSink::underflowCallbacks{0};
+uint64_t AudioSink::callbackCount = 0;
+uint64_t AudioSink::consumedFrames = 0;
+uint64_t AudioSink::writtenFrames = 0;
+uint64_t AudioSink::zeroFilledFrames = 0;
+uint64_t AudioSink::writeBlocks = 0;
+unsigned AudioSink::minCallbackFrames = (unsigned)-1;
+unsigned AudioSink::maxCallbackFrames = 0;
+unsigned AudioSink::maxWriteFrames = 0;
 bool AudioSink::microphoneConfigured = false;
 SharedMicrophone AudioSink::sharedMicrophone;
 std::vector<AudioSink*> AudioSink::instances;
@@ -426,6 +470,66 @@ public:
 
     bool isEnabled() {
         return enabled;
+    }
+
+    // Diagnostic readout for the e2e tests and the debug HTTP API: the sink's own
+    // counters, not the demodulator's view of them.
+    std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
+        if (cmd == "sink_capture") {
+            unsigned seconds = 5;
+            try { if (!args.empty()) { seconds = std::max(1u, std::min(60u, (unsigned)std::stoi(args))); } } catch (...) {}
+            for (auto* sink : AudioSink::instances) { sink->outputBuffer.startCapture(size_t(sink->sampleRate) * seconds); }
+            return "{\"status\":\"ok\",\"seconds\":" + std::to_string(seconds) + "}";
+        }
+        if (cmd == "sink_capture_save") {
+            FILE* f = fopen(args.c_str(), "wb");
+            if (!f) { return "{\"error\":\"cannot open output\"}"; }
+            std::vector<dsp::stereo_t> pcm;
+            for (auto* sink : AudioSink::instances) { pcm = sink->outputBuffer.capture; }
+            const uint32_t frames = uint32_t(pcm.size());
+            const uint16_t channels = 2, bits = 16;
+            const uint32_t rate = AudioSink::instances.empty() ? 48000 : AudioSink::instances.front()->sampleRate;
+            const uint32_t dataBytes = frames * channels * (bits / 8);
+            auto put32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
+            auto put16 = [&](uint16_t v) { fwrite(&v, 2, 1, f); };
+            fwrite("RIFF", 1, 4, f); put32(36 + dataBytes); fwrite("WAVE", 1, 4, f);
+            fwrite("fmt ", 1, 4, f); put32(16); put16(1); put16(channels); put32(rate);
+            put32(rate * channels * (bits / 8)); put16(channels * (bits / 8)); put16(bits);
+            fwrite("data", 1, 4, f); put32(dataBytes);
+            for (auto& s : pcm) {
+                const int16_t l = int16_t(std::max(-1.0f, std::min(1.0f, s.l)) * 32767.0f);
+                const int16_t r = int16_t(std::max(-1.0f, std::min(1.0f, s.r)) * 32767.0f);
+                fwrite(&l, 2, 1, f); fwrite(&r, 2, 1, f);
+            }
+            fclose(f);
+            return "{\"status\":\"ok\",\"frames\":" + std::to_string(frames) + ",\"rate\":" + std::to_string(rate) + "}";
+        }
+        if (cmd != "sink_status") { return ""; }
+        std::string out = "{\"sinks\":[";
+        bool first = true;
+        for (auto* sink : AudioSink::instances) {
+            if (!first) { out += ","; }
+            first = false;
+            out += "{\"stream\":\"" + sink->_streamName + "\"";
+            out += ",\"running\":" + std::string(sink->running ? "true" : "false");
+            out += ",\"device_period_ms\":" + std::to_string(DEVICE_BUFFER_MS);
+            out += ",\"period_frames\":" + std::to_string(sink->periodFrames);
+            out += ",\"ring_frames\":" + std::to_string(sink->outputBuffer.available());
+            out += ",\"ring_capacity\":" + std::to_string(sink->outputBuffer.capacity());
+            out += ",\"jitter_ms\":" + std::to_string(JITTER_BUFFER_MS);
+            out += ",\"audio_rate\":" + std::to_string(sink->sampleRate) + "}";
+        }
+        out += "],\"underflow_callbacks\":" + std::to_string(AudioSink::underflowCallbacks.load());
+        out += ",\"callbacks\":" + std::to_string(AudioSink::callbackCount);
+        out += ",\"consumed_frames\":" + std::to_string(AudioSink::consumedFrames);
+        out += ",\"written_frames\":" + std::to_string(AudioSink::writtenFrames);
+        out += ",\"zero_filled_frames\":" + std::to_string(AudioSink::zeroFilledFrames);
+        out += ",\"write_blocks\":" + std::to_string(AudioSink::writeBlocks);
+        out += ",\"callback_frames_min\":" + std::to_string(AudioSink::minCallbackFrames);
+        out += ",\"callback_frames_max\":" + std::to_string(AudioSink::maxCallbackFrames);
+        out += ",\"write_block_max\":" + std::to_string(AudioSink::maxWriteFrames);
+        out += "}";
+        return out;
     }
 
 private:

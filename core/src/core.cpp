@@ -697,6 +697,10 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["VHF Digital Modes"]["enabled"] = true;
     defConfig["moduleInstances"]["TETRA Demodulator"]["module"] = "ch_tetra_demodulator";
     defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = false;
+    // DAB/DAB+ is a mode of the radio module, not a receiver of its own: this
+    // instance only injects the mode, so leaving it enabled costs nothing.
+    defConfig["moduleInstances"]["DAB/DAB+ Modes"]["module"] = "dabplus_decoder";
+    defConfig["moduleInstances"]["DAB/DAB+ Modes"]["enabled"] = true;
     defConfig["moduleInstances"]["CW Decoder"]["module"] = "tinycw_decoder";
     defConfig["moduleInstances"]["CW Decoder"]["enabled"] = false;
 #ifdef __ANDROID__

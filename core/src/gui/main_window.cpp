@@ -744,11 +744,25 @@ void MainWindow::draw() {
     // Process menu keybinds
     displaymenu::checkKeybinds();
 
+    // A module may ask for extra room in the module column (the DAB receiver
+    // shows its station list and constellation there). The extra width is taken
+    // from the waterfall side of the split.
+    float extraMenuWidth = 0.0f;
+    for (auto& entry : core::moduleManager.instances) {
+        ModuleManager::Instance* instance = entry.second.instance;
+        if (!instance) { continue; }
+        extraMenuWidth = std::max<float>(extraMenuWidth, instance->getExtraMenuWidth() * style::uiScale);
+    }
+    if (extraMenuWidth > 0.0f) {
+        extraMenuWidth = std::min<float>(extraMenuWidth, std::max<float>(winSize.x * 0.5f - menuWidth, 0.0f));
+    }
+    const float menuColumnWidth = menuWidth + extraMenuWidth;
+
     // Left Column
     if (showMenu) {
         ImGui::Columns(3, "WindowColumns", false);
-        ImGui::SetColumnWidth(0, menuWidth);
-        ImGui::SetColumnWidth(1, std::max<int>(winSize.x - menuWidth - (60.0f * style::uiScale), 100.0f * style::uiScale));
+        ImGui::SetColumnWidth(0, menuColumnWidth);
+        ImGui::SetColumnWidth(1, std::max<int>(winSize.x - menuColumnWidth - (60.0f * style::uiScale), 100.0f * style::uiScale));
         ImGui::SetColumnWidth(2, 60.0f * style::uiScale);
 
         ImGui::SetNextWindowScroll(ImVec2(0.0f, -1.0f));

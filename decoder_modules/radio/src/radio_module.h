@@ -197,6 +197,10 @@ public:
     }
 
     // Automation channel — invoked by debug HTTP server
+    float getExtraMenuWidth() override {
+        return selectedDemod ? selectedDemod->getExtraMenuWidth() : 0.0f;
+    }
+
     std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
         if (cmd == "set_demod" || cmd == "set_demodulator") {
             // Try matching by name first (accept "FM", "NFM", "WFM", "AM", etc.)
@@ -224,12 +228,15 @@ public:
             }
         }
         if (cmd == "get_demod") {
+            // The extra width is what the selected mode asks the module column
+            // for, which is the space the waterfall and oscilloscope give up.
+            const std::string extra = ", \"extra_menu_width\": " + std::to_string(getExtraMenuWidth());
             for (auto& mode : radioModes) {
                 if (mode.second == selectedDemodID) {
-                    return "{\"demod\": \"" + mode.first + "\", \"id\": " + std::to_string(selectedDemodID) + "}";
+                    return "{\"demod\": \"" + mode.first + "\", \"id\": " + std::to_string(selectedDemodID) + extra + "}";
                 }
             }
-            return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + "}";
+            return "{\"demod\": \"unknown\", \"id\": " + std::to_string(selectedDemodID) + extra + "}";
         }
         if (cmd == "get_vfo_bandwidth") {
             if (!vfo) {
@@ -264,6 +271,11 @@ public:
             } catch (...) {
                 return "{\"error\": \"invalid frequency: '" + args + "'\"}";
             }
+        }
+        if (selectedDemod) {
+            // Mode specific commands (e.g. the DAB station list and selection).
+            std::string response = selectedDemod->handleDebugCommand(cmd, args);
+            if (!response.empty()) { return response; }
         }
         if (cmd == "get_spectrum") {
             // Parse: bandwidth_hz,num_buckets (optional)

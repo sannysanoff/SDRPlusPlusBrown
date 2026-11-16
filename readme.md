@@ -31,6 +31,8 @@ Thanks and due respect to:
 * Kristijonas Adomaitis and OnAir contributors, for the rx888 and future OnAir parts that may end up here
 * Davide Belloli ([dbdexter-dev](https://github.com/dbdexter-dev)) for his [sdrpp_radiosonde](https://github.com/dbdexter-dev/sdrpp_radiosonde) module and [sondedump](https://github.com/dbdexter-dev/sondedump) library
 * ruse39 for his contributions on code quality
+* "prog" ([@prog](https://x.com/prog) on X, Youssef Touil, the Airspy author) for the DAB+ source the dabplus_decoder module follows.
+* William Yang ([williamyang98](https://github.com/williamyang98)) for [DAB-Radio](https://github.com/williamyang98/DAB-Radio) and [ViterbiDecoderCpp](https://github.com/williamyang98/ViterbiDecoderCpp), and the authors of fmt, faad2 and mpg123, for the decoders inside dabplus_decoder.
 
 ## Feedback
 

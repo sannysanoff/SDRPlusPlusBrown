@@ -29,11 +29,33 @@ public:
         if (_block_init) { dsp::Sink<dsp::stereo_t>::stop(); }
     }
 
+    // Start collecting exactly what the callback hands to the device.
+    void startCapture(size_t frames) {
+        capture.clear();
+        captureLimit = frames;
+        capturing.store(true, std::memory_order_relaxed);
+    }
+
+    std::vector<dsp::stereo_t> capture;
+    std::atomic<bool> capturing{false};
+    size_t captureLimit = 0;
+
+    // Frames waiting to be played, for diagnosis.
+    size_t available() const {
+        return writePosition.load(std::memory_order_acquire) - readPosition.load(std::memory_order_acquire);
+    }
+
+    size_t capacity() const { return samples.size(); }
+
     size_t consume(dsp::stereo_t* output, size_t count) {
         size_t read = readPosition.load(std::memory_order_relaxed);
         size_t available = writePosition.load(std::memory_order_acquire) - read;
         size_t copied = (std::min)(count, available);
         for (size_t i = 0; i < copied; i++) { output[i] = samples[(read + i) & mask]; }
+        if (capturing.load(std::memory_order_relaxed)) {
+            for (size_t i = 0; i < copied && capture.size() < captureLimit; i++) { capture.push_back(output[i]); }
+            if (capture.size() >= captureLimit) { capturing.store(false, std::memory_order_relaxed); }
+        }
         readPosition.store(read + copied, std::memory_order_release);
         for (size_t i = copied; i < count; i++) { output[i] = {0, 0}; }
         return copied;

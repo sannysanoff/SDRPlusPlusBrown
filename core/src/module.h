@@ -57,6 +57,12 @@ public:
         virtual std::string handleDebugCommand(const std::string& cmd, const std::string& args) {
             return "{}";
         }
+        // Extra width this instance needs in the module column, in style units.
+        // The window widens the column by the largest request, taking the space
+        // from the waterfall.
+        virtual float getExtraMenuWidth() {
+            return 0.0f;
+        }
     };
 
     struct Module_t {
