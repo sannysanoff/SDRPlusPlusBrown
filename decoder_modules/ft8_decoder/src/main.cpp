@@ -753,9 +753,6 @@ public:
         if (config.conf[name].find("secondsToKeepResults") != config.conf[name].end()) {
             secondsToKeepResults = config.conf[name]["secondsToKeepResults"];
         }
-        if (config.conf[name].find("nthreads") != config.conf[name].end()) {
-            nthreads = config.conf[name]["nthreads"];
-        }
         if (config.conf[name].contains("processingEnabledFT8")) {
             ft8decoder.processingEnabled = config.conf[name]["processingEnabledFT8"].get<bool>();
         }
@@ -849,13 +846,6 @@ public:
         //
         // FT8
         //
-        ImGui::FillWidth();
-        if (ImGui::SliderInt("##ft8_threads", &_this->nthreads, 1, 6, "%d threads decode", 0)) {
-            config.acquire();
-            config.conf[_this->name]["nthreads"] = _this->nthreads;
-            config.release(true);
-        }
-
         auto ft8processing = _this->ft8decoder.blockProcessorsRunning.load();
         if (ft8processing) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0, 1.0f));
@@ -972,7 +962,6 @@ public:
     char allTxtPath[1024];
     std::string allTxtPathError;
     int secondsToKeepResults = 120;
-    int nthreads = 1;
 
     std::string  lastLocation;
     LatLng _myPos = LatLng::invalid();
@@ -1303,7 +1292,8 @@ void SingleDecoder::startBlockProcessing(const std::shared_ptr<std::vector<dsp::
         std::thread t0([&]() {
             SetThreadName(getModeString()+"_callDecode");
             auto start = currentTimeMillis();
-            dsp::ft8::decodeFT8(mod->nthreads, getModeString(), VFO_SAMPLE_RATE, block->data(), block->size(), handler, progress, removeFiles);
+            // multi-threaded decode was not completed
+            dsp::ft8::decodeFT8(1, getModeString(), VFO_SAMPLE_RATE, block->data(), block->size(), handler, progress, removeFiles);
             auto end = currentTimeMillis();
             if (noisy_ft8) {
                 flog::info("FT8 decoding ({}) took {} ms", this->getModeString(), (int64_t) (end - start));
