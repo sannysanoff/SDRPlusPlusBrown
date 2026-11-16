@@ -70,6 +70,7 @@ public:
     }
 
     const char *getModesList() override {
+        updateModeList(getRadioForVfo(""));
         return demodModeListTxt.c_str();
     }
 
@@ -125,22 +126,24 @@ public:
         }
         if (cmd == "get_bookmarks") {
             json bms = json::array();
-            auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
             for (const auto& [name, bm] : bookmarks) {
                 json bookmark;
                 bookmark["name"] = name;
                 bookmark["frequency"] = bm.frequency;
                 bookmark["bandwidth"] = bm.bandwidth;
-                if (bm.modeIndex < 0) {
+                auto radio = getRadioForVfo(bm.vfoName);
+                updateModeList(radio);
+                int demodId = resolveDemodId(bm, radio);
+                int modeIdx = (radio != nullptr && demodId >= 0) ? radio->getDemodIndex(demodId) : bm.modeIndex;
+                if (demodId < 0) {
                     bookmark["mode"] = "Unspecified";
-                } else if (radio) {
-                    DemodID demodId = radio->getDemodByIndex(bm.modeIndex);
-                    bookmark["mode"] = demodModeList.count(demodId) ?
-                        demodModeList[demodId] : "Unknown";
+                } else if (radio != nullptr && demodModeList.count(demodId) && modeIdx >= 0) {
+                    bookmark["mode"] = demodModeList[demodId];
                 } else {
                     bookmark["mode"] = "Unknown";
                 }
-                bookmark["mode_index"] = bm.modeIndex;
+                bookmark["mode_index"] = modeIdx;
+                bookmark["mode_id"] = demodId;
                 bookmark["vfo"] = bm.vfoName;
                 bookmark["vfo_available"] = bm.vfoName.empty() || sigpath::vfoManager.vfoExists(bm.vfoName);
                 bms.push_back(bookmark);
@@ -173,16 +176,19 @@ public:
             try {
                 double frequency = std::stod(freqStr);
                 double bandwidth = std::stod(bwStr);
-                int modeIndex = 0;
-                auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+                int modeId = -1;
+                int modeIndex = -1;
+                auto radio = getRadioForVfo("");
                 if (radio) {
                     updateModeList(radio);
                 }
                 try {
-                    modeIndex = std::stoi(modeStr);
+                    modeId = std::stoi(modeStr);
+                    modeIndex = (radio != nullptr && modeId >= 0) ? radio->getDemodIndex(modeId) : -1;
                 } catch (...) {
                     if (demodModeListRev.find(modeStr) != demodModeListRev.end()) {
-                        modeIndex = demodModeListRev[modeStr];
+                        modeId = demodModeListRev[modeStr];
+                        modeIndex = (radio != nullptr) ? radio->getDemodIndex(modeId) : -1;
                     } else {
                         return json{{"error", "unknown mode: " + modeStr}}.dump();
                     }
@@ -190,12 +196,13 @@ public:
                 FrequencyBookmark fbm;
                 fbm.frequency = frequency;
                 fbm.bandwidth = bandwidth;
+                fbm.mode = modeId;
                 fbm.modeIndex = modeIndex;
                 fbm.selected = false;
                 fbm.vfoName = gui::waterfall.selectedVFO;
                 bookmarks[bmName] = fbm;
                 saveByName(selectedListName);
-                return json{{"status", "ok"}, {"name", bmName}, {"frequency", frequency}, {"bandwidth", bandwidth}, {"mode_index", modeIndex}}.dump();
+                return json{{"status", "ok"}, {"name", bmName}, {"frequency", frequency}, {"bandwidth", bandwidth}, {"mode_index", modeIndex}, {"mode_id", modeId}}.dump();
             } catch (const std::exception& e) {
                 return json{{"error", std::string("parse error: ") + e.what()}}.dump();
             }
@@ -286,7 +293,16 @@ private:
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(200);
 
-            ImGui::Combo(("##freq_manager_edit_mode" + name).c_str(), &editedBookmark.modeIndex, demodModeListTxt.c_str());
+            auto editRadio = getRadioForVfo(editedBookmark.vfoName);
+            updateModeList(editRadio);
+            if (editRadio != nullptr && editedBookmark.mode >= 0) {
+                editedBookmark.modeIndex = editRadio->getDemodIndex(editedBookmark.mode);
+            }
+            if (ImGui::Combo(("##freq_manager_edit_mode" + name).c_str(), &editedBookmark.modeIndex, demodModeListTxt.c_str())) {
+                if (editRadio != nullptr && editedBookmark.modeIndex >= 0 && editedBookmark.modeIndex < (int)editRadio->radioModes.size()) {
+                    editedBookmark.mode = editRadio->getDemodByIndex(editedBookmark.modeIndex);
+                }
+            }
 
             ImGui::EndTable();
 
@@ -347,6 +363,7 @@ private:
                     config.conf["lists"][editedListName]["showOnWaterfall"] = true;
                     config.conf["lists"][editedListName]["bookmarks"] = json::object();
                 }
+                config.conf["selectedList"] = editedListName;
                 refreshWaterfallBookmarks(false);
                 config.release(true);
                 refreshLists();
@@ -405,8 +422,41 @@ private:
         config.release();
     }
 
+    static RadioModuleInterface* getRadioForVfo(const std::string& vfoName) {
+        if (!vfoName.empty()) {
+            return (RadioModuleInterface*)core::moduleManager.getInterface(vfoName, "RadioModuleInterface");
+        }
+        if (!gui::waterfall.selectedVFO.empty()) {
+            auto radio = (RadioModuleInterface*)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+            if (radio) { return radio; }
+        }
+        return (RadioModuleInterface*)core::moduleManager.getInterface("", "RadioModuleInterface");
+    }
+
+    static int resolveDemodId(const FrequencyBookmark& bm, RadioModuleInterface* radio) {
+        if (bm.mode >= 0) {
+            return bm.mode;
+        }
+        if (bm.modeIndex >= 0 && radio != nullptr && bm.modeIndex < (int)radio->radioModes.size()) {
+            return radio->getDemodByIndex(bm.modeIndex);
+        }
+        return -1;
+    }
+
+    static std::string getModeName(const FrequencyBookmark& bm, RadioModuleInterface* radio) {
+        int demodId = resolveDemodId(bm, radio);
+        if (demodId < 0 || radio == nullptr) {
+            return "";
+        }
+        for (const auto& m : radio->radioModes) {
+            if (m.second == demodId) {
+                return m.first;
+            }
+        }
+        return "";
+    }
+
     void refreshWaterfallBookmarks(bool lockConfig) override {
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
         if (lockConfig) { config.acquire(); }
         waterfallBookmarks.clear();
         for (auto [listName, list] : config.conf["lists"].items()) {
@@ -417,9 +467,11 @@ private:
                 wbm.bookmarkName = bookmarkName;
                 wbm.bookmark.frequency = config.conf["lists"][listName]["bookmarks"][bookmarkName]["frequency"];
                 wbm.bookmark.bandwidth = config.conf["lists"][listName]["bookmarks"][bookmarkName]["bandwidth"];
-                int mode = config.conf["lists"][listName]["bookmarks"][bookmarkName]["mode"];
-                wbm.bookmark.modeIndex = (radio != nullptr) ? radio->getDemodIndex(mode) : -1;
+                int mode = config.conf["lists"][listName]["bookmarks"][bookmarkName].value("mode", -1);
                 wbm.bookmark.vfoName = config.conf["lists"][listName]["bookmarks"][bookmarkName].value("vfo", "");
+                wbm.bookmark.mode = mode;
+                auto radio = getRadioForVfo(wbm.bookmark.vfoName);
+                wbm.bookmark.modeIndex = (radio != nullptr && mode >= 0) ? radio->getDemodIndex(mode) : -1;
                 wbm.bookmark.selected = false;
                 wbm.notValidAfter = 0;
                 wbm.extraInfo = "";
@@ -455,14 +507,15 @@ private:
         }
         selectedListId = std::distance(listNames.begin(), std::find(listNames.begin(), listNames.end(), listName));
         selectedListName = listName;
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
         config.acquire();
         for (auto [bmName, bm] : config.conf["lists"][listName]["bookmarks"].items()) {
             FrequencyBookmark fbm;
             fbm.frequency = bm["frequency"];
             fbm.bandwidth = bm["bandwidth"];
-            fbm.modeIndex = (radio != nullptr) ? radio->getDemodIndex(bm["mode"]) : -1;
+            fbm.mode = bm.value("mode", -1);
             fbm.vfoName = bm.value("vfo", "");
+            auto radio = getRadioForVfo(fbm.vfoName);
+            fbm.modeIndex = (radio != nullptr && fbm.mode >= 0) ? radio->getDemodIndex(fbm.mode) : -1;
             fbm.selected = false;
             bookmarks[bmName] = fbm;
         }
@@ -470,10 +523,20 @@ private:
     }
 
     void updateModeList(RadioModuleInterface *radio) {
+        if (radio == nullptr) {
+            if (!cachedRadioModes.empty() || !demodModeList.empty()) {
+                cachedRadioModes.clear();
+                demodModeList.clear();
+                demodModeListRev.clear();
+                demodModeListTxt.clear();
+            }
+            return; // VFO without RadioModuleInterface (e.g. TETRA Demodulator)
+        }
+        if (radio->radioModes == cachedRadioModes) { return; }
+        cachedRadioModes = radio->radioModes;
         demodModeList.clear();
         demodModeListRev.clear();
         demodModeListTxt = "";
-        if (radio == nullptr) { return; } // VFO without RadioModuleInterface (e.g. TETRA Demodulator)
         for (auto m : radio->radioModes) {
             demodModeList[m.second] = m.first;
             demodModeListRev[m.first] = m.second;
@@ -483,14 +546,13 @@ private:
     }
 
     void saveByName(std::string listName) {
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
         config.acquire();
         config.conf["lists"][listName]["bookmarks"] = json::object();
         for (auto [bmName, bm] : bookmarks) {
             config.conf["lists"][listName]["bookmarks"][bmName]["frequency"] = bm.frequency;
             config.conf["lists"][listName]["bookmarks"][bmName]["bandwidth"] = bm.bandwidth;
-            DemodID demodId = (radio != nullptr) ? radio->getDemodByIndex(bm.modeIndex) : (DemodID)-1;
-            flog::info("bm.modeIndex={}, demodId={}", (int)bm.modeIndex, (int)demodId);
+            int demodId = resolveDemodId(bm, getRadioForVfo(bm.vfoName));
+            flog::info("bm.mode={}, bm.modeIndex={}, demodId={}", bm.mode, (int)bm.modeIndex, demodId);
             config.conf["lists"][listName]["bookmarks"][bmName]["mode"] = demodId;
             config.conf["lists"][listName]["bookmarks"][bmName]["vfo"] = bm.vfoName;
         }
@@ -501,10 +563,8 @@ private:
     static void menuHandler(void* ctx) {
         FrequencyManagerModule* _this = (FrequencyManagerModule*)ctx;
 
-        if (demodModeList.empty()) {
-            auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
-            _this->updateModeList(radio);
-        }
+        auto radio = _this->getRadioForVfo("");
+        _this->updateModeList(radio);
 
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
@@ -582,6 +642,9 @@ private:
             else {
                 _this->selectedListName = "";
             }
+            config.acquire();
+            config.conf["selectedList"] = _this->selectedListName;
+            config.release(true);
         }
 
         if (_this->selectedListName == "") { style::beginDisabled(); }
@@ -590,7 +653,6 @@ private:
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
         if (ImGui::Button(("Add##_freq_mgr_add_" + _this->name).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
             // If there's no VFO selected, just save the center freq
 
@@ -606,7 +668,9 @@ private:
                 _this->editedBookmark.frequency = gui::waterfall.getCenterFrequency() + sigpath::vfoManager.getOffset(gui::waterfall.selectedVFO);
                 _this->editedBookmark.bandwidth = sigpath::vfoManager.getBandwidth(gui::waterfall.selectedVFO);
             }
-            _this->editedBookmark.modeIndex = (radio != nullptr) ? radio->getDemodIndex(radio->getSelectedDemodId()) : -1;
+            auto selRadio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+            _this->editedBookmark.mode = (selRadio != nullptr) ? selRadio->getSelectedDemodId() : -1;
+            _this->editedBookmark.modeIndex = (selRadio != nullptr && _this->editedBookmark.mode >= 0) ? selRadio->getDemodIndex(_this->editedBookmark.mode) : -1;
             _this->editedBookmark.vfoName = gui::waterfall.selectedVFO;
             _this->editedBookmark.selected = false;
 
@@ -636,10 +700,15 @@ private:
         ImGui::TableSetColumnIndex(2);
         if (selectedNames.size() != 1 && _this->selectedListName != "") { style::beginDisabled(); }
         if (ImGui::Button(("Edit##_freq_mgr_edt_" + _this->name).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-            auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
-            _this->updateModeList(radio);
             _this->editOpen = true;
             _this->editedBookmark = _this->bookmarks[selectedNames[0]];
+            auto editRadio = _this->getRadioForVfo(_this->editedBookmark.vfoName);
+            _this->updateModeList(editRadio);
+            if (editRadio != nullptr && _this->editedBookmark.mode >= 0) {
+                _this->editedBookmark.modeIndex = editRadio->getDemodIndex(_this->editedBookmark.mode);
+            } else if (editRadio == nullptr) {
+                _this->editedBookmark.modeIndex = -1;
+            }
             _this->editedBookmarkName = selectedNames[0];
             _this->firstEditedBookmarkName = selectedNames[0];
         }
@@ -694,7 +763,8 @@ private:
                     ImGui::SameLine();
                     ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "X");
                 } else {
-                    ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), (radio != nullptr) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)].c_str() : "");
+                    auto bmRadio = _this->getRadioForVfo(bm.vfoName);
+                    ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), _this->getModeName(bm, bmRadio).c_str());
                 }
 //		std::string modeStr = (radio != nullptr && bm.modeIndex >= 0) ? demodModeList[radio->getDemodByIndex(bm.modeIndex)] : "DIGITAL";
 //		ImGui::Text("%s %s", utils::formatFreq(bm.frequency).c_str(), modeStr.c_str());
@@ -912,7 +982,8 @@ again:
         if (_this->mouseAlreadyDown || !inALabel) { return; }
 
         gui::waterfall.inputHandled = true;
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
+        auto radio = _this->getRadioForVfo(hoveredBookmark.bookmark.vfoName);
+        _this->updateModeList(radio);
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             _this->mouseClickedInLabel = true;
@@ -928,7 +999,7 @@ again:
         if (!hoveredBookmark.bookmark.vfoName.empty() && !sigpath::vfoManager.vfoExists(hoveredBookmark.bookmark.vfoName)) {
             ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "Radio \"%s\" is not available", hoveredBookmark.bookmark.vfoName.c_str());
         } else {
-            ImGui::Text("Mode: %s", (radio != nullptr) ? demodModeList[radio->getDemodByIndex(hoveredBookmark.bookmark.modeIndex)].c_str() : "");
+            ImGui::Text("Mode: %s", _this->getModeName(hoveredBookmark.bookmark, radio).c_str());
         }
         ImGui::EndTooltip();
     }
@@ -943,8 +1014,6 @@ again:
         std::ifstream fs(wstr::str2wstr(path));
         json importBookmarks;
         fs >> importBookmarks;
-
-        auto radio = (RadioModuleInterface *)core::moduleManager.getInterface(gui::waterfall.selectedVFO, "RadioModuleInterface");
 
         if (!importBookmarks.contains("bookmarks")) {
             flog::error("File does not contains any bookmarks");
@@ -965,8 +1034,10 @@ again:
             FrequencyBookmark fbm;
             fbm.frequency = bm["frequency"];
             fbm.bandwidth = bm["bandwidth"];
-            fbm.modeIndex = (radio != nullptr) ? radio->getDemodIndex(bm["mode"]) : -1;
+            fbm.mode = bm.value("mode", -1);
             fbm.vfoName = bm.value("vfo", "");
+            auto bmRadio = getRadioForVfo(fbm.vfoName);
+            fbm.modeIndex = (bmRadio != nullptr && fbm.mode >= 0) ? bmRadio->getDemodIndex(fbm.mode) : -1;
             fbm.selected = false;
             bookmarks[_name] = fbm;
         }
@@ -1010,6 +1081,7 @@ again:
     std::string firstEditedListName;
 
     std::vector<WaterfallBookmark> waterfallBookmarks;
+    std::vector<std::pair<std::string, int>> cachedRadioModes;
     Scanner scanner{this};
 
     int bookmarkDisplayMode = 0;
@@ -1031,9 +1103,11 @@ void applyBookmark(FrequencyBookmark bm, std::string vfoName) {
         ModuleManager::Instance *pInstance = x.second.instance;
         auto radio = (RadioModuleInterface *)pInstance->getInterface("RadioModuleInterface");
         if (radio && x.first == targetVfo) {
-            int mode = radio->getDemodByIndex(bm.modeIndex);
+            int mode = (bm.mode >= 0) ? bm.mode : ((bm.modeIndex >= 0 && bm.modeIndex < (int)radio->radioModes.size()) ? (int)radio->getDemodByIndex(bm.modeIndex) : -1);
             float bandwidth = bm.bandwidth;
-            core::modComManager.callInterface(targetVfo, RADIO_IFACE_CMD_SET_MODE, &mode, NULL);
+            if (mode >= 0) {
+                core::modComManager.callInterface(targetVfo, RADIO_IFACE_CMD_SET_MODE, &mode, NULL);
+            }
             core::modComManager.callInterface(targetVfo, RADIO_IFACE_CMD_SET_BANDWIDTH, &bandwidth, NULL);
         }
     }

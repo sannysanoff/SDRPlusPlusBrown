@@ -9,6 +9,7 @@ struct FrequencyBookmark {
     int modeIndex;
     bool selected;
     std::string vfoName; // VFO/radio this bookmark belongs to; empty = legacy (apply to currently selected VFO)
+    int mode = -1;       // Persistent DemodID (-1 = Unspecified or resolve from modeIndex)
 };
 
 struct WaterfallBookmark {
