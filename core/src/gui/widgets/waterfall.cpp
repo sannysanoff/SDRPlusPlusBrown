@@ -1266,6 +1266,10 @@ namespace ImGui {
         int drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
         int drawDataStart = (((double)rawFFTSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
 
+        if (autoLevel.load(std::memory_order_relaxed)) {
+            updateAutoLevel(waterfallVisible ? &rawFFTs[currentFFTLine * rawFFTSize] : rawFFTs, drawDataStart, drawDataSize);
+        }
+
         if (waterfallVisible) {
             doZoom(drawDataStart, drawDataSize, rawFFTSize, dataWidth, &rawFFTs[currentFFTLine * rawFFTSize], latestFFT);
 
@@ -1404,6 +1408,109 @@ namespace ImGui {
         this->setWaterfallMin(min - 5);
         this->setWaterfallMax(max + 20);
         return std::make_pair(min, max);
+    }
+
+    /**
+     * Estimate the noise floor of a raw FFT line (low percentile over the whole band, skipping
+     * the filter roll-off at the edges), smooth it, and shift min/max so they stay at a fixed
+     * offset from it. Only newly pushed lines use the new levels (no full waterfall redraw).
+     * Called from pushFFT() with latestFFTMtx held.
+     */
+    void WaterFall::updateAutoLevel(const float* line, int start, int count) {
+        if (line == NULL || rawFFTSize < 64) { return; }
+
+        // Only the visible span counts: outside of it (e.g. beyond a radio's IF passband)
+        // the noise has nothing to do with what is on screen.
+        int from = std::clamp<int>(start, 0, rawFFTSize);
+        int to = std::clamp<int>(start + count, 0, rawFFTSize);
+        if (to - from < 16) { return; }
+
+        const int MAX_SAMPLES = 2048;
+        // 70th percentile: ignores notches, filter roll-off and, on a full span, the flat area
+        // outside a radio IF passband (which does not follow the band noise), while staying
+        // below most signals.
+        const float PERCENTILE = 0.7f;
+        int stride = std::max<int>(1, (to - from) / MAX_SAMPLES);
+
+        noiseFloorScratch.clear();
+        for (int i = from; i < to; i += stride) {
+            float v = line[i];
+            if (std::isfinite(v)) { noiseFloorScratch.push_back(v); }
+        }
+        if (noiseFloorScratch.size() < 16) { return; }
+
+        auto nth = noiseFloorScratch.begin() + (size_t)(noiseFloorScratch.size() * PERCENTILE);
+        std::nth_element(noiseFloorScratch.begin(), nth, noiseFloorScratch.end());
+        float floor = *nth;
+
+        // Smoothing: fast when far from estimate (band change), slow when close (stable display).
+        if (!std::isfinite(noiseFloorEst)) {
+            noiseFloorEst = floor;
+        }
+        else {
+            float diff = floor - noiseFloorEst;
+            float alpha = std::fabs(diff) > 6.0f ? 0.25f : 0.03f;
+            noiseFloorEst += alpha * diff;
+        }
+
+        if (autoLevelCapturePending.exchange(false)) {
+            autoLevelMinOffset = fftMin - noiseFloorEst;
+            autoLevelMaxOffset = fftMax - noiseFloorEst;
+            autoLevelAppliedFloor = noiseFloorEst;
+            return;
+        }
+
+        // Hysteresis: avoid moving the scale for sub-dB fluctuations.
+        if (std::isfinite(autoLevelAppliedFloor) && std::fabs(noiseFloorEst - autoLevelAppliedFloor) < 1.0f) {
+            return;
+        }
+        autoLevelAppliedFloor = noiseFloorEst;
+
+        float newMin = autoLevelAppliedFloor + autoLevelMinOffset;
+        float newMax = autoLevelAppliedFloor + autoLevelMaxOffset;
+        fftMin = newMin;
+        fftMax = newMax;
+        waterfallMin = newMin;
+        waterfallMax = newMax;
+        vRange = findBestRange(fftMax - fftMin, maxVSteps);
+    }
+
+    void WaterFall::setAutoLevel(bool enabled) {
+        if (enabled && !autoLevel.load()) {
+            autoLevelAppliedFloor = NAN;
+        }
+        autoLevel.store(enabled);
+    }
+
+    bool WaterFall::getAutoLevel() {
+        return autoLevel.load();
+    }
+
+    void WaterFall::setAutoLevelOffsets(float minOffset, float maxOffset) {
+        MEASURE_LOCK_GUARD(latestFFTMtx);
+        autoLevelMinOffset = minOffset;
+        autoLevelMaxOffset = maxOffset;
+        autoLevelAppliedFloor = NAN; // force re-apply on next line
+    }
+
+    float WaterFall::getAutoLevelMinOffset() {
+        return autoLevelMinOffset;
+    }
+
+    float WaterFall::getAutoLevelMaxOffset() {
+        return autoLevelMaxOffset;
+    }
+
+    bool WaterFall::captureAutoLevelOffsets() {
+        MEASURE_LOCK_GUARD(latestFFTMtx);
+        if (!std::isfinite(noiseFloorEst)) {
+            autoLevelCapturePending.store(true);
+            return false;
+        }
+        autoLevelMinOffset = fftMin - noiseFloorEst;
+        autoLevelMaxOffset = fftMax - noiseFloorEst;
+        autoLevelAppliedFloor = noiseFloorEst;
+        return true;
     }
 
     void WaterFall::setCenterFrequency(double freq) {

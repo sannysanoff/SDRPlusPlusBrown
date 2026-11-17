@@ -563,6 +563,9 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["fullWaterfallUpdate"] = false;
     defConfig["zoomBw"] = 1.0;
     defConfig["max"] = 0.0;
+    defConfig["autoLevel"] = false;
+    defConfig["autoLevelMinOffset"] = -5.0;
+    defConfig["autoLevelMaxOffset"] = 50.0;
     defConfig["maximized"] = false;
     defConfig["fullscreen"] = false;
     defConfig["theme"] = "Dark";

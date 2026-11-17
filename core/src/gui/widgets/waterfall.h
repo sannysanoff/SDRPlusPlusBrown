@@ -1,6 +1,7 @@
 #pragma once
 #include <core.h>
 #include <atomic>
+#include <cmath>
 #include <vector>
 #include <mutex>
 #include <gui/widgets/bandplan.h>
@@ -137,6 +138,16 @@ namespace ImGui {
         void setOffset(double zoomOffset);
 
         std::pair<int, int> autoRange();
+
+        // Auto level: tracks the noise floor and keeps min/max at a fixed offset from it.
+        void setAutoLevel(bool enabled);
+        bool getAutoLevel();
+        void setAutoLevelOffsets(float minOffset, float maxOffset);
+        float getAutoLevelMinOffset();
+        float getAutoLevelMaxOffset();
+        // Recompute offsets from the current fftMin/fftMax and the current noise floor estimate.
+        // If no estimate is available yet, offsets are captured on the first estimate.
+        bool captureAutoLevelOffsets();
 
         void selectFirstVFO();
 
@@ -327,6 +338,16 @@ namespace ImGui {
         float fftMax;
         float waterfallMin;
         float waterfallMax;
+
+        // Auto level state
+        std::atomic<bool> autoLevel{ false };
+        std::atomic<bool> autoLevelCapturePending{ false };
+        float autoLevelMinOffset = -5.0f;
+        float autoLevelMaxOffset = 50.0f;
+        float noiseFloorEst = NAN;     // smoothed noise floor estimate (dB)
+        float autoLevelAppliedFloor = NAN; // floor currently applied to min/max (hysteresis)
+        std::vector<float> noiseFloorScratch;
+        void updateAutoLevel(const float* line, int start, int count);
 
         //std::vector<std::vector<float>> rawFFTs;
         int rawFFTSize;

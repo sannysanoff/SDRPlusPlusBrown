@@ -214,6 +214,8 @@ void MainWindow::init() {
     gui::waterfall.setWaterfallMin(fftMin);
     gui::waterfall.setFFTMax(fftMax);
     gui::waterfall.setWaterfallMax(fftMax);
+    gui::waterfall.setAutoLevelOffsets(core::configManager.conf["autoLevelMinOffset"], core::configManager.conf["autoLevelMaxOffset"]);
+    gui::waterfall.setAutoLevel(core::configManager.conf["autoLevel"]);
 
 
     double frequency = core::configManager.conf["frequency"];
@@ -847,6 +849,21 @@ void MainWindow::draw() {
     }
 
 
+    const bool autoLevel = gui::waterfall.getAutoLevel();
+    if (autoLevel) {
+        // levels are driven by the waterfall's noise floor tracking
+        fftMin = gui::waterfall.getFFTMin();
+        fftMax = gui::waterfall.getFFTMax();
+    }
+    auto saveAutoLevelOffsets = [&]() {
+        if (gui::waterfall.captureAutoLevelOffsets()) {
+            core::configManager.acquire();
+            core::configManager.conf["autoLevelMinOffset"] = gui::waterfall.getAutoLevelMinOffset();
+            core::configManager.conf["autoLevelMaxOffset"] = gui::waterfall.getAutoLevelMaxOffset();
+            core::configManager.release(true);
+        }
+    };
+
     auto addMaxSlider = [&]() {
         ImGui::NewLine();
         ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::CalcTextSize("Max").x / 2.0));
@@ -862,6 +879,7 @@ void MainWindow::draw() {
             else {
                 fftMin = range.first;
                 fftMax = range.second;
+                if (autoLevel) { saveAutoLevelOffsets(); }
             }
         }
         ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - wfSliderSize.x / 2);
@@ -872,6 +890,7 @@ void MainWindow::draw() {
             core::configManager.release(true);
             gui::waterfall.setFFTMax(fftMax);
             gui::waterfall.setWaterfallMax(fftMax);
+            if (autoLevel) { saveAutoLevelOffsets(); }
         }
     };
 
@@ -888,6 +907,25 @@ void MainWindow::draw() {
             core::configManager.release(true);
             gui::waterfall.setFFTMin(fftMin);
             gui::waterfall.setWaterfallMin(fftMin);
+            if (autoLevel) { saveAutoLevelOffsets(); }
+        }
+    };
+
+    auto addAutoLevelCheckbox = [&]() {
+        ImGui::NewLine();
+        ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::CalcTextSize("Auto").x / 2.0));
+        ImGui::TextUnformatted("Auto");
+        ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::GetFrameHeight() / 2.0));
+        bool al = autoLevel;
+        if (ImGui::Checkbox("##auto_level", &al)) {
+            gui::waterfall.setAutoLevel(al);
+            if (al) { saveAutoLevelOffsets(); }
+            core::configManager.acquire();
+            core::configManager.conf["autoLevel"] = al;
+            core::configManager.release(true);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Auto level: keep Min/Max at the same distance from the noise floor");
         }
     };
 
@@ -900,6 +938,7 @@ void MainWindow::draw() {
         addMaxSlider();
         addMinSlider();
     }
+    addAutoLevelCheckbox();
     const ImVec2 remainder = ImGui::GetContentRegionAvail();
     if (remainder.y <= 0 && wfSliderSize.y > MIN_SLIDER_HEIGHT) {
         // this fits the sliders to any height.
