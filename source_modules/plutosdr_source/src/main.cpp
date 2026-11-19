@@ -59,6 +59,7 @@ public:
         if (config.conf.contains("manualUri")) {
             snprintf(manualUri, sizeof manualUri, "%s", ((std::string)config.conf["manualUri"]).c_str());
         }
+        if (config.conf.contains("skipWhitelist")) { skipWhitelist = config.conf["skipWhitelist"]; }
         config.release();
 
         // Enumerate devices
@@ -142,16 +143,18 @@ private:
             std::string duri = iio_context_info_get_uri(info);
 
             // If the device is not a plutosdr, don't include it
-            bool isPluto = false;
-            for (const auto type : deviceWhiteList) {
-                if (desc.find(type) != std::string::npos) {
-                    isPluto = true;
-                    break;
+            if (!skipWhitelist) {
+                bool isPluto = false;
+                for (const auto type : deviceWhiteList) {
+                    if (desc.find(type) != std::string::npos) {
+                        isPluto = true;
+                        break;
+                    }
                 }
-            }
-            if (!isPluto) {
-                flog::warn("Ignored IIO device: [{}] {}", duri, desc);
-                continue;
+                if (!isPluto) {
+                    flog::warn("Ignored IIO device: [{}] {}", duri, desc);
+                    continue;
+                }
             }
 
             // Extract the backend
@@ -434,6 +437,15 @@ private:
                 core::setInputSampleRate(_this->samplerate);
             }
         }
+        // Discovery only: list every IIO context the scan returns, not just plutosdr-like ones
+        if (SmGui::Checkbox("Skip whitelist##plutosdr_skip_wl", &_this->skipWhitelist)) {
+            config.acquire();
+            config.conf["skipWhitelist"] = _this->skipWhitelist;
+            config.release(true);
+            _this->refresh();
+            _this->select(_this->devDesc);
+            core::setInputSampleRate(_this->samplerate);
+        }
         if (_this->running) { SmGui::EndDisabled(); }
 
         SmGui::LeftLabel("Bandwidth");
@@ -552,6 +564,7 @@ private:
     std::string uri = "";
     std::string manualKey = "";
     char manualUri[64] = { 0 };
+    bool skipWhitelist = false;
 
     double freq;
     int samplerate = 4000000;
