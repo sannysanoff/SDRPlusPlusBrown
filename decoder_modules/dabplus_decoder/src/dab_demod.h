@@ -364,9 +364,9 @@ namespace demod {
                     const float l = float(pcm[i * channels]) * (1.0f / 32768.0f);
                     const float r = float(pcm[i * channels + (engineStereo ? 1 : 0)]) * (1.0f / 32768.0f);
                     buf[i] = { l, r };
-                    blockPeak = std::max(blockPeak, std::max(std::fabs(l), std::fabs(r)));
+                    blockPeak = (std::max)(blockPeak, (std::max)(std::fabs(l), std::fabs(r)));
                 }
-                audioPeak.store(std::max(blockPeak, audioPeak.load() * 0.85f));
+                audioPeak.store((std::max)(blockPeak, audioPeak.load() * 0.85f));
                 audioFrames += frames;
                 if (!rawStream.swap(int(frames))) { break; }
 
