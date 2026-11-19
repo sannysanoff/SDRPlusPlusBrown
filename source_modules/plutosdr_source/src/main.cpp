@@ -53,13 +53,18 @@ public:
         gainModes.define("slow_attack", "Slow Attack", "slow_attack");
         gainModes.define("hybrid", "Hybrid", "hybrid");
 
+        // Load config
+        config.acquire();
+        devDesc = config.conf["device"];
+        if (config.conf.contains("manualUri")) {
+            snprintf(manualUri, sizeof manualUri, "%s", ((std::string)config.conf["manualUri"]).c_str());
+        }
+        config.release();
+
         // Enumerate devices
         refresh();
 
         // Select device
-        config.acquire();
-        devDesc = config.conf["device"];
-        config.release();
         select(devDesc);
 
         // Register source
@@ -194,6 +199,30 @@ private:
         const char* androidName = "Default (192.168.2.1)";
         devices.define(androidName, androidName, androidURI);
 #endif
+
+        // Add the manually entered address
+        manualKey.clear();
+        applyManualEntry();
+    }
+
+    void applyManualEntry() {
+        // Drop the previous manual entry
+        if (!manualKey.empty() && devices.keyExists(manualKey)) { devices.undefineKey(manualKey); }
+        manualKey.clear();
+
+        if (manualUri[0] == 0) { return; }
+
+        // Default to the ip backend when no URI scheme was typed
+        std::string u = manualUri;
+        if (u.find(':') == std::string::npos) { u = "ip:" + u; }
+
+        // Already reported by the scan, nothing to add
+        if (devices.valueExists(u)) { return; }
+
+        std::string name = "Manual (" + u + ")";
+        if (devices.keyExists(u) || devices.nameExists(name)) { return; }
+        devices.define(u, name, u);
+        manualKey = u;
     }
 
     void select(const std::string& desc) {
@@ -206,6 +235,7 @@ private:
         // If the device is not available, select the first one
         if (!devices.keyExists(desc)) {
             select(devices.key(0));
+            return;
         }
 
         // Update URI
@@ -390,6 +420,20 @@ private:
             _this->select(_this->devDesc);
             core::setInputSampleRate(_this->samplerate);
         }
+
+        // Manual device entry, accepts an IP, a hostname or a full libiio URI
+        SmGui::LeftLabel("Manual IP");
+        SmGui::FillWidth();
+        if (SmGui::InputText(CONCAT("##_pluto_manual_ip_", _this->name), _this->manualUri, sizeof(_this->manualUri))) {
+            config.acquire();
+            config.conf["manualUri"] = _this->manualUri;
+            config.release(true);
+            _this->applyManualEntry();
+            if (_this->devDesc.empty() && !_this->manualKey.empty()) {
+                _this->select(_this->manualKey);
+                core::setInputSampleRate(_this->samplerate);
+            }
+        }
         if (_this->running) { SmGui::EndDisabled(); }
 
         SmGui::LeftLabel("Bandwidth");
@@ -506,6 +550,8 @@ private:
 
     std::string devDesc = "";
     std::string uri = "";
+    std::string manualKey = "";
+    char manualUri[64] = { 0 };
 
     double freq;
     int samplerate = 4000000;

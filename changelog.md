@@ -4,6 +4,7 @@ Newest entries are at the top.
 
 2026.11.19
 
+* PlutoSDR source: "Manual IP" field adds an address typed by hand to the device list, so a Pluto on Ethernet works when auto-discovery finds nothing. Accepts an IP, a hostname or a full libiio URI (`192.168.2.1`, `pluto.local`, `ip:192.168.2.1:30431`). The entry is kept in the config and can be used together with any discovered device.
 * DAB/DAB+ receiver module (dabplus_decoder): DAB and DAB+ as a mode of the radio module, with the ensemble and programme list, DAB+ AAC and DAB MP2 audio. Built and installed by default on Windows, Linux and macOS; off on Android, where Gradle's C++ build model rejects mpg123's multi-source object library. Its engine is fetched at configure time at pinned commits.
 
 2026.11.15
