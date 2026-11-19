@@ -122,6 +122,19 @@ keeps the engine's arithmetic identical: the app's plan normalises the inverse
 transform, and `dabplus::FFT` scales it back, so the demodulator sees the
 unnormalised transforms its maths was written against.
 
+The mpg123 checkout carries one patch of this repository's own,
+`patches/mpg123-31d1d478-arm64-fpu.patch`
+(`0a4e036d75d75d9b9b8a615dcc45c76d4524491f355c4476ed2c6d9f08040892`), applied
+only when the target is ARM64 and not Apple, and verified the same way:
+
+| Patch | sha256 | What it changes |
+|---|---|---|
+| `patches/mpg123-31d1d478-arm64-fpu.patch` | `0a4e036d75d75d9b9b8a615dcc45c76d4524491f355c4476ed2c6d9f08040892` | `ports/cmake/src/CMakeLists.txt`: an ARM64 target is treated as having an FPU. mpg123 asks `cmake_host_system_information(... HAS_FPU)`, which reads an x86 style flags line out of `/proc/cpuinfo`; Linux ARM64 has no such line, so the answer is no FPU, mpg123 picks fixed point math, and `libmpg123/optimize.h` then rejects the NEON64 decoder chosen in the same configure step |
+
+Every `*.patch` file is marked `-text` in `.gitattributes`: the hashes above are
+of the file bytes, and a checkout that rewrote line endings would change them
+and abort the configure step.
+
 ## What is not used from those projects
 
 DAB-Radio's CMake project, examples, GUI, easylogging, imgui, implot, stb,

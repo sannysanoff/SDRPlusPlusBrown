@@ -363,9 +363,12 @@ if (OPT_BUILD_DAB_DECODER)
 add_subdirectory("decoder_modules/dab_decoder")
 endif (OPT_BUILD_DAB_DECODER)
 
-if (OPT_BUILD_DABPLUS_DECODER)
+# Off on Android: AGP's generated C++ build model rejects mpg123's compat
+# object library, which has more than one source ("produces multiple outputs"),
+# so the module cannot be configured there until that dependency is patched.
+if (OPT_BUILD_DABPLUS_DECODER AND NOT ANDROID)
 add_subdirectory("decoder_modules/dabplus_decoder")
-endif (OPT_BUILD_DABPLUS_DECODER)
+endif (OPT_BUILD_DABPLUS_DECODER AND NOT ANDROID)
 
 if (OPT_BUILD_FALCON9_DECODER)
 add_subdirectory("decoder_modules/falcon9_decoder")

@@ -1,0 +1,15 @@
+--- a/ports/cmake/src/CMakeLists.txt
++++ b/ports/cmake/src/CMakeLists.txt
+@@ -196,7 +196,11 @@ check_cpu_arch_x64(ARCH_IS_X64)
+ check_cpu_arch_arm32(ARCH_IS_ARM32)
+ check_cpu_arch_arm64(ARCH_IS_ARM64)
+ 
+-if(WIN32 OR (ARCH_IS_ARM64 AND APPLE))
++# An ARM64 target always has an FPU. cmake_host_system_information(HAS_FPU)
++# greps /proc/cpuinfo for an x86 style flags line, which Linux ARM64 does not
++# have, so querying it there says no FPU and the arm64 optimization selected
++# below then trips the fixed-point check in optimize.h.
++if(WIN32 OR ARCH_IS_ARM64)
+     set(HAVE_FPU 1)
+ else()
+     cmake_host_system_information(RESULT HAVE_FPU QUERY HAS_FPU)

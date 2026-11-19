@@ -37,7 +37,7 @@ read on below.
 * [Bundled FT8 decoder](#bundled-ft8-decoder) - extracted from MSHV code, slightly tweaked.
 * Experimental CW decoder - whole-band CW decoding, module tinycw_decoder.
 * Bundled UHF/VHF digital modes decoder - with generous help of cropinghigh.
-* DAB/DAB+ receiver as a radio mode (module dabplus_decoder) - ensemble and programme list, DAB+ AAC and DAB MP2 audio, slideshow data decoded but not shown. Built on all desktop platforms and on Android, see [decoder_modules/dabplus_decoder/README.md](decoder_modules/dabplus_decoder/README.md).
+* DAB/DAB+ receiver as a radio mode (module dabplus_decoder) - ensemble and programme list, DAB+ AAC and DAB MP2 audio, slideshow data decoded but not shown. Built on all desktop platforms (not on Android, see [decoder_modules/dabplus_decoder/README.md](decoder_modules/dabplus_decoder/README.md)).
 * [Noise Reduction](#noise-reduction) - both for audio frequency and baseband (visual noise reduction!)
 * [Hermes Lite 2 support](#hermes-lite-2-support) - hl2_source plugin (don't confuse with hermes_source).
 * [Transmit mode](#transmit-mode) for Hermes Lite 2 - SSB QSO supported in full. See the [MANUAL](tx.md)

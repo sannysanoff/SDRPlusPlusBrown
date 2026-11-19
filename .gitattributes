@@ -1,0 +1,5 @@
+# Patches are hash-checked in CMake before they are applied, so their bytes are
+# part of the build contract. A checkout that rewrites line endings (Windows
+# with core.autocrlf=true) changes the hash and the configure step refuses to
+# build. Never convert them.
+*.patch -text

@@ -10,6 +10,13 @@ project(dabplus_decoder)
 # it is compiled here, in the target that already links the core.
 set(SRC "src/main.cpp" "src/dabplus_fft_core.cpp")
 
+# Every static library this module builds (the engine, faad2, mpg123) is linked
+# into the plugin's shared library, so all of it has to be position independent.
+# GCC defaults to non-PIC objects for a static library, and the link then fails
+# with "relocation R_X86_64_PC32 ... can not be used when making a shared
+# object". CMake propagates this property to the subdirectories below.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 include(${SDRPP_MODULE_CMAKE})
 
 # ---------------------------------------------------------------------------

@@ -699,8 +699,10 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["moduleInstances"]["TETRA Demodulator"]["enabled"] = false;
     // DAB/DAB+ is a mode of the radio module, not a receiver of its own: this
     // instance only injects the mode, so leaving it enabled costs nothing.
+#ifndef __ANDROID__
     defConfig["moduleInstances"]["DAB/DAB+ Modes"]["module"] = "dabplus_decoder";
     defConfig["moduleInstances"]["DAB/DAB+ Modes"]["enabled"] = true;
+#endif
     defConfig["moduleInstances"]["CW Decoder"]["module"] = "tinycw_decoder";
     defConfig["moduleInstances"]["CW Decoder"]["enabled"] = false;
 #ifdef __ANDROID__
@@ -823,7 +825,6 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.conf["modules"][modCount++] = "ft8_decoder.so";
     core::configManager.conf["modules"][modCount++] = "ch_extravhf_decoder.so";
     core::configManager.conf["modules"][modCount++] = "ch_tetra_demodulator.so";
-    core::configManager.conf["modules"][modCount++] = "dabplus_decoder.so";
     core::configManager.conf["modules"][modCount++] = "tinycw_decoder.so";
     core::configManager.conf["modules"][modCount++] = "radiosonde_decoder.so";
     core::configManager.conf["modules"][modCount++] = "reports_monitor.so";
@@ -837,10 +838,12 @@ int sdrpp_main(int argc, char* argv[]) {
         }
     }
 
+#ifndef __ANDROID__
     // Add the DAB/DAB+ mode instance to configs created before it existed
     if (!core::configManager.conf["moduleInstances"].contains("DAB/DAB+ Modes")) {
         core::configManager.conf["moduleInstances"]["DAB/DAB+ Modes"] = defConfig["moduleInstances"]["DAB/DAB+ Modes"];
     }
+#endif
     // Add the CW decoder instance to configs created before it existed
     if (!core::configManager.conf["moduleInstances"].contains("CW Decoder")) {
         core::configManager.conf["moduleInstances"]["CW Decoder"] = defConfig["moduleInstances"]["CW Decoder"];

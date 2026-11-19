@@ -52,7 +52,10 @@ so all plugins must be rebuilt after this change — a stale plugin dies on load
 ## Building
 
 `OPT_BUILD_DABPLUS_DECODER` is on by default, so a plain configure builds the
-module on Windows, Linux, macOS and Android. To build one target at a time:
+module on Windows, Linux and macOS. It is off on Android: Gradle's generated
+C++ build model rejects an object library with more than one source, and
+mpg123's `compat` target is one, so the module cannot be configured there. To
+build one target at a time:
 
 ```
 cmake .
@@ -116,13 +119,11 @@ including the open question about the licence of the reference engine patches.
   untested.
 - MOT slideshow and TII transmitter identification are compiled but not surfaced
   in the UI.
-- Android is wired but not run on a device. The module is built by the NDK
-  build like any other, `dabplus_decoder.so` is in the hardcoded load list in
-  `core/src/core.cpp`, and the DAB mode instance is created there too. Every
-  source file compiles for `aarch64-linux-android28` with NDK 28.2.13676358,
-  and faad2 and mpg123 configure and build statically for that target. What is
-  unverified is the link against the SDR kit's `libfftw3f.so` and `libvolk.so`
-  and the app on a phone: the kit (`sdrKitRoot`) is not present on the
-  development machine. The FFT is not a problem here: the transforms go through
-  the core's `dsp::arrays`, and Android's core already links `libfftw3f.so`
-  from the SDR kit.
+- Android is not built. Gradle's C++ build model (`generateJsonModelDebug`)
+  fails on mpg123's `compat` object library, which has two sources:
+  "Target compat ... produces multiple outputs". Until that dependency is
+  patched, the module is excluded from the Android build and from the module
+  load list in `core/src/core.cpp`. Everything else for Android is in place:
+  the sources compile for `aarch64-linux-android28` with NDK 28.2.13676358,
+  faad2 and mpg123 cross-compile, and the FFT goes through the core's
+  `dsp::arrays`, which Android already links as `libfftw3f.so` from the SDR kit.

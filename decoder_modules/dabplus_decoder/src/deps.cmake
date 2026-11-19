@@ -19,6 +19,8 @@ set(DABPLUS_FAAD2_URL        "https://github.com/knik0/faad2.git")
 set(DABPLUS_FAAD2_COMMIT     "693690e37f417d394a5e65296c75c2d971ffec58")
 set(DABPLUS_MPG123_URL       "https://github.com/madebr/mpg123.git")
 set(DABPLUS_MPG123_COMMIT    "31d1d478177ce923260cb6c69f037b9932c4dae5")
+set(DABPLUS_MPG123_ARM64_PATCH      "mpg123-31d1d478-arm64-fpu.patch")
+set(DABPLUS_MPG123_ARM64_PATCH_SHA  "0a4e036d75d75d9b9b8a615dcc45c76d4524491f355c4476ed2c6d9f08040892")
 
 # Engine patches, applied in this order after the pinned checkout. Each one is
 # verified against its recorded hash before it is applied.
@@ -151,6 +153,48 @@ function(dabplus_apply_pinned_patch src_dir patch_name patch_sha256 marker)
     endif()
 endfunction()
 
+# Same hash check as the engine patches, for a patch that changes one file
+# outside the engine's src/ tree and is applied only on the targets that need
+# it. --ignore-whitespace lets it apply to a checkout whose line endings the
+# host's git settings rewrote.
+function(dabplus_apply_file_patch src_dir patch_name patch_sha256 marker_file marker)
+    set(patch_path "${CMAKE_CURRENT_LIST_DIR}/../patches/${patch_name}")
+    file(SHA256 "${patch_path}" patch_hash)
+    if(NOT patch_hash STREQUAL patch_sha256)
+        message(FATAL_ERROR
+            "[dabplus_decoder] ${patch_name} hashes to ${patch_hash}, not the recorded "
+            "${patch_sha256}; refusing to build an unverified engine.")
+    endif()
+    execute_process(
+        COMMAND git apply --check --ignore-whitespace "${patch_path}"
+        WORKING_DIRECTORY "${src_dir}"
+        RESULT_VARIABLE _check
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    if(_check EQUAL 0)
+        execute_process(
+            COMMAND git apply --ignore-whitespace "${patch_path}"
+            WORKING_DIRECTORY "${src_dir}"
+            RESULT_VARIABLE _apply
+        )
+        if(NOT _apply EQUAL 0)
+            message(FATAL_ERROR "[dabplus_decoder] failed to apply ${patch_name}")
+        endif()
+        message(STATUS "[dabplus_decoder] applied ${patch_name} (sha256 verified)")
+        return()
+    endif()
+    if(EXISTS "${src_dir}/${marker_file}")
+        file(READ "${src_dir}/${marker_file}" _text)
+        string(FIND "${_text}" "${marker}" _pos)
+        if(NOT _pos EQUAL -1)
+            return()
+        endif()
+    endif()
+    message(FATAL_ERROR
+        "[dabplus_decoder] ${patch_name} neither applies nor is present in ${src_dir}; "
+        "delete that directory and reconfigure.")
+endfunction()
+
 dabplus_fetch_pinned(dab_radio      ${DABPLUS_DAB_RADIO_URL} ${DABPLUS_DAB_RADIO_COMMIT})
 foreach(entry IN LISTS DABPLUS_ENGINE_PATCHES)
     string(REPLACE "|" ";" parts "${entry}")
@@ -163,3 +207,17 @@ dabplus_fetch_pinned(viterbi_stuff  ${DABPLUS_VITERBI_URL}   ${DABPLUS_VITERBI_C
 dabplus_fetch_pinned(fmt_stuff      ${DABPLUS_FMT_URL}       ${DABPLUS_FMT_COMMIT})
 dabplus_fetch_pinned(faad2_stuff    ${DABPLUS_FAAD2_URL}     ${DABPLUS_FAAD2_COMMIT})
 dabplus_fetch_pinned(mpg123_stuff   ${DABPLUS_MPG123_URL}    ${DABPLUS_MPG123_COMMIT})
+
+# mpg123 decides between floating point and fixed point decoding with
+# cmake_host_system_information(... HAS_FPU), which reads an x86 style flags
+# line out of /proc/cpuinfo. Linux ARM64 has no such line, so the query answers
+# no FPU, mpg123 selects fixed point math, and the NEON64 decoder it selects in
+# the same configure step is then rejected by optimize.h as a bad pair. ARM64
+# always has an FPU, so the patch says so. Apple ARM64 is handled upstream.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" AND NOT APPLE)
+    dabplus_apply_file_patch("${mpg123_stuff_SOURCE_DIR}"
+        "${DABPLUS_MPG123_ARM64_PATCH}"
+        "${DABPLUS_MPG123_ARM64_PATCH_SHA}"
+        "ports/cmake/src/CMakeLists.txt"
+        "if(WIN32 OR ARCH_IS_ARM64)")
+endif()
