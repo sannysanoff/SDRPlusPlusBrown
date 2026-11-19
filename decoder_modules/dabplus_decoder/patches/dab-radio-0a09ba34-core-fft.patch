@@ -1,0 +1,167 @@
+diff --git a/src/ofdm/coherent_demapper.cpp b/src/ofdm/coherent_demapper.cpp
+index f2b8796..f2cd656 100644
+--- a/src/ofdm/coherent_demapper.cpp
++++ b/src/ofdm/coherent_demapper.cpp
+@@ -3,7 +3,6 @@
+ #include <cmath>
+ #include <string.h>
+ #include <algorithm>
+-#include <fftw3.h>
+ 
+ #ifndef _WIN32
+ #include <stdlib.h>
+@@ -106,14 +105,14 @@ CoherentDemapper::CoherentDemapper(int carriers, int fftSize, int symbolPeriod,
+ 		c++;
+ 	}
+ 
+-	_forward = fftwf_plan_dft_1d(fftSize, (fftwf_complex*)_timeIn, (fftwf_complex*)_timeOut, FFTW_FORWARD, FFTW_ESTIMATE);
+-	_backward = fftwf_plan_dft_1d(fftSize, (fftwf_complex*)_timeIn, (fftwf_complex*)_timeOut, FFTW_BACKWARD, FFTW_ESTIMATE);
++	_forward = std::make_unique<dabplus::FFT>(fftSize, false);
++	_backward = std::make_unique<dabplus::FFT>(fftSize, true);
+ }
+ 
+ CoherentDemapper::~CoherentDemapper()
+ {
+-	fftwf_destroy_plan(_forward);
+-	fftwf_destroy_plan(_backward);
++	_forward.reset();
++	_backward.reset();
+ 	_aligned_free(_bin);
+ 	_aligned_free(_index);
+ 	_aligned_free(_prs);
+@@ -162,7 +161,7 @@ void CoherentDemapper::SmoothChannel()
+ 	{
+ 		_timeIn[_bin[i]] = _channel[i];
+ 	}
+-	fftwf_execute(_backward);
++	_backward->execute(_timeIn, _timeOut);
+ 
+ 	auto peak = 0;
+ 	for (int i = 0; i < fftSize; i++)
+@@ -197,7 +196,7 @@ void CoherentDemapper::SmoothChannel()
+ 		auto n = (peak + i + fftSize) % fftSize;
+ 		_timeIn[n] = _timeOut[n];
+ 	}
+-	fftwf_execute(_forward);
++	_forward->execute(_timeIn, _timeOut);
+ 	for (int i = 0; i < _carriers; i++)
+ 	{
+ 		_smooth[i] = _timeOut[_bin[i]];
+@@ -208,14 +207,14 @@ void CoherentDemapper::SmoothChannel()
+ 	{
+ 		_timeIn[_bin[i]] = 1.0f;
+ 	}
+-	fftwf_execute(_backward);
++	_backward->execute(_timeIn, _timeOut);
+ 	memset(_timeIn, 0, bytes);
+ 	for (int i = first; i <= last; i++)
+ 	{
+ 		auto n = (peak + i + fftSize) % fftSize;
+ 		_timeIn[n] = _timeOut[n];
+ 	}
+-	fftwf_execute(_forward);
++	_forward->execute(_timeIn, _timeOut);
+ 	for (int i = 0; i < _carriers; i++)
+ 	{
+ 		auto flat = _timeOut[_bin[i]].real();
+diff --git a/src/ofdm/coherent_demapper.h b/src/ofdm/coherent_demapper.h
+index dfbd619..f253d15 100644
+--- a/src/ofdm/coherent_demapper.h
++++ b/src/ofdm/coherent_demapper.h
+@@ -5,7 +5,9 @@
+ #include <complex>
+ #include "viterbi_config.h"
+ 
+-struct fftwf_plan_s;
++#include <memory>
++
++#include "dabplus_fft.h"
+ 
+ class CoherentDemapper
+ {
+@@ -38,8 +40,8 @@ private:
+ 	float _timingRate;
+ 	int _windowLength;
+ 	std::atomic<bool> _secondPass;
+-	fftwf_plan_s* _forward;
+-	fftwf_plan_s* _backward;
++	std::unique_ptr<dabplus::FFT> _forward;
++	std::unique_ptr<dabplus::FFT> _backward;
+ 
+ 	void Rotate(float phase, float slope, std::complex<float>* out);
+ 	void SmoothChannel();
+diff --git a/src/ofdm/ofdm_demodulator.cpp b/src/ofdm/ofdm_demodulator.cpp
+index 7024121..f8ad837 100644
+--- a/src/ofdm/ofdm_demodulator.cpp
++++ b/src/ofdm/ofdm_demodulator.cpp
+@@ -9,7 +9,6 @@
+ #include <mutex>
+ #include <optional>
+ #include <thread>
+-#include <fftw3.h>
+ #include "detect_architecture.h"
+ #include "simd_flags.h" // NOLINT
+ #include "utility/joint_allocate.h"
+@@ -89,8 +88,8 @@ OFDM_Demod::OFDM_Demod(
+         m_pipeline_out_bits,              BufferParameters{ (m_params.nb_frame_symbols-1)*m_params.nb_data_carriers*2 }
+     );
+ 
+-    m_fft_plan = fftwf_plan_dft_1d((int)m_params.nb_fft, nullptr, nullptr, FFTW_FORWARD, FFTW_ESTIMATE);
+-    m_ifft_plan = fftwf_plan_dft_1d((int)m_params.nb_fft, nullptr, nullptr, FFTW_BACKWARD, FFTW_ESTIMATE);
++    m_fft_plan = std::make_unique<dabplus::FFT>(m_params.nb_fft, false);
++    m_ifft_plan = std::make_unique<dabplus::FFT>(m_params.nb_fft, true);
+     m_coherent_demapper = new CoherentDemapper((int)m_params.nb_data_carriers, (int)m_params.nb_fft, (int)m_params.nb_symbol_period, prs_fft_ref.data());
+     m_guard_correlations.resize(m_params.nb_frame_symbols);
+ 
+@@ -205,8 +204,8 @@ OFDM_Demod::~OFDM_Demod() {
+     }
+ 
+     // fft/ifft buffers
+-    fftwf_destroy_plan(m_fft_plan);
+-    fftwf_destroy_plan(m_ifft_plan);
++    m_fft_plan.reset();
++    m_ifft_plan.reset();
+     delete m_coherent_demapper;
+ }
+ 
+@@ -912,12 +911,12 @@ void OFDM_Demod::CalculateViterbiBits(tcb::span<const std::complex<float>> vec_b
+ 
+ void OFDM_Demod::CalculateFFT(tcb::span<const std::complex<float>> fft_in, tcb::span<std::complex<float>> fft_out) {
+     PROFILE_BEGIN_FUNC();
+-    fftwf_execute_dft(m_fft_plan, (fftwf_complex*)fft_in.data(), (fftwf_complex*)fft_out.data());
++    m_fft_plan->execute(fft_in.data(), fft_out.data());
+ }
+ 
+ void OFDM_Demod::CalculateIFFT(tcb::span<const std::complex<float>> fft_in, tcb::span<std::complex<float>> fft_out) {
+     PROFILE_BEGIN_FUNC();
+-    fftwf_execute_dft(m_ifft_plan, (fftwf_complex*)fft_in.data(), (fftwf_complex*)fft_out.data());
++    m_ifft_plan->execute(fft_in.data(), fft_out.data());
+ }
+ 
+ void OFDM_Demod::CalculateRelativePhase(tcb::span<const std::complex<float>> fft_in, tcb::span<std::complex<float>> arg_out) {
+diff --git a/src/ofdm/ofdm_demodulator.h b/src/ofdm/ofdm_demodulator.h
+index 8a6dcd0..791f3f8 100644
+--- a/src/ofdm/ofdm_demodulator.h
++++ b/src/ofdm/ofdm_demodulator.h
+@@ -16,7 +16,7 @@
+ #include "./ofdm_params.h"
+ #include "./reconstruction_buffer.h"
+ 
+-struct fftwf_plan_s;
++#include "dabplus_fft.h"
+ 
+ class OFDM_Demod_Pipeline;
+ class OFDM_Demod_Coordinator;
+@@ -71,9 +71,9 @@ private:
+     bool m_is_null_start_found;
+     bool m_is_null_end_found;
+     float m_signal_l1_average;
+-    // fft
+-    fftwf_plan_s* m_fft_plan;
+-    fftwf_plan_s* m_ifft_plan;
++    // fft (the application's engine, see dabplus_fft.h)
++    std::unique_ptr<dabplus::FFT> m_fft_plan;
++    std::unique_ptr<dabplus::FFT> m_ifft_plan;
+     // threads
+     std::unique_ptr<OFDM_Demod_Coordinator> m_coordinator;
+     std::vector<std::unique_ptr<OFDM_Demod_Pipeline>> m_pipelines;

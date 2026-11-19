@@ -44,7 +44,7 @@ private:
             input.deviceId = audio.getDefaultInputDevice();
             input.nChannels = 1;
             if (!audio.getDeviceInfo(input.deviceId).inputChannels) { return; }
-            unsigned int frames = sampleRate / 240;
+            unsigned int frames = (sampleRate * 20) / 1000;
             RtAudio::StreamOptions options;
             options.streamName = "SDR++ shared microphone";
 #if RTAUDIO_VERSION_MAJOR >= 6

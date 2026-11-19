@@ -18,7 +18,7 @@ current_script_dir = Path(__file__).resolve().parent
 sdrpproot = current_script_dir.parent.parent.parent.parent
 
 # Construct the full path to the test file relative to the project root
-file_path = sdrpproot / 'tests/test_files/baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav'
+file_path = sdrpproot / 'e2e/recordings/baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav'
 
 
 # You can print the paths to verify them (optional)

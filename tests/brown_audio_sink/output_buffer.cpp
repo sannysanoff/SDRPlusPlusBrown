@@ -36,6 +36,22 @@ int main() {
         std::this_thread::yield();
     }
     producer.join();
+    assert(buffer.writtenFrames.load() == 3700);
+    assert(buffer.writeBlocks.load() == 100);
+    assert(buffer.maxWriteFrames.load() == 37);
+
+    // Preallocated capture records both real samples and zero-filled underrun frames.
+    buffer.startCapture(10);
+    for (int i = 0; i < 4; i++) { input.writeBuf[i] = {float(i + 1), float(-(i + 1))}; }
+    assert(input.swap(4));
+    while (buffer.available() < 4) { std::this_thread::yield(); }
+    assert(buffer.consume(output, 6) == 4);
+    assert(buffer.consume(output, 6) == 0);
+    auto captured = buffer.copyCapture();
+    assert(captured.size() == 10);
+    for (int i = 0; i < 4; i++) { assert(captured[i].l == i + 1 && captured[i].r == -(i + 1)); }
+    for (int i = 4; i < 10; i++) { assert(captured[i].l == 0 && captured[i].r == 0); }
+
     buffer.stop();
     buffer.stop();
     buffer.prepare(8);

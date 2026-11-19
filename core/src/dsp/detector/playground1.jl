@@ -15,7 +15,7 @@ using Dates       # for timestamp
 # --- Path Setup ---
 current_script_dir = @__DIR__
 sdrpproot = dirname(dirname(dirname(dirname(current_script_dir))))
-file_path = joinpath(sdrpproot, "tests", "test_files",  "baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav")
+file_path = joinpath(sdrpproot, "e2e", "recordings",  "baseband_14174296Hz_11-08-47_24-02-2024-contest-ssb-small.wav")
 @printf("Project Root: %s\n", abspath(sdrpproot))
 @printf("Test File Path: %s\n", abspath(file_path))
 @printf("Does file exist? %s\n", isfile(file_path))

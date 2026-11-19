@@ -11,7 +11,8 @@
 // Run (needs a display / audio device, so use lldb if the app aborts headless):
 //   ./sdrpp -r root_dev -t tinycw_wav_e2e
 //
-// The recording is expected in <test_root>/test_files/:
+// The recording is read from e2e/recordings/ unless --test_root names another
+// directory:
 //   baseband_14034485Hz_19-09-12_13-08-2022---cw-contest-good-quality-.wav
 
 #include <algorithm>

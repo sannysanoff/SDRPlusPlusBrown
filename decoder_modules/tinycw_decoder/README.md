@@ -191,13 +191,14 @@ recording and checks that channels open and text arrives:
 ```bash
 cmake -S . -B build-tests -DBUILD_TESTS=ON -DOPT_BUILD_TINYCW_DECODER=ON
 cmake --build build-tests -j8
-./build-tests/sdrpp -r root_dev -t tinycw_units --test_root .
-./build-tests/sdrpp -r root_dev -t tinycw_wav_e2e --test_root .   # needs weights
+./build-tests/sdrpp -r root_dev -t tinycw_units
+./build-tests/sdrpp -r root_dev -t tinycw_wav_e2e   # needs weights
 ```
 
-The E2E test expects the recording in `<test_root>/test_files/` and reads
-`TINYCW_E2E_SECONDS` (default 60). It creates the module instance itself, so
-the root config needs no module entry.
+The recordings are the repository's own, in `e2e/recordings/`, which the test
+build compiles in as the default. `--test_root DIR` names another directory
+instead. The E2E test reads `TINYCW_E2E_SECONDS` (default 60). It creates the
+module instance itself, so the root config needs no module entry.
 
 Note: on macOS this harness aborts when launched without a debugger (it happens
 for the pre-existing tests too); run it as

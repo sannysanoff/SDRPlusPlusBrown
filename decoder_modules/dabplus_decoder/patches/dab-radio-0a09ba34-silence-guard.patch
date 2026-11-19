@@ -1,0 +1,24 @@
+--- a/src/ofdm/ofdm_demodulator.cpp
++++ b/src/ofdm/ofdm_demodulator.cpp
+@@ -421,8 +421,21 @@
+     float peak_sum = 0.0f;
+     float lerp_peak = 0.0f;
+     for (const auto& peak: peaks) { peak_sum += peak.magnitude; }
++    // No signal, or a receiver tuned to silence, gives no peak to interpolate
++    // between: the correlation spectrum is all -inf dB, so every peak magnitude
++    // is zero. Dividing by that sum yields NaN, and the NaN then enters the
++    // frequency correction and the soft bits for the rest of the run - the
++    // demodulator never recovers even after the signal returns.
++    if (!std::isfinite(peak_sum) || peak_sum <= 0.0f) {
++        Reset();
++        return 0;
++    }
+     for (const auto& peak: peaks) { lerp_peak += float(peak.index)*peak.magnitude/peak_sum; }
+     const float predicted_freq_coarse_offset = -lerp_peak / float(m_params.nb_fft);
++    if (!std::isfinite(predicted_freq_coarse_offset)) {
++        Reset();
++        return 0;
++    }
+     const float error = predicted_freq_coarse_offset-m_freq_coarse_offset;
+ 
+     // Step 9: Determine if this is an large or small correction

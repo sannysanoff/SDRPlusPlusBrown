@@ -2,6 +2,7 @@
 #include <atomic>
 #include <vector>
 #include <chrono>
+#include <mutex>
 #include <dsp/sink.h>
 
 // One DSP producer and one hardware consumer. Only prepare/reset may allocate;
@@ -30,15 +31,23 @@ public:
     }
 
     // Start collecting exactly what the callback hands to the device.
+    // Preallocates on the caller thread so the audio callback never allocates.
     void startCapture(size_t frames) {
-        capture.clear();
+        std::lock_guard<std::mutex> lock(captureMutex);
+        capture.resize(frames);
+        captureWritten = 0;
         captureLimit = frames;
-        capturing.store(true, std::memory_order_relaxed);
+        capturing.store(frames > 0, std::memory_order_release);
     }
 
-    std::vector<dsp::stereo_t> capture;
-    std::atomic<bool> capturing{false};
-    size_t captureLimit = 0;
+    std::vector<dsp::stereo_t> copyCapture() {
+        std::lock_guard<std::mutex> lock(captureMutex);
+        return std::vector<dsp::stereo_t>(capture.begin(), capture.begin() + captureWritten);
+    }
+
+    std::atomic<uint64_t> writtenFrames{0};
+    std::atomic<uint64_t> writeBlocks{0};
+    std::atomic<unsigned> maxWriteFrames{0};
 
     // Frames waiting to be played, for diagnosis.
     size_t available() const {
@@ -52,18 +61,26 @@ public:
         size_t available = writePosition.load(std::memory_order_acquire) - read;
         size_t copied = (std::min)(count, available);
         for (size_t i = 0; i < copied; i++) { output[i] = samples[(read + i) & mask]; }
-        if (capturing.load(std::memory_order_relaxed)) {
-            for (size_t i = 0; i < copied && capture.size() < captureLimit; i++) { capture.push_back(output[i]); }
-            if (capture.size() >= captureLimit) { capturing.store(false, std::memory_order_relaxed); }
-        }
         readPosition.store(read + copied, std::memory_order_release);
         for (size_t i = copied; i < count; i++) { output[i] = {0, 0}; }
+        if (capturing.load(std::memory_order_acquire)) {
+            std::unique_lock<std::mutex> lock(captureMutex, std::try_to_lock);
+            if (lock.owns_lock() && capturing.load(std::memory_order_relaxed)) {
+                size_t toSave = (std::min)(count, captureLimit - captureWritten);
+                for (size_t i = 0; i < toSave; i++) { capture[captureWritten + i] = output[i]; }
+                captureWritten += toSave;
+                if (captureWritten >= captureLimit) { capturing.store(false, std::memory_order_release); }
+            }
+        }
         return copied;
     }
 
     int run() override {
         int count = _in->read();
         if (count < 0) { return -1; }
+        writeBlocks.fetch_add(1, std::memory_order_relaxed);
+        unsigned prevMax = maxWriteFrames.load(std::memory_order_relaxed);
+        while ((unsigned)count > prevMax && !maxWriteFrames.compare_exchange_weak(prevMax, (unsigned)count, std::memory_order_relaxed)) {}
         size_t offset = 0;
         while (offset < (size_t)count && !stopping.load()) {
             size_t write = writePosition.load(std::memory_order_relaxed);
@@ -71,6 +88,7 @@ public:
             size_t copied = (std::min)(free, (size_t)count - offset);
             for (size_t i = 0; i < copied; i++) { samples[(write + i) & mask] = _in->readBuf[offset + i]; }
             writePosition.store(write + copied, std::memory_order_release);
+            writtenFrames.fetch_add(copied, std::memory_order_relaxed);
             offset += copied;
             if (!copied) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
         }
@@ -85,4 +103,9 @@ private:
     std::atomic<size_t> readPosition{0};
     std::atomic<size_t> writePosition{0};
     std::atomic<bool> stopping{true};
+    std::mutex captureMutex;
+    std::vector<dsp::stereo_t> capture;
+    std::atomic<bool> capturing{false};
+    size_t captureWritten = 0;
+    size_t captureLimit = 0;
 };

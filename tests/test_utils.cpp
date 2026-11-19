@@ -27,17 +27,14 @@ namespace sdrpp {
 
         void selectWavFile(const std::string& TEST_FILE_NAME) {
 
-            // Get the path to the test file
-            std::string testDir;
+            // Recordings live in the repository, e2e/recordings, and never under
+            // the application's root directory: that root is the config folder
+            // (~/.config/sdrpp-brown), which holds no test data.
+            std::string testDir = SDRPP_E2E_RECORDINGS_DIR;
 
-            // Check if test_root parameter is provided
+            // An explicit --test_root names the directory holding the recordings.
             if (core::args["test_root"].type == CLI_ARG_TYPE_STRING && !core::args["test_root"].s().empty()) {
-                // Use the provided test_root parameter
-                testDir = core::args["test_root"].s() + "/test_files";
-            } else {
-                // Fallback to the default path
-                testDir = std::string(core::getRoot()) + "/tests/test_files";
-                flog::warn("test_root parameter not provided, using default path: {}", testDir);
+                testDir = core::args["test_root"].s();
             }
 
             std::string testFilePath = testDir + "/" + TEST_FILE_NAME;
@@ -45,7 +42,7 @@ namespace sdrpp {
             // Verify the test file exists
             std::ifstream file(testFilePath);
             if (!file.good()) {
-                flog::error("Test file not found: {}", testFilePath);
+                flog::error("Test file not found: {} (recordings live in e2e/recordings)", testFilePath);
                 return;
             }
             file.close();

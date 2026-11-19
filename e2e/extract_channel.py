@@ -8,11 +8,14 @@ Usage:
     extract_channel.py SRC OUT --rec-center Hz --chan-center Hz \
         --start SEC --stop SEC [--fs-out 16000] [--band 16000]
 
-Example (DMR, signal at absolute 144300000, 5 s from the 144553405 Hz baseband):
+Example (DMR, signal at absolute 144300000, 5 s from a 144553405 Hz baseband):
     extract_channel.py \\
-        /Users/san/recordings/baseband_144553405Hz_17-40-40_15-05-2024---tarlink--dmr---.wav \\
+        <recording.wav> \\
         e2e/recordings/baseband_144300000Hz_16k.wav \\
         --rec-center 144553405 --chan-center 144300000 --start 10 --stop 15
+
+The source recording is not part of this repository; only the extracted fixture
+is, under `recordings/` next to this script.
 """
 import argparse
 import os

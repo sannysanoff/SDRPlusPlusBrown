@@ -187,9 +187,8 @@ private:
         RtAudio::StreamParameters parameters;
         parameters.deviceId = deviceIds[devId];
         parameters.nChannels = 2;
-        unsigned int bufferFrames = sampleRate / 60;
+        unsigned int bufferFrames = (sampleRate * 20) / 1000;
         RtAudio::StreamOptions opts;
-        opts.flags = RTAUDIO_MINIMIZE_LATENCY;
         opts.streamName = _streamName;
 
         try {

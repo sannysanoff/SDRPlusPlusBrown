@@ -16,6 +16,7 @@
 #include "shared_microphone.h"
 #include "sink_config.h"
 #include "output_buffer.h"
+#include "coreaudio_period_watch.h"
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -70,14 +71,11 @@ public:
     static std::atomic<uint64_t> underflowCallbacks;
     // Diagnosis only: written by the audio and DSP threads, read by the status
     // command. Rates are computed by the caller from two samples.
-    static uint64_t callbackCount;
-    static uint64_t consumedFrames;
-    static uint64_t writtenFrames;
-    static uint64_t zeroFilledFrames;
-    static uint64_t writeBlocks;
-    static unsigned minCallbackFrames;
-    static unsigned maxCallbackFrames;
-    static unsigned maxWriteFrames;
+    static std::atomic<uint64_t> callbackCount;
+    static std::atomic<uint64_t> consumedFrames;
+    static std::atomic<uint64_t> zeroFilledFrames;
+    static std::atomic<unsigned> minCallbackFrames;
+    static std::atomic<unsigned> maxCallbackFrames;
 
     bool micInput = true;
 
@@ -340,10 +338,11 @@ private:
                 throw std::runtime_error("Could not open output stream");
             }
 #else
-            audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &microBuffer, &callback, this, &opts);
+            audio.openStream(&outputParameters, nullptr, RTAUDIO_FLOAT32, sampleRate, &periodFrames, &callback, this, &opts);
 #endif
             this->periodFrames = periodFrames;
-            outputBuffer.prepare((std::max)(size_t(bufferFrames), size_t(sampleRate) * JITTER_BUFFER_MS / 1000));
+            periodWatch.start(devList[devId - (devId % 3)].name, devList[devId].isDefaultOutput, periodFrames);
+            outputBuffer.prepare((std::max)(size_t(periodFrames) * 2, size_t(sampleRate) * JITTER_BUFFER_MS / 1000));
             outputBuffer.start();
 #if RTAUDIO_VERSION_MAJOR >= 6
             if (audio.startStream() != RTAUDIO_NO_ERROR) {
@@ -368,30 +367,40 @@ private:
         sharedMicrophone.release(this);
         outputBuffer.stop();
         if (audio.isStreamOpen()) { audio.closeStream(); }
+        periodWatch.stop();
 
     }
 
     static int callback(void* outputBuffer, void*, unsigned int nBufferFrames, double, RtAudioStreamStatus, void* userData) {
         AudioSink* _this = (AudioSink*)userData;
         auto* output = static_cast<dsp::stereo_t*>(outputBuffer);
-        size_t received = _this->outputBuffer.consume(output, nBufferFrames);
-        callbackCount++;
-        consumedFrames += received;
-        zeroFilledFrames += nBufferFrames - received;
-        if (nBufferFrames < minCallbackFrames) { minCallbackFrames = nBufferFrames; }
-        if (nBufferFrames > maxCallbackFrames) { maxCallbackFrames = nBufferFrames; }
-        _this->underflow.store(received < nBufferFrames, std::memory_order_relaxed);
-        if (received < nBufferFrames) { underflowCallbacks.fetch_add(1, std::memory_order_relaxed); }
+        size_t requestedFrames = nBufferFrames;
+        unsigned int deviceFrames = _this->periodWatch.frames();
+        if (deviceFrames > 0 && deviceFrames < requestedFrames) {
+            requestedFrames = deviceFrames;
+        }
+        size_t received = _this->outputBuffer.consume(output, requestedFrames);
+        for (size_t i = requestedFrames; i < nBufferFrames; i++) { output[i] = {0, 0}; }
+        callbackCount.fetch_add(1, std::memory_order_relaxed);
+        consumedFrames.fetch_add(received, std::memory_order_relaxed);
+        zeroFilledFrames.fetch_add(requestedFrames - received, std::memory_order_relaxed);
+        unsigned reqU = (unsigned)requestedFrames;
+        unsigned prevMin = minCallbackFrames.load(std::memory_order_relaxed);
+        while (reqU < prevMin && !minCallbackFrames.compare_exchange_weak(prevMin, reqU, std::memory_order_relaxed)) {}
+        unsigned prevMax = maxCallbackFrames.load(std::memory_order_relaxed);
+        while (reqU > prevMax && !maxCallbackFrames.compare_exchange_weak(prevMax, reqU, std::memory_order_relaxed)) {}
+        _this->underflow.store(received < requestedFrames, std::memory_order_relaxed);
+        if (received < requestedFrames) { underflowCallbacks.fetch_add(1, std::memory_order_relaxed); }
         if (sigpath::sinkManager.toneGenerator.load(std::memory_order_relaxed) == 1) {
             float tick = 2 * M_PI * 800 / _this->sampleRate;
-            for (size_t i = 0; i < received; i++) {
+            for (size_t i = 0; i < requestedFrames; i++) {
                 output[i].l = output[i].r = sin(_this->lastPhase);
                 _this->lastPhase += tick;
                 if (_this->lastPhase >= 2 * M_PI) { _this->lastPhase -= 2 * M_PI; }
             }
         }
         int channel = _this->devId % 3;
-        for (size_t i = 0; i < received; i++) {
+        for (size_t i = 0; i < requestedFrames; i++) {
             if (channel == 1) { output[i].r = 0; }
             if (channel == 2) { output[i].l = 0; }
         }
@@ -422,6 +431,7 @@ private:
     std::string sampleRatesTxt;
     unsigned int sampleRate = 48000;
     unsigned int periodFrames = 0;   // what RtAudio actually negotiated
+    CoreAudioPeriodWatch periodWatch;
 
     RtAudio audio;
     float lastPhase = 0;
@@ -431,14 +441,11 @@ private:
 };
 
 std::atomic<uint64_t> AudioSink::underflowCallbacks{0};
-uint64_t AudioSink::callbackCount = 0;
-uint64_t AudioSink::consumedFrames = 0;
-uint64_t AudioSink::writtenFrames = 0;
-uint64_t AudioSink::zeroFilledFrames = 0;
-uint64_t AudioSink::writeBlocks = 0;
-unsigned AudioSink::minCallbackFrames = (unsigned)-1;
-unsigned AudioSink::maxCallbackFrames = 0;
-unsigned AudioSink::maxWriteFrames = 0;
+std::atomic<uint64_t> AudioSink::callbackCount{0};
+std::atomic<uint64_t> AudioSink::consumedFrames{0};
+std::atomic<uint64_t> AudioSink::zeroFilledFrames{0};
+std::atomic<unsigned> AudioSink::minCallbackFrames{(unsigned)-1};
+std::atomic<unsigned> AudioSink::maxCallbackFrames{0};
 bool AudioSink::microphoneConfigured = false;
 SharedMicrophone AudioSink::sharedMicrophone;
 std::vector<AudioSink*> AudioSink::instances;
@@ -477,7 +484,7 @@ public:
     std::string handleDebugCommand(const std::string& cmd, const std::string& args) override {
         if (cmd == "sink_capture") {
             unsigned seconds = 5;
-            try { if (!args.empty()) { seconds = std::max(1u, std::min(60u, (unsigned)std::stoi(args))); } } catch (...) {}
+            try { if (!args.empty()) { seconds = (std::max)(1u, (std::min)(60u, (unsigned)std::stoi(args))); } } catch (...) {}
             for (auto* sink : AudioSink::instances) { sink->outputBuffer.startCapture(size_t(sink->sampleRate) * seconds); }
             return "{\"status\":\"ok\",\"seconds\":" + std::to_string(seconds) + "}";
         }
@@ -485,7 +492,7 @@ public:
             FILE* f = fopen(args.c_str(), "wb");
             if (!f) { return "{\"error\":\"cannot open output\"}"; }
             std::vector<dsp::stereo_t> pcm;
-            for (auto* sink : AudioSink::instances) { pcm = sink->outputBuffer.capture; }
+            for (auto* sink : AudioSink::instances) { pcm = sink->outputBuffer.copyCapture(); }
             const uint32_t frames = uint32_t(pcm.size());
             const uint16_t channels = 2, bits = 16;
             const uint32_t rate = AudioSink::instances.empty() ? 48000 : AudioSink::instances.front()->sampleRate;
@@ -497,8 +504,8 @@ public:
             put32(rate * channels * (bits / 8)); put16(channels * (bits / 8)); put16(bits);
             fwrite("data", 1, 4, f); put32(dataBytes);
             for (auto& s : pcm) {
-                const int16_t l = int16_t(std::max(-1.0f, std::min(1.0f, s.l)) * 32767.0f);
-                const int16_t r = int16_t(std::max(-1.0f, std::min(1.0f, s.r)) * 32767.0f);
+                const int16_t l = int16_t((std::max)(-1.0f, (std::min)(1.0f, s.l)) * 32767.0f);
+                const int16_t r = int16_t((std::max)(-1.0f, (std::min)(1.0f, s.r)) * 32767.0f);
                 fwrite(&l, 2, 1, f); fwrite(&r, 2, 1, f);
             }
             fclose(f);
@@ -507,6 +514,9 @@ public:
         if (cmd != "sink_status") { return ""; }
         std::string out = "{\"sinks\":[";
         bool first = true;
+        uint64_t writtenFrames = 0;
+        uint64_t writeBlocks = 0;
+        unsigned maxWriteFrames = 0;
         for (auto* sink : AudioSink::instances) {
             if (!first) { out += ","; }
             first = false;
@@ -514,20 +524,24 @@ public:
             out += ",\"running\":" + std::string(sink->running ? "true" : "false");
             out += ",\"device_period_ms\":" + std::to_string(DEVICE_BUFFER_MS);
             out += ",\"period_frames\":" + std::to_string(sink->periodFrames);
+            out += ",\"device_period_frames\":" + std::to_string(sink->periodWatch.frames());
             out += ",\"ring_frames\":" + std::to_string(sink->outputBuffer.available());
             out += ",\"ring_capacity\":" + std::to_string(sink->outputBuffer.capacity());
             out += ",\"jitter_ms\":" + std::to_string(JITTER_BUFFER_MS);
             out += ",\"audio_rate\":" + std::to_string(sink->sampleRate) + "}";
+            writtenFrames += sink->outputBuffer.writtenFrames.load(std::memory_order_relaxed);
+            writeBlocks += sink->outputBuffer.writeBlocks.load(std::memory_order_relaxed);
+            maxWriteFrames = (std::max)(maxWriteFrames, sink->outputBuffer.maxWriteFrames.load(std::memory_order_relaxed));
         }
-        out += "],\"underflow_callbacks\":" + std::to_string(AudioSink::underflowCallbacks.load());
-        out += ",\"callbacks\":" + std::to_string(AudioSink::callbackCount);
-        out += ",\"consumed_frames\":" + std::to_string(AudioSink::consumedFrames);
-        out += ",\"written_frames\":" + std::to_string(AudioSink::writtenFrames);
-        out += ",\"zero_filled_frames\":" + std::to_string(AudioSink::zeroFilledFrames);
-        out += ",\"write_blocks\":" + std::to_string(AudioSink::writeBlocks);
-        out += ",\"callback_frames_min\":" + std::to_string(AudioSink::minCallbackFrames);
-        out += ",\"callback_frames_max\":" + std::to_string(AudioSink::maxCallbackFrames);
-        out += ",\"write_block_max\":" + std::to_string(AudioSink::maxWriteFrames);
+        out += "],\"underflow_callbacks\":" + std::to_string(AudioSink::underflowCallbacks.load(std::memory_order_relaxed));
+        out += ",\"callbacks\":" + std::to_string(AudioSink::callbackCount.load(std::memory_order_relaxed));
+        out += ",\"consumed_frames\":" + std::to_string(AudioSink::consumedFrames.load(std::memory_order_relaxed));
+        out += ",\"written_frames\":" + std::to_string(writtenFrames);
+        out += ",\"zero_filled_frames\":" + std::to_string(AudioSink::zeroFilledFrames.load(std::memory_order_relaxed));
+        out += ",\"write_blocks\":" + std::to_string(writeBlocks);
+        out += ",\"callback_frames_min\":" + std::to_string(AudioSink::minCallbackFrames.load(std::memory_order_relaxed));
+        out += ",\"callback_frames_max\":" + std::to_string(AudioSink::maxCallbackFrames.load(std::memory_order_relaxed));
+        out += ",\"write_block_max\":" + std::to_string(maxWriteFrames);
         out += "}";
         return out;
     }

@@ -8,8 +8,9 @@ spoken vowel. It is driven here with two 48 kHz IQ fixtures through the File Sou
     recordings/vowel_squelch_ssb.wav    noise, then an SSB contest station, then noise
     recordings/vowel_squelch_noise.wav  the same bandwidth and level, no signal at all
 
-Both were cut from /Users/san/recordings/baseband_14174296Hz_11-10-09_24-02-2024-contest-ssb.wav
-(the station at +47.9 kHz, shifted to 0 Hz, upper sideband only, decimated to 48 kHz).
+Both were cut from the 24-02-2024 SSB contest baseband recording kept outside this
+repository (the station at +47.9 kHz, shifted to 0 Hz, upper sideband only,
+decimated to 48 kHz). Only the fixtures are committed, here in `recordings/`.
 
 The test samples http://127.0.0.1:PORT/proc/radio/Radio/vowel_squelch_open while the file plays and
 checks the two things that matter: the gate opens on the station (a good part of the time, and it does

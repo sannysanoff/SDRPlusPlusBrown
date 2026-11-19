@@ -89,13 +89,21 @@ LOCAL_BINARY = LOCAL_BUILD_DIR / "sdrpp"
 def get_default_build_dir() -> str:
     if LOCAL_BUILD_DIR.is_dir():
         return str(LOCAL_BUILD_DIR)
-    return "/Users/san/Fun/SDRPlusPlus/cmake-build-debug"
+    # A configured tree inside the repository, newest naming convention first.
+    # The suite never reaches outside the repository for a binary.
+    for name in ("cmake-build-release", "cmake-build-tests", "cmake-build-debug"):
+        candidate = REPO_ROOT / name
+        if (candidate / "sdrpp").is_file():
+            return str(candidate)
+    return str(LOCAL_BUILD_DIR)
 
 
 def get_default_root_dev() -> str:
     if LOCAL_ROOT_DEV.is_dir():
         return str(LOCAL_ROOT_DEV)
-    return "/Users/san/Fun/SDRPlusPlus/root_dev"
+    if (REPO_ROOT / "root_dev").is_dir():
+        return str(REPO_ROOT / "root_dev")
+    return str(LOCAL_ROOT_DEV)
 
 
 def get_default_binary(build_dir: str) -> str:

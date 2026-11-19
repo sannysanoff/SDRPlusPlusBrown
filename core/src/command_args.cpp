@@ -38,7 +38,7 @@ void CommandArgsParser::defineAll() {
     // Test-related command line arguments. Will not fail in runtime, will be just ignored.
     define('t', "test", "Run a specific test", std::string(""));
     define('e', "enable_plugins", "Whitelist of plugins to enable (comma-separated)", std::string(""));
-    define('\0', "test_root", "Root directory for test files", std::string(""));
+    define('\0', "test_root", "Directory holding the test recordings (default: e2e/recordings)", std::string(""));
 }
 
 int CommandArgsParser::parse(int argc, char* argv[]) {

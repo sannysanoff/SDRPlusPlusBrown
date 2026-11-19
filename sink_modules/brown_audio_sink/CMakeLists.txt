@@ -23,3 +23,7 @@ else (MSVC)
     target_link_libraries(brown_audio_sink PRIVATE ${RTAUDIO_LIBRARIES})
 
 endif ()
+
+if (APPLE)
+    target_link_libraries(brown_audio_sink PRIVATE "-framework CoreAudio" "-framework CoreFoundation")
+endif ()

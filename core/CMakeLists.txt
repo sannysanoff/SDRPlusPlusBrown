@@ -23,6 +23,10 @@ add_definitions(-DFLOG_ANDROID_TAG="SDR++")
 # Add BUILD_TESTS definition if tests are enabled
 if(BUILD_TESTS)
     add_definitions(-DBUILD_TESTS)
+    # The test recordings are the repository's own, in e2e/recordings. Compiled
+    # in as the default so a test never resolves its data against the app's root
+    # directory (~/.config/sdrpp-brown), which holds no recordings.
+    add_definitions(-DSDRPP_E2E_RECORDINGS_DIR="${CMAKE_SOURCE_DIR}/e2e/recordings")
     file(GLOB_RECURSE TEST_SRC "../tests/*.cpp")
     # tests/omlsa_mcra is a standalone program built by its own run.sh, not a
     # harness test; it must not be linked into the core.

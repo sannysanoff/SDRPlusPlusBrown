@@ -12,7 +12,7 @@ The test uses a baseband recording and verifies that:
 Environment Variables:
     E2E_VERBOSE=1      - Enable verbose output
     E2E_HTTP_PORT=NNNN - Use specific HTTP port
-    E2E_TEST_FILE      - Path to test recording (default: /Users/san/recordings/baseband_468811597Hz_18-53-50_29-12-2025___tetra.wav)
+    E2E_TEST_FILE      - Path to test recording (default: recordings/tetra_sample.wav next to this file)
 """
 
 import sys
