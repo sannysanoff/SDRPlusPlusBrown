@@ -42,6 +42,17 @@ set(BUILD_LIBOUT123 OFF CACHE BOOL "" FORCE)
 set(BUILD_LIBSYN123 OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory("${faad2_stuff_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/faad2" EXCLUDE_FROM_ALL)
+
+# faad2 resolves libm with find_library(MATH_LIBRARY m). Where libm does not
+# exist, as on Windows, that failed lookup is cached as MATH_LIBRARY-NOTFOUND,
+# and any later subdirectory that links ${MATH_LIBRARY} then aborts the generate
+# step with "variables are used in this project, but they are set to NOTFOUND".
+# sondedump, fetched by the radiosonde module, is one. Drop the failed lookup
+# instead of leaving it in the cache: nothing needs libm where it is not there.
+if (MATH_LIBRARY MATCHES "-NOTFOUND$")
+    unset(MATH_LIBRARY CACHE)
+endif()
+
 add_subdirectory("${mpg123_stuff_SOURCE_DIR}/ports/cmake" "${CMAKE_CURRENT_BINARY_DIR}/mpg123" EXCLUDE_FROM_ALL)
 
 # ---------------------------------------------------------------------------
