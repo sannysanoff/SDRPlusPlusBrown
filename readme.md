@@ -9,7 +9,7 @@
 
 Please see [upstream project page](https://github.com/AlexandreRouma/SDRPlusPlus) for the basic list of its features.
 
-Last merge: 2025-06-11
+Merged up to: upstream `bad387c0` (2026-11-18). The last full sync point is `65a0e11d` (2025-12-12); upstream commits newer than that are ported by hand, one at a time.
 
 Please see [brown fork page](https://sdrpp-brown.san.systems) for list of fork features.
 
