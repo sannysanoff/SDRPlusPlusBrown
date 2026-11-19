@@ -5,10 +5,11 @@
 The DAB+ work in this module is a port, not an invention. The credit belongs to:
 
 - **`prog`** ([@prog](https://x.com/prog) on X, Youssef Touil, the Airspy author
-  and the author of SDR#) for the DAB+ source this module follows. That is the
-  reference engine recorded in its `SOURCE-VERSIONS.txt`: the coherent demapper
-  with per-frame soft bits, the per-symbol soft-bit scaling, the null-power
-  threshold and the X-PAD fix now carried by
+  and the author of SDR#) for the DAB+ source this module follows, and for the
+  SDR# VDK (Vibe Development Kit) that reference plugin is built with. That is
+  the reference engine recorded in its `SOURCE-VERSIONS.txt`: the coherent
+  demapper with per-frame soft bits, the per-symbol soft-bit scaling, the
+  null-power threshold and the X-PAD fix now carried by
   `patches/dab-radio-0a09ba34-vdk-engine.patch`. Youssef Touil is also named on
   the application's credits screen (`core/src/credits.cpp`).
 - **William Yang** ([williamyang98](https://github.com/williamyang98)) for
@@ -20,6 +21,11 @@ The DAB+ work in this module is a port, not an invention. The credit belongs to:
   maintainers of the upstream repository (`knik0/faad2`), for the AAC decoder.
 - **Michael Hipp and the mpg123 contributors**, with Thomas Orgis and
   Taihei Momma as current maintainers, for the MPEG Layer II decoder.
+- **Phil Karn, KA9Q**, for the Reed-Solomon and Viterbi algorithms
+  ([ka9q.net/code/fec](http://www.ka9q.net/code/fec/), LGPL) that the engine's
+  `reed_solomon_decoder` and `dab_viterbi_decoder` are built on.
+- **Tristan Brindle** for the C++20 `span` implementation the engine includes as
+  `utility/span.h` (Boost Software License 1.0).
 - **The FFTW authors** (Matteo Frigo and Steven G. Johnson) and, on macOS,
   Apple's vDSP, for the transforms the engine runs on through the core.
 

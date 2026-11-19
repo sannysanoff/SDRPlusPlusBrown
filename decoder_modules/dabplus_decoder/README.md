@@ -77,13 +77,35 @@ service list, 48 kHz stereo audio, service switching, and a clean stop.
 
 ## Credits
 
-`prog`'s DAB+ source ([@prog](https://x.com/prog) on X, Youssef Touil, the
-Airspy author) is the parent of this port, running on William Yang's DAB-Radio
-engine. The other dependencies are DAB-Radio and ViterbiDecoderCpp (William
-Yang), fmt (Victor Zverovich and contributors), faad2, mpg123 (Michael Hipp and
-contributors), and the core's FFT (FFTW, vDSP on macOS). THIRD_PARTY.md names
-the authors in full and records the licence position, including the open
-question about the licence of the reference engine patches.
+Every party whose work this module carries is named here and on the
+application's credits screen (`core/src/credits.cpp`).
+
+- **`prog`** ([@prog](https://x.com/prog) on X, Youssef Touil, the Airspy author):
+  author of the SDR# DAB+ reference decoder this port follows, and of the SDR#
+  VDK (Vibe Development Kit) that reference plugin is built with. The coherent
+  demapper with per-frame soft bits, the per-symbol soft-bit scaling, the
+  null-power threshold and the X-PAD fix carried by
+  `patches/dab-radio-0a09ba34-vdk-engine.patch` are his work, not this
+  repository's.
+- **William Yang** ([williamyang98](https://github.com/williamyang98)): DAB-Radio,
+  the engine under OFDM demodulation, FIC/FIG, MSC, PAD, MOT and the per-service
+  audio channels, and ViterbiDecoderCpp, the header-only soft-decision decoder.
+- **Victor Zverovich and the {fmt} contributors**: fmt, used header-only.
+- **The FAAD2 authors** listed in its `AUTHORS` (M. Bakker, Alexander Kurpiers,
+  Volker Fischer, Gian-Carlo Pascutto and others), maintained at `knik0/faad2`:
+  the AAC decoder.
+- **Michael Hipp and the mpg123 contributors**, with Thomas Orgis and Taihei
+  Momma as current maintainers: the MPEG Layer II decoder.
+- **Phil Karn (KA9Q)**: the Reed-Solomon and Viterbi algorithms behind the
+  engine's `reed_solomon_decoder` and `dab_viterbi_decoder`
+  ([ka9q.net/code/fec](http://www.ka9q.net/code/fec/)).
+- **Tristan Brindle**: the C++20 `span` implementation in the engine's
+  `utility/span.h`.
+- **Matteo Frigo, Steven G. Johnson and the FFTW authors**, and, on macOS,
+  **Apple's vDSP**: the transforms the engine runs on through the core.
+
+THIRD_PARTY.md names the authors in full and records the licence position,
+including the open question about the licence of the reference engine patches.
 
 ## Limits
 

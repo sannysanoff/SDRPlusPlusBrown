@@ -29,11 +29,19 @@ namespace sdrpp_credits {
     };
 
     const char* libraries[] = {
+        "DAB-Radio (William Yang)",
         "Dear ImGui (ocornut)",
+        "faad2 (FAAD2 authors)",
         "fftw3 (fftw.org)",
+        "fmt (Victor Zverovich)",
         "glfw (Camilla Löwy)",
         "json (nlohmann)",
-        "Portable File Dialogs"
+        "libfec algorithms (Phil Karn, KA9Q)",
+        "mpg123 (Michael Hipp)",
+        "Portable File Dialogs",
+        "SDR# DAB+ engine and VDK (Youssef Touil)",
+        "span (Tristan Brindle)",
+        "ViterbiDecoderCpp (William Yang)"
     };
 
     const char* hardwareDonators[] = {
