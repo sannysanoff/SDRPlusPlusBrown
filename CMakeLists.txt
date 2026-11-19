@@ -50,7 +50,18 @@ option(OPT_BUILD_RTL_SDR_SOURCE "Build RTL-SDR Source Module (Dependencies: libr
 option(OPT_BUILD_RTL_TCP_SOURCE "Build RTL-TCP Source Module (no dependencies required)" ON)
 option(OPT_BUILD_RX888_SOURCE "Build RX888 MkII Source Module (Dependencies: libusb)" ON)
 option(OPT_BUILD_SDRPP_SERVER_SOURCE "Build SDR++ Server Source Module (no dependencies required)" ON)
+if (ANDROID)
+# SDRplay ships no API build for Android.
 option(OPT_BUILD_SDRPLAY_SOURCE "Build SDRplay Source Module (Dependencies: libsdrplay)" OFF)
+else ()
+# SDRplay ships no distro package, so enable by default only where the API is installed.
+find_path(SDRPLAY_API_INCLUDE_DIR sdrplay_api.h HINTS "/usr/local/include" "C:/Program Files/SDRplay/API/inc")
+if (SDRPLAY_API_INCLUDE_DIR)
+option(OPT_BUILD_SDRPLAY_SOURCE "Build SDRplay Source Module (Dependencies: libsdrplay)" ON)
+else ()
+option(OPT_BUILD_SDRPLAY_SOURCE "Build SDRplay Source Module (Dependencies: libsdrplay)" OFF)
+endif ()
+endif ()
 option(OPT_BUILD_SOAPY_SOURCE "Build SoapySDR Source Module (Dependencies: soapysdr)" OFF)
 option(OPT_BUILD_SPECTRAN_SOURCE "Build Spectran Source Module (Dependencies: Aaronia RTSA Suite)" OFF)
 option(OPT_BUILD_SPECTRAN_HTTP_SOURCE "Build Spectran HTTP Source Module (no dependencies required)" ON)
