@@ -111,11 +111,8 @@ cp $build_dir/decoder_modules/ch_extravhf_decoder/$RELDIR/ch_extravhf_decoder.dl
 cp $build_dir/decoder_modules/ch_tetra_demodulator/$RELDIR/ch_tetra_demodulator.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/atv_decoder/$RELDIR/atv_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/m17_decoder/$RELDIR/m17_decoder.dll sdrpp_windows_x64/modules/
-# DAB/DAB+ is fetched at configure time (OPT_BUILD_DABPLUS_DECODER), so the
-# binary is only present when that option was enabled for this build.
-if (Test-Path $build_dir/decoder_modules/dabplus_decoder/$RELDIR/dabplus_decoder.dll) {
-    cp $build_dir/decoder_modules/dabplus_decoder/$RELDIR/dabplus_decoder.dll sdrpp_windows_x64/modules/
-}
+# DAB/DAB+ fetches its engine at configure time; the option is on by default.
+cp $build_dir/decoder_modules/dabplus_decoder/$RELDIR/dabplus_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/tinycw_decoder/$RELDIR/tinycw_decoder.dll sdrpp_windows_x64/modules/
 cp $build_dir/decoder_modules/radiosonde_decoder/$RELDIR/radiosonde_decoder.dll sdrpp_windows_x64/modules/
 

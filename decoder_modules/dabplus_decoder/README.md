@@ -51,8 +51,11 @@ so all plugins must be rebuilt after this change — a stale plugin dies on load
 
 ## Building
 
+`OPT_BUILD_DABPLUS_DECODER` is on by default, so a plain configure builds the
+module on Windows, Linux, macOS and Android. To build one target at a time:
+
 ```
-cmake -DOPT_BUILD_DABPLUS_DECODER=ON .
+cmake .
 ninja dabplus_decoder dabplus_decoder_cli
 ninja install          # plugins into root_dev/inst/lib/sdrpp/plugins
 ```
@@ -113,11 +116,13 @@ including the open question about the licence of the reference engine patches.
   untested.
 - MOT slideshow and TII transmitter identification are compiled but not surfaced
   in the UI.
-- The Android build is not wired. Three things stand between this module and an
-  `.so` that the phone can load: the option is OFF there, `core/src/core.cpp`
-  hardcodes the module names Android may dlopen so `dabplus_decoder.so` would
-  have to join that list, and faad2 and mpg123 have not been cross-compiled with
-  the NDK (both are portable CMake C projects, mpg123 through `ports/cmake`, but
-  that is untested). The FFT is not on that list of problems: the transforms go
-  through the core's `dsp::arrays`, and Android's core already links
-  `libfftw3f.so` from the SDR kit.
+- Android is wired but not run on a device. The module is built by the NDK
+  build like any other, `dabplus_decoder.so` is in the hardcoded load list in
+  `core/src/core.cpp`, and the DAB mode instance is created there too. Every
+  source file compiles for `aarch64-linux-android28` with NDK 28.2.13676358,
+  and faad2 and mpg123 configure and build statically for that target. What is
+  unverified is the link against the SDR kit's `libfftw3f.so` and `libvolk.so`
+  and the app on a phone: the kit (`sdrKitRoot`) is not present on the
+  development machine. The FFT is not a problem here: the transforms go through
+  the core's `dsp::arrays`, and Android's core already links `libfftw3f.so`
+  from the SDR kit.

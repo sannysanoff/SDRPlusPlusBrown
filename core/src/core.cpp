@@ -823,6 +823,7 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.conf["modules"][modCount++] = "ft8_decoder.so";
     core::configManager.conf["modules"][modCount++] = "ch_extravhf_decoder.so";
     core::configManager.conf["modules"][modCount++] = "ch_tetra_demodulator.so";
+    core::configManager.conf["modules"][modCount++] = "dabplus_decoder.so";
     core::configManager.conf["modules"][modCount++] = "tinycw_decoder.so";
     core::configManager.conf["modules"][modCount++] = "radiosonde_decoder.so";
     core::configManager.conf["modules"][modCount++] = "reports_monitor.so";
@@ -836,6 +837,10 @@ int sdrpp_main(int argc, char* argv[]) {
         }
     }
 
+    // Add the DAB/DAB+ mode instance to configs created before it existed
+    if (!core::configManager.conf["moduleInstances"].contains("DAB/DAB+ Modes")) {
+        core::configManager.conf["moduleInstances"]["DAB/DAB+ Modes"] = defConfig["moduleInstances"]["DAB/DAB+ Modes"];
+    }
     // Add the CW decoder instance to configs created before it existed
     if (!core::configManager.conf["moduleInstances"].contains("CW Decoder")) {
         core::configManager.conf["moduleInstances"]["CW Decoder"] = defConfig["moduleInstances"]["CW Decoder"];

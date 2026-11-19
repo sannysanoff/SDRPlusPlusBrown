@@ -2,6 +2,10 @@
 
 Newest entries are at the top.
 
+2026.11.19
+
+* DAB/DAB+ receiver module (dabplus_decoder): DAB and DAB+ as a mode of the radio module, with the ensemble and programme list, DAB+ AAC and DAB MP2 audio. Built and installed by default on Windows, Linux, macOS and Android. Its engine is fetched at configure time at pinned commits.
+
 2026.11.15
 
 * Menu headers: long-press (1 s) or right-click opens a color popup with "Override color", font color and background color, each with 16 presets plus the picker, stored per menu element.

@@ -96,6 +96,24 @@ function(dabplus_fetch_pinned name url commit)
     set(${name}_BINARY_DIR "${${name}_BINARY_DIR}" PARENT_SCOPE)
 endfunction()
 
+function(dabplus_sources_contain src_dir needle out_var)
+    file(GLOB_RECURSE _sources
+        "${src_dir}/src/*.h"
+        "${src_dir}/src/*.hpp"
+        "${src_dir}/src/*.cpp"
+    )
+    set(_found FALSE)
+    foreach(_source IN LISTS _sources)
+        file(READ "${_source}" _text)
+        string(FIND "${_text}" "${needle}" _pos)
+        if(NOT _pos EQUAL -1)
+            set(_found TRUE)
+            break()
+        endif()
+    endforeach()
+    set(${out_var} ${_found} PARENT_SCOPE)
+endfunction()
+
 function(dabplus_apply_pinned_patch src_dir patch_name patch_sha256 marker)
     set(patch_path "${CMAKE_CURRENT_LIST_DIR}/../patches/${patch_name}")
     file(SHA256 "${patch_path}" patch_hash)
@@ -104,9 +122,9 @@ function(dabplus_apply_pinned_patch src_dir patch_name patch_sha256 marker)
             "[dabplus_decoder] ${patch_name} hashes to ${patch_hash}, not the recorded "
             "${patch_sha256}; refusing to build an unverified engine.")
     endif()
-    # Each patch is applied once. A re-run of cmake finds it already applied,
-    # which is confirmed by the marker it introduces rather than by ignoring
-    # the failure.
+    # A re-run of cmake finds the patch already applied, which is confirmed by
+    # the marker it introduces rather than by ignoring the failure. The search
+    # is done in CMake, not with grep: grep does not exist on Windows.
     execute_process(
         COMMAND git apply --check "${patch_path}"
         WORKING_DIRECTORY "${src_dir}"
@@ -125,12 +143,8 @@ function(dabplus_apply_pinned_patch src_dir patch_name patch_sha256 marker)
         message(STATUS "[dabplus_decoder] applied ${patch_name} (sha256 verified)")
         return()
     endif()
-    execute_process(
-        COMMAND grep -rqF "${marker}" "${src_dir}/src"
-        RESULT_VARIABLE _marker
-        OUTPUT_QUIET ERROR_QUIET
-    )
-    if(NOT _marker EQUAL 0)
+    dabplus_sources_contain("${src_dir}" "${marker}" _marker_present)
+    if(NOT _marker_present)
         message(FATAL_ERROR
             "[dabplus_decoder] ${patch_name} neither applies nor is present in ${src_dir}; "
             "delete that directory and reconfigure.")
