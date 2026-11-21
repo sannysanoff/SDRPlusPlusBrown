@@ -53,6 +53,14 @@ public:
         gainModes.define("slow_attack", "Slow Attack", "slow_attack");
         gainModes.define("hybrid", "Hybrid", "hybrid");
 
+        // Define RF inputs
+        rfInputs.define("rx1", "Rx1", "rx1");
+        rfInputs.define("rx2", "Rx2", "rx2");
+
+        // Define IQ modes
+        iqModes.define("cs16", "CS16", "cs16");
+        iqModes.define("cs8", "CS8 (Tezuka only)", "cs8");
+
         // Load config
         config.acquire();
         devDesc = config.conf["device"];
@@ -252,6 +260,8 @@ private:
         bandwidth = 0;
         gmId = 0;
         gain = -1.0f;
+        rfId = 0;
+        iqModeId = 0;
 
         // Load device config
         config.acquire();
@@ -274,6 +284,14 @@ private:
         if (config.conf["devices"][devDesc].contains("gain")) {
             gain = config.conf["devices"][devDesc]["gain"];
             gain = std::clamp<int>(gain, -1.0f, 73.0f);
+        }
+        if (config.conf["devices"][devDesc].contains("rfInput")) {
+            std::string rf = config.conf["devices"][devDesc]["rfInput"];
+            rfId = rfInputs.keyExists(rf) ? rfInputs.keyId(rf) : 0;
+        }
+        if (config.conf["devices"][devDesc].contains("iqMode")) {
+            std::string iq = config.conf["devices"][devDesc]["iqMode"];
+            iqModeId = iqModes.keyExists(iq) ? iqModes.keyId(iq) : 0;
         }
         config.release();
 
@@ -314,6 +332,11 @@ private:
         // If no device is selected, give up
         if (_this->devDesc.empty() || _this->uri.empty()) { return; }
 
+        // CS8 only works on firmware which streams 8-bit IQ (e.g. Tezuka)
+        if (_this->iqModeId == 1) {
+            flog::warn("CS8 selected, this requires firmware streaming 8-bit IQ, the samples will be invalid otherwise");
+        }
+
         // Open context
         _this->ctx = iio_create_context_from_uri(_this->uri.c_str());
         if (_this->ctx == NULL) {
@@ -335,8 +358,19 @@ private:
             return;
         }
 
+        // Read the RX mode. The debug attribute only exists on firmware exposing the AD9361
+        // devicetree properties at runtime (e.g. Tezuka), assume 1R1T if it can't be read.
+        long long mode = 0;
+        _this->rx2tx2 = (iio_device_debug_attr_read_longlong(_this->phy, "adi,2rx-2tx-mode-enable", &mode) >= 0) && (mode == 1);
+
         // Get RX channels
-        _this->rxChan = iio_device_find_channel(_this->phy, "voltage0", false);
+        if (_this->rx2tx2 && (_this->rfId == 1)) {
+            _this->rxChan = iio_device_find_channel(_this->phy, "voltage1", false);
+        }
+        else {
+            _this->rxChan = iio_device_find_channel(_this->phy, "voltage0", false);
+        }
+        if (!_this->rx2tx2) { _this->selectRxInput(_this->rfId); }
         _this->rxLO = iio_device_find_channel(_this->phy, "altvoltage0", true);
 
         // Enable RX LO and disable TX
@@ -490,6 +524,41 @@ private:
             }
         }
         if (_this->gmId) { SmGui::EndDisabled(); }
+
+        if (_this->running) { SmGui::BeginDisabled(); }
+        SmGui::LeftLabel("RF input");
+        SmGui::FillWidth();
+        SmGui::ForceSync();
+        if (SmGui::Combo(CONCAT("##_pluto_rfinput_select_", _this->name), &_this->rfId, _this->rfInputs.txt)) {
+            if (!_this->devDesc.empty()) {
+                config.acquire();
+                config.conf["devices"][_this->devDesc]["rfInput"] = _this->rfInputs.key(_this->rfId);
+                config.release(true);
+            }
+        }
+        if (_this->running) { SmGui::EndDisabled(); }
+
+        if (_this->running) { SmGui::BeginDisabled(); }
+        SmGui::LeftLabel("IQ Mode");
+        SmGui::FillWidth();
+        SmGui::ForceSync();
+        if (SmGui::Combo(CONCAT("##_pluto_iqmode_select_", _this->name), &_this->iqModeId, _this->iqModes.txt)) {
+            if (!_this->devDesc.empty()) {
+                config.acquire();
+                config.conf["devices"][_this->devDesc]["iqMode"] = _this->iqModes.key(_this->iqModeId);
+                config.release(true);
+            }
+        }
+        if (_this->running) { SmGui::EndDisabled(); }
+    }
+
+    void selectRxInput(int id) {
+        // AD9361 register 0x003 bits 7..6 enable RX2 and RX1
+        uint32_t val = 0;
+        if (iio_device_reg_read(phy, 0x00000003, &val) >= 0) {
+            iio_device_reg_write(phy, 0x00000003, (val & 0x3F) | ((id + 1) << 6));
+        }
+        iio_device_debug_attr_write_longlong(phy, "adi,1rx-1tx-mode-use-rx-num", id + 1);
     }
 
     void setBandwidth(int bw) {
@@ -505,17 +574,23 @@ private:
         PlutoSDRSourceModule* _this = (PlutoSDRSourceModule*)ctx;
         int blockSize = _this->samplerate / 200.0f;
 
-        // Acquire channels
-        iio_channel* rx0_i = iio_device_find_channel(_this->dev, "voltage0", 0);
-        iio_channel* rx0_q = iio_device_find_channel(_this->dev, "voltage1", 0);
+        // Acquire channels. Rx2 in 2R2T mode streams on the second channel pair
+        const char* iName = "voltage0";
+        const char* qName = "voltage1";
+        if (_this->rx2tx2 && (_this->rfId == 1)) {
+            iName = "voltage2";
+            qName = "voltage3";
+        }
+        iio_channel* rx0_i = iio_device_find_channel(_this->dev, iName, 0);
+        iio_channel* rx0_q = iio_device_find_channel(_this->dev, qName, 0);
         if (!rx0_i || !rx0_q) {
             flog::error("Failed to acquire RX channels");
             return;
         }
 
-        // Start streaming
+        // Start streaming. CS8 packs I and Q in a single 8-bit channel
         iio_channel_enable(rx0_i);
-        iio_channel_enable(rx0_q);
+        if (_this->iqModeId == 0) { iio_channel_enable(rx0_q); }
 
         // Allocate buffer
         iio_buffer* rxbuf = iio_device_create_buffer(_this->dev, blockSize, false);
@@ -529,12 +604,17 @@ private:
             // Read samples
             iio_buffer_refill(rxbuf);
 
-            // Get buffer pointer
-            int16_t* buf = (int16_t*)iio_buffer_first(rxbuf, rx0_i);
-            if (!buf) { break; }
-
             // Convert samples to CF32
-            volk_16i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 32768.0f, blockSize * 2);
+            if (_this->iqModeId == 0) {
+                int16_t* buf = (int16_t*)iio_buffer_first(rxbuf, rx0_i);
+                if (!buf) { break; }
+                volk_16i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 32768.0f, blockSize * 2);
+            }
+            else {
+                int8_t* buf = (int8_t*)iio_buffer_first(rxbuf, rx0_i);
+                if (!buf) { break; }
+                volk_8i_s32f_convert_32f((float*)_this->stream.writeBuf, buf, 128.0f, blockSize * 2);
+            }
 
             // Send out the samples
             if (!_this->stream.swap(blockSize)) { break; };
@@ -559,6 +639,7 @@ private:
     iio_channel* rxLO = NULL;
     iio_channel* rxChan = NULL;
     bool running = false;
+    bool rx2tx2 = false;
 
     std::string devDesc = "";
     std::string uri = "";
@@ -575,11 +656,15 @@ private:
     int srId = 0;
     int bwId = 0;
     int gmId = 0;
+    int rfId = 0;
+    int iqModeId = 0;
 
     OptionList<std::string, std::string> devices;
     OptionList<int, double> samplerates;
     OptionList<int, double> bandwidths;
     OptionList<std::string, std::string> gainModes;
+    OptionList<std::string, std::string> rfInputs;
+    OptionList<std::string, std::string> iqModes;
 };
 
 MOD_EXPORT void _INIT_() {
