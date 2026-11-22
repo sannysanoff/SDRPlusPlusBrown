@@ -57,6 +57,8 @@ public:
     uint32_t resetDevice();
     uint32_t setBaudRate(uint32_t baud);
     uint32_t setDataCharacteristics(uint8_t wordLength, uint8_t stopBits, uint8_t parity);
+    uint32_t setFlowControl(uint16_t flowControl, uint8_t xon, uint8_t xoff);
+    uint32_t setRts();
     uint32_t setTimeouts(uint32_t readMs, uint32_t writeMs);
     uint32_t setLatencyTimer(uint8_t ms);
     uint32_t setBitMode(uint8_t mask, uint8_t mode);
@@ -73,29 +75,43 @@ public:
 
     static constexpr uint32_t PURGE_RX = 1;
     static constexpr uint32_t PURGE_TX = 2;
+    static constexpr uint16_t FLOW_RTS_CTS = 0x0100;
 
 private:
     void* lib = nullptr;
     std::string path;
     void* handle = nullptr;
 
+// D2XX entry points are __stdcall on 32-bit Windows; on x64 Windows and on
+// Linux/macOS there is a single calling convention. Modeling this matters: a
+// 32-bit host that calls the real (stdcall) exports through cdecl pointers
+// corrupts the stack on every call, which is exactly how the first 32-bit
+// stream-test build died at its third D2XX call.
+#if defined(_WIN32) && !defined(_WIN64)
+#define OSA103_FTAPI __attribute__((stdcall))
+#else
+#define OSA103_FTAPI
+#endif
+
     uint32_t (*pCreateDeviceInfoList)(uint32_t*) = nullptr;
-    uint32_t (*pGetDeviceInfoList)(void*, uint32_t*) = nullptr;
-    uint32_t (*pOpen)(int, void**) = nullptr;
-    uint32_t (*pOpenEx)(void*, uint32_t, void**) = nullptr;
-    uint32_t (*pClose)(void*) = nullptr;
-    uint32_t (*pResetDevice)(void*) = nullptr;
-    uint32_t (*pSetBaudRate)(void*, uint32_t) = nullptr;
-    uint32_t (*pSetDataCharacteristics)(void*, uint8_t, uint8_t, uint8_t) = nullptr;
-    uint32_t (*pSetTimeouts)(void*, uint32_t, uint32_t) = nullptr;
-    uint32_t (*pSetLatencyTimer)(void*, uint8_t) = nullptr;
-    uint32_t (*pSetBitMode)(void*, uint8_t, uint8_t) = nullptr;
-    uint32_t (*pPurge)(void*, uint32_t) = nullptr;
-    uint32_t (*pStopInTask)(void*) = nullptr;
-    uint32_t (*pRestartInTask)(void*) = nullptr;
-    uint32_t (*pGetQueueStatus)(void*, uint32_t*) = nullptr;
-    uint32_t (*pRead)(void*, void*, uint32_t, uint32_t*) = nullptr;
-    uint32_t (*pWrite)(void*, const void*, uint32_t, uint32_t*) = nullptr;
+    OSA103_FTAPI uint32_t (*pGetDeviceInfoList)(void*, uint32_t*) = nullptr;
+    OSA103_FTAPI uint32_t (*pOpen)(int, void**) = nullptr;
+    OSA103_FTAPI uint32_t (*pOpenEx)(void*, uint32_t, void**) = nullptr;
+    OSA103_FTAPI uint32_t (*pClose)(void*) = nullptr;
+    OSA103_FTAPI uint32_t (*pResetDevice)(void*) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetBaudRate)(void*, uint32_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetDataCharacteristics)(void*, uint8_t, uint8_t, uint8_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetFlowControl)(void*, uint16_t, uint8_t, uint8_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetRts)(void*) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetTimeouts)(void*, uint32_t, uint32_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetLatencyTimer)(void*, uint8_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pSetBitMode)(void*, uint8_t, uint8_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pPurge)(void*, uint32_t) = nullptr;
+    OSA103_FTAPI uint32_t (*pStopInTask)(void*) = nullptr;
+    OSA103_FTAPI uint32_t (*pRestartInTask)(void*) = nullptr;
+    OSA103_FTAPI uint32_t (*pGetQueueStatus)(void*, uint32_t*) = nullptr;
+    OSA103_FTAPI uint32_t (*pRead)(void*, void*, uint32_t, uint32_t*) = nullptr;
+    OSA103_FTAPI uint32_t (*pWrite)(void*, const void*, uint32_t, uint32_t*) = nullptr;
 };
 
 }  // namespace osa103

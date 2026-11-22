@@ -54,10 +54,15 @@ struct Params {
     bool sendConfigOnStart = true;
     bool resendConfigOnTune = true;
 
-    // Type 0x01 block write (12-bit table). The DLL uploads a 4096-entry table it
-    // computes from the sample rate; the content is not reproduced here (unknown
-    // synthesis), so an RX-only driver normally leaves this off.
-    bool sendType1Table = false;
+    // Type 0x01 block write (12-bit table). The vendor session uploads eight
+    // blocks at 0xC000 + n*0x400 whose content is a continuous ramp (not a
+    // constant): blocks 0..3 run 0x0555..0x0D50, block 4 is all zeros, block 5
+    // is 169 zeros then 0x0000..0x0156, blocks 6..7 run 0x0157..0x0554. The
+    // frame layout matches the builder below byte for byte.
+    // The FPGA expects the eight ramp blocks right after the configuration
+    // frame; the vendor session always sends them, and live tests confirmed
+    // the stream only runs when they follow the config frame.
+    bool sendType1Table = true;
     uint16_t type1BaseAddr = 0xC000;
     uint16_t type1Stride = 0x0400;
     int type1Blocks = 8;
@@ -74,10 +79,12 @@ struct Params {
     uint8_t rxtxTag = 0x80;        // 0x80 base, |0x01 Tx-IF, |0x04 Tx path
     uint8_t dividerTag = 0x03;     // frame offset 17
     uint8_t dividerTag2 = 0x03;    // frame offset 23
-    uint8_t txDivShift = 0;
+    // Captured from a working vendor session: both divider shift bytes are 0x07
+    // with zeroed quotient/remainder words.
+    uint8_t txDivShift = 7;
     uint16_t txDivQ = 0;
     uint16_t txDivR = 0;
-    uint8_t txDivShift2 = 0;
+    uint8_t txDivShift2 = 7;
     uint16_t txDivQ2 = 0;
     uint16_t txDivR2 = 0;
     uint16_t const6258 = 0x6258;   // 0x6258 / 0x0028 depending on the model
@@ -87,12 +94,16 @@ struct Params {
     uint8_t tag33 = 0x40;
     uint8_t tag34 = 0xFF;
 
-    uint8_t flags = 0x19;          // preamp | 50R | dither | always-0x10
-    uint16_t adcGainWord = 0x8000;
-    uint16_t adcOffWord = 0x0000;
-    uint16_t adcOffWord2 = 0x0000;
-    uint8_t calA = 0, calB = 0, calC = 0, calD = 0, calE = 0;
-    uint8_t calF = 0, calG = 0, calH = 0;
+    uint8_t flags = 0x39;          // preamp | 50R | dither | always-0x10
+    uint16_t adcGainWord = 0x0000; // vendor session sends zero
+    // Constant calibration bytes observed in every captured config frame at
+    // image offset 42 (frame 45..50); may be device-specific, so they stay
+    // visible. The static analysis had these four bytes too late.
+    uint8_t calA = 0x54, calB = 0x76, calC = 0x95, calD = 0x97, calE = 0x23;
+    uint8_t calF = 0xDD;
+
+    uint8_t tag55 = 0x82;          // constant in every capture
+    uint16_t tag56 = 0xAD01;       // "01 AD" at frames 56..57 in every capture
 
     uint8_t tag64 = 0xC3;
     uint8_t tag65 = 0x00;
@@ -101,34 +112,50 @@ struct Params {
     uint8_t tag68 = 0x80;
     uint8_t tag69 = 0xFF;
 
-    uint8_t mode = 0x18;           // demod mode | 0x08 | 0x10 | ...
-    uint8_t level = 0x80;          // Tx level, 0..255
+    uint8_t mode = 0x1D;           // demod mode | 0x08 | 0x10 | ...
+    uint8_t level = 0x13;         // Tx level, 0..255
 
     // tuning maths
     double ncoScale = 21.47483648; // 2^31 / 1e8
     double ncoIfHz = 21395000.0;   // IF the DLL uses to derive the NCO from the dial
     int ncoMode = 0;               // 0 = dial, 1 = dial+IF, 2 = dial-IF, 3 = IF only
-    double loScale = 1.0;          // multiplier applied to the LO field
-    bool sendTxNco = false;        // the DLL also sends a Tx NCO; 0 when idle
+    // The LO field is the dial frequency in Hz, confirmed by the capture:
+    // every 1 MHz dial step moves it by exactly 1,000,000.
+    double loScale = 1.0;
+    // The trailing NCO word (frame 71..74) is (dial_Hz - 16000) * 2^31 / 2e8 in
+    // every capture's initial frame (exact to the last digit); retunes carry a
+    // vendor phase trim on top, which the device does not need from us.
+    bool sendTxNco = true;
+    double txNcoScale = 10.73741824; // 2^31 / 2e8
+    double txNcoOffsetHz = -16000.0;
 
     // A pasted or captured image replaces the generated one byte for byte.
     std::string imageOverrideHex;
 
     // ------------------------------------------------------------------- stream
-    bool hasFlagsByte = true;
-    int dataBytes = 2048;          // I/Q payload bytes per data packet
+    // Captured inbound format: every packet repeats the 25-byte sync, then a
+    // type byte. Type 0x5A = info packet (151 bytes after the sync, subtype
+    // byte first). Type 0x00 = sample packet: 2048 bytes of little-endian
+    // int16 I/Q pairs, then CRC16 - 2076 bytes total, ~32 ms apart at the
+    // declared 65104 S/s. No flags byte, no length field.
+    bool hasFlagsByte = false;
+    int dataBytes = 2048;
     int crcBytes = 2;
-    // Device->host packets: whether they repeat the host frame header (u16 length
-    // field before the type byte) or start with the type byte straight after sync.
-    // The DLL's reader is written for fixed-size packets, i.e. no length field, but
-    // this could not be confirmed against hardware.
     bool rxHasLenField = false;
     bool bigEndianSamples = false;
     bool swapIQ = false;
     bool invertQ = false;
-    double sampleScale = 2.5322;   // DLL multiplies every sample by this
+    // int16 -> float conversion. SDR++ convention is normalized I/Q (full ADC
+    // scale maps to +/-1.0). The vendor DLL instead multiplies by a fixed
+    // 2.5322 (static analysis of ExtIO_Osa.dll) with no normalization; set
+    // sampleScale to 2.5322 to reproduce its absolute levels.
+    double sampleScale = 1.0 / 32768.0;
     bool muteOnFlagBit1 = true;    // flag bit1 = transmitter keyed -> RX muted
-    int infoPacketBytes = 149;     // 0x5A packet length including type and CRC
+    // Captured stream format: every inbound packet starts with the sync and a
+    // type byte. 0x5A = fixed-size info packet (151 bytes after the sync,
+    // subtype first). 0x00 = sample packet with 2048 bytes of little-endian
+    // int16 pairs, then CRC16.
+    int infoPacketBytes = 151;     // bytes after the sync: 5A + subtype + body + CRC
 
     // -------------------------------------------------------------------- debug
     bool sniffOnly = false;        // never send anything, just dump what arrives
@@ -196,6 +223,12 @@ size_t buildConfigFrame(const Params& p, double dialHz, uint8_t* out, size_t out
 // sync + type 0x01 block write for one 512-word block.
 size_t buildType1Frame(const Params& p, uint16_t addr, uint16_t fillValue, uint8_t* out,
                        size_t outCapacity);
+
+// sync + type 0x01 block write with the ramp content the working vendor session
+// sends: block 0..3 ramps starting 0x0555/0x0754/0x0953/0x0B52, block 4 zeros,
+// block 5 = 169 zeros then a ramp from 0x0000, blocks 6..7 ramps from
+// 0x0157/0x0356. block is 0-based.
+size_t buildTableFrame(const Params& p, int block, uint8_t* out, size_t outCapacity);
 
 // NCO phase word for a frequency.
 int64_t ncoWord(double hz, double scale);

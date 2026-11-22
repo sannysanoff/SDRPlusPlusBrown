@@ -52,8 +52,8 @@ namespace {
 // ImGui text buffers for the editable protocol knobs. The values themselves live in
 // osa103::Params; these are only the editing surfaces.
 struct TextBuffers {
-    char flags[8] = "19";
-    char mode[8] = "18";
+    char flags[8] = "39";
+    char mode[8] = "1D";
     char rxtxTag[8] = "80";
     char const6258[8] = "6258";
     char adcGain[8] = "8000";
@@ -457,10 +457,12 @@ private:
         if (!writeTx(frame, len, params.syncSeparateWrite)) { return false; }
 
         if (params.sendType1Table) {
+            // The eight hardware-validated ramp blocks: blocks 0..3 and 6..7
+            // are ramps, block 4 is zeros, block 5 starts with 169 zeros.
+            // Byte-exact against the vendor's startup sequence.
             uint8_t block[OSA103_MAX_TX_FRAME];
             for (int i = 0; i < params.type1Blocks; i++) {
-                uint16_t addr = (uint16_t)(params.type1BaseAddr + i * params.type1Stride);
-                size_t n = osa103::buildType1Frame(params, addr, params.type1FillValue, block, sizeof(block));
+                size_t n = osa103::buildTableFrame(params, i, block, sizeof(block));
                 if (!n) { break; }
                 if (!writeTx(block, n, params.syncSeparateWrite)) { return false; }
             }
@@ -673,6 +675,10 @@ private:
         if (_this->params.resetOnOpen) { _this->ftdi.resetDevice(); }
         _this->ftdi.setBaudRate(_this->params.baudRate);
         _this->ftdi.setDataCharacteristics(8, 0, 0);
+        // Captured vendor sequence: RTS/CTS flow control with RTS asserted
+        // before the timeouts and the latency timer are set.
+        _this->ftdi.setFlowControl(osa103::FtdiD2xx::FLOW_RTS_CTS, 0, 0);
+        _this->ftdi.setRts();
         _this->ftdi.setTimeouts(_this->params.readTimeoutMs, _this->params.writeTimeoutMs);
         _this->ftdi.setLatencyTimer(_this->params.latencyMs);
         _this->ftdi.purge(osa103::FtdiD2xx::PURGE_RX | osa103::FtdiD2xx::PURGE_TX);
@@ -685,6 +691,15 @@ private:
         _this->resetStats();
         _this->deviceReady = false;
         _this->stream.clearWriteStop();
+
+        if (!_this->params.sniffOnly) {
+            // Captured vendor sequence: freeze the D2XX task, purge only the
+            // RX side, restart. Without this the first packets still carry
+            // leftovers and the FPGA stays silent.
+            _this->ftdi.stopInTask();
+            _this->ftdi.purge(osa103::FtdiD2xx::PURGE_RX);
+            _this->ftdi.restartInTask();
+        }
 
         if (_this->params.sendHello && !_this->params.sniffOnly) { _this->sendHello(); }
         if (_this->params.sniffOnly) {
@@ -904,7 +919,16 @@ private:
         SmGui::SameLine();
         if (SmGui::Button(CONCAT("Reset stats##_osa103_rs_", _this->name))) { _this->resetStats(); }
 
-        SmGui::Text(("D2XX: " + (_this->ftdi.loaded() ? _this->ftdi.libraryPath() : std::string("not loaded"))).c_str());
+        if (_this->ftdi.loaded()) {
+            SmGui::Text(("D2XX: " + _this->ftdi.libraryPath()).c_str());
+        }
+        else {
+            // Red, always visible while the FTDI library is missing: the module
+            // loads ftd2xx.dll dynamically at runtime, so a missing driver is a
+            // runtime condition, not a build-time one.
+            SmGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
+                               "FTDI D2XX library not found - install the FTDI driver");
+        }
         SmGui::Text(("read " + std::to_string(_this->bytesRead.load()) + " B, dropped " +
                      std::to_string((unsigned long long)_this->parser.bytesDiscarded) + " B").c_str());
         SmGui::Text(("packets " + std::to_string((unsigned long long)_this->parser.dataPackets) + ", info " +

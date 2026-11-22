@@ -11,3 +11,18 @@ if (UNIX AND NOT APPLE)
 endif ()
 
 target_include_directories(${PROJECT_NAME} PRIVATE "src/")
+
+# Headless stream test / bring-up tool (see README, "Stream test tool"). Off by
+# default because it is a diagnostic binary, not part of the module.
+option(OPT_BUILD_OSA103_STREAM_TEST "Build the standalone OSA103 stream test tool" OFF)
+if (OPT_BUILD_OSA103_STREAM_TEST)
+    add_executable(osa103_stream_test
+        tools/osa103_stream_test.cpp
+        src/osa103_proto.cpp
+        src/ftdi_d2xx.cpp
+    )
+    target_include_directories(osa103_stream_test PRIVATE "src/")
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(osa103_stream_test PRIVATE dl)
+    endif ()
+endif ()

@@ -36,7 +36,11 @@ int main(int argc, char** argv) {
 
     osa103::FtdiD2xx ftdi;
     std::string err;
-    check("load stub d2xx", ftdi.load(libPath, err), err.c_str());
+    // NOTE: load into a local first - passing both ftdi.load(...) and err.c_str()
+    // as sibling arguments is unspecified evaluation order, and GCC evaluates
+    // right to left, so err.c_str() would be captured before load() fills err.
+    bool loaded = ftdi.load(libPath, err);
+    check("load stub d2xx", loaded, err.c_str());
 
     std::vector<osa103::FtdiDeviceInfo> list;
     bool listed = ftdi.listDevices(list, err);
@@ -47,12 +51,16 @@ int main(int argc, char** argv) {
         check("vid:pid parsed", list[0].id == 0x6001);
     }
 
-    check("open by serial", ftdi.openBySerial("OSA103A", err), err.c_str());
+    bool opened = ftdi.openBySerial("OSA103A", err);
+    check("open by serial", opened, err.c_str());
     check("handle is open", ftdi.isOpen() && fakeD2xxIsOpen());
 
     osa103::Params p;
     ftdi.setBaudRate(p.baudRate);
     ftdi.setDataCharacteristics(8, 0, 0);
+    // Captured vendor open sequence: RTS/CTS flow control with RTS asserted.
+    ftdi.setFlowControl(osa103::FtdiD2xx::FLOW_RTS_CTS, 0, 0);
+    ftdi.setRts();
     ftdi.setTimeouts(p.readTimeoutMs, p.writeTimeoutMs);
     ftdi.setLatencyTimer(p.latencyMs);
     ftdi.setBitMode(0x85, 0x01);
@@ -71,6 +79,8 @@ int main(int argc, char** argv) {
     check("FT_OpenEx got the serial", log.find("OSA103A") != std::string::npos, log.c_str());
     check("FT_SetBaudRate got 3000000", log.find("baud=3000000") != std::string::npos);
     check("FT_SetDataCharacteristics 8N1", log.find("chars=800") != std::string::npos);
+    check("FT_SetFlowControl got RTS/CTS", log.find("flow=0100") != std::string::npos);
+    check("FT_SetRts asserted", log.find("rts") != std::string::npos);
     check("FT_SetTimeouts 20/20", log.find("timeouts=20/20") != std::string::npos);
     check("FT_SetLatencyTimer 2 ms", log.find("latency=2") != std::string::npos);
     check("bit-bang mask 0x85 mode 1", log.find("bitmode=85/1") != std::string::npos);

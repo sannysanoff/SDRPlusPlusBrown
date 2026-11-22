@@ -4,19 +4,22 @@
  * see LICENSE.md in this directory.
  *
  * Protocol reconstructed from the vendor's ExtIO_Osa.dll v3.09 (OSA103, osa103.ru)
- * by static analysis, for interoperability. No vendor code, listing or bitstream is
- * included. Provided as is, without warranty of any kind: it could not be tested
- * against hardware while it was written.
+ * for interoperability. No vendor code, listing or bitstream is included.
+ * Hardware-validated against a live OSA103 (FT232R) through an FT_Write/FT_Read
+ * MITM capture of the vendor's ExtIO session; see README.md for the full story.
  */
-// Standalone check of the protocol layer against the values extracted from
-// ExtIO_Osa.dll v3.09. No hardware involved: this only proves the encoder produces
-// the byte layout and CRC the DLL produces.
+// Standalone check of the protocol layer. The encoder assertions were first
+// derived by static analysis and are now pinned to hardware truth: the config
+// frame regression compares byte-for-byte against a captured vendor frame, and
+// the parser model matches the device's real inbound packets (data = sync +
+// type + 2048 bytes of int16 LE I/Q + CRC; info = sync + 5A + 148 + CRC).
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "osa103_proto.h"
+#include "vendor_config_9108500.h"
 
 static int failures = 0;
 
@@ -82,8 +85,8 @@ int main() {
     checkEq("config len field", f[0] | (f[1] << 8), 74);
     checkEq("config frame type", f[2], 0x03);
     checkEq("config CRC residue over whole frame", osa103::crc16(f, 78), 0x0);
-    checkEq("config flags byte", f[3 + 32], 0x19);
-    checkEq("config mode byte", f[3 + 67], 0x18);
+    checkEq("config flags byte", f[3 + 32], 0x39);   // preamp | 50R | dither | 0x10
+    checkEq("config mode byte", f[3 + 67], 0x1D);    // vendor session value
     // 100 MHz with the observed NCO scale lands on 2^31 exactly.
     const uint8_t* img = f + 3;
     uint32_t ncoWord = (uint32_t)img[4] | ((uint32_t)img[5] << 8) | ((uint32_t)img[6] << 16) |
@@ -104,6 +107,57 @@ int main() {
     checkEq("type1 address field", g[5] | (g[6] << 8), 0xC000);
     checkEq("type1 first word", g[7] | ((g[8] & 0x0F) << 8), 0x0555);
     checkEq("type1 last word offset", 4 + 2 + 511 * 2, 1028);
+
+    // 4b. The eight ramp blocks the vendor session uploads after every config
+    //     frame. Hardware-validated: the stream only runs when these are sent.
+    {
+        static const uint16_t kStart[8] = {0x0555, 0x0754, 0x0953, 0x0B52, 0, 0, 0x0157, 0x0356};
+        for (int b = 0; b < 8; b++) {
+            char label[64];
+            size_t n = osa103::buildTableFrame(p, b, buf, sizeof(buf));
+            snprintf(label, sizeof(label), "table block %d length", b);
+            checkEq(label, (long long)n, 1058);
+            snprintf(label, sizeof(label), "table block %d CRC residue", b);
+            check(label, n == 1058 && osa103::crc16(buf + syncLen, 1033) == 0);
+            const uint8_t* t = buf + syncLen;
+            snprintf(label, sizeof(label), "table block %d address", b);
+            checkEq(label, t[5] | (t[6] << 8), 0xC000 + b * 0x0400);
+            snprintf(label, sizeof(label), "table block %d first word", b);
+            uint16_t first = t[7] | ((t[8] & 0x0F) << 8);
+            checkEq(label, first, kStart[b]);
+            snprintf(label, sizeof(label), "table block %d last word", b);
+            uint16_t last = t[7 + 511 * 2] | ((t[8 + 511 * 2] & 0x0F) << 8);
+            uint16_t wantLast = (b <= 3 || b >= 6) ? (uint16_t)(kStart[b] + 511)
+                                                  : (uint16_t)(b == 5 ? 511 - 169 : 0);
+            checkEq(label, last, wantLast);
+        }
+        // Block 4 is all zeros; block 5 carries 169 zero words first.
+        osa103::buildTableFrame(p, 4, buf, sizeof(buf));
+        bool zero4 = true;
+        for (int i = 0; i < 512; i++) {
+            if (buf[syncLen + 7 + i * 2] | (buf[syncLen + 8 + i * 2] & 0x0F)) { zero4 = false; }
+        }
+        check("table block 4 all zeros", zero4);
+        osa103::buildTableFrame(p, 5, buf, sizeof(buf));
+        uint16_t w169 = buf[syncLen + 7 + 169 * 2] | ((buf[syncLen + 8 + 169 * 2] & 0x0F) << 8);
+        checkEq("table block 5 word 169", w169, 0);
+    }
+
+    // 4c. Regression against a real captured vendor frame: ExtIO_Osa.dll v3.09,
+    //     dial 9.1085 MHz, the first FT_Write(78) after FTDI bring-up. The
+    //     builder reproduces it byte for byte, CRC included.
+    {
+        size_t vLen = osa103::buildConfigFrame(p, 9108500.0, buf, sizeof(buf));
+        checkEq("vendor frame: our total length", (long long)vLen, 103);
+        checkEq("vendor frame: captured array size", (long long)sizeof(kVendorCfg9108500), 78);
+        bool same = (vLen == 103) && memcmp(buf + syncLen, kVendorCfg9108500, 78) == 0;
+        check("vendor config frame byte-exact (78/78)", same);
+        if (!same && vLen == 103) {
+            printf("  ours  : %s\n  vendor: %s\n",
+                   osa103::hexDump(buf + syncLen, 78, 78).c_str(),
+                   osa103::hexDump(kVendorCfg9108500, sizeof(kVendorCfg9108500), 78).c_str());
+        }
+    }
 
     // 5. NCO maths and hex helpers.
     checkEq("ncoWord(65104 Hz)", (long long)osa103::ncoWord(65104.0, p.ncoScale), 1398098);
@@ -129,8 +183,10 @@ int main() {
         const bool withLen = (variant == 1);
         osa103::Params rp;
         rp.rxHasLenField = withLen;
-        // Bytes after the sync prefix in a 0x5A packet: type + 149-byte body + CRC.
-        rp.infoPacketBytes = withLen ? 149 : 152;
+        // Hardware inbound format: after the sync prefix a 0x5A packet is
+        // 5A + 148 bytes (subtype + 147 body) + CRC = 151; a 0x00 packet is
+        // type + 2048 bytes of int16 LE I/Q + CRC with no flags byte.
+        rp.infoPacketBytes = 151;
         osa103::Parser parser(rp);
         int dataCalls = 0, infoCalls = 0, lastPairs = 0;
         uint8_t lastFlagByte = 0xFF;
@@ -152,8 +208,7 @@ int main() {
         };
 
         std::vector<uint8_t> payload;
-        payload.push_back(0x00);  // flag byte
-        for (int i = 0; i < 512; i++) {
+        for (int i = 0; i < 512; i++) {  // 512 I/Q pairs, no flags byte
             int16_t iv = (int16_t)(i - 256);
             int16_t qv = (int16_t)(256 - i);
             payload.push_back((uint8_t)(iv & 0xFF));
@@ -163,7 +218,7 @@ int main() {
         }
         std::vector<uint8_t> dataPkt = devicePacket(rp, 0x00, payload, withLen);
 
-        std::vector<uint8_t> info(149, 0);
+        std::vector<uint8_t> info(148, 0);  // subtype + 147 body bytes
         info[0] = 0x02;  // device ready
         info[1] = 0x05;
         info[2] = 0x03;

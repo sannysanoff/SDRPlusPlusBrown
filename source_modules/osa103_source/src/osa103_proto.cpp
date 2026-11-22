@@ -141,18 +141,18 @@ size_t buildConfigImage(const Params& p, double dialHz, uint8_t* out, size_t out
     q[32] = p.flags;                      // frame 35
     // q[33..35] stay zero             // frame 36..38
     put16(q + 36, p.adcGainWord);         // frame 39..40
-    // q[38..43] stay zero             // frame 41..46
-    put16(q + 44, p.adcOffWord);          // frame 47..48
-    put16(q + 46, p.adcOffWord2);         // frame 49..50
-    q[48] = p.calA;                       // frame 51
-    q[49] = p.calB;
-    q[50] = p.calC;
-    q[51] = p.calD;
-    q[52] = p.calE;                       // frame 55
-    // q[53..55] stay zero             // frame 56..58
-    q[56] = p.calF;                       // frame 59
-    q[57] = p.calG;
-    q[58] = p.calH;                       // frame 61
+    // q[38..45] stay zero             // frame 41..48
+    // Captured calibration block: six constant bytes at frames 49..54.
+    q[46] = p.calA;                       // frame 49
+    q[47] = p.calB;
+    q[48] = p.calC;
+    q[49] = p.calD;
+    q[50] = p.calE;
+    q[51] = p.calF;                       // frame 54
+    // q[52..55] stay zero             // frame 55..58
+    q[56] = p.tag55;                      // frame 59: constant 0x82
+    q[57] = (uint8_t)(p.tag56 & 0xFF);    // frame 60: constant 0x01
+    q[58] = (uint8_t)(p.tag56 >> 8);      // frame 61: constant 0xAD
     // q[59..60] stay zero             // frame 62..63
     q[61] = p.tag64;                      // frame 64
     q[62] = p.tag65;
@@ -161,7 +161,11 @@ size_t buildConfigImage(const Params& p, double dialHz, uint8_t* out, size_t out
     q[65] = p.tag68;
     q[66] = p.tag69;                      // frame 69
     q[67] = p.mode;                       // frame 70
-    put32(q + 68, p.sendTxNco ? (uint32_t)(ncoWord(dialHz, p.ncoScale) & 0xFFFFFFFF) : 0u);
+    // Trailing NCO word: (dial + offset) * 2^31 / 2e8, captured with a fixed
+    // -16 kHz offset in the vendor's initial frame.
+    put32(q + 68, p.sendTxNco
+                    ? (uint32_t)(ncoWord(dialHz + p.txNcoOffsetHz, p.txNcoScale) & 0xFFFFFFFF)
+                    : 0u);
     q[72] = p.level;                      // frame 75
     return kConfigImageLen;
 }
@@ -185,6 +189,29 @@ size_t buildType1Frame(const Params& p, uint16_t addr, uint16_t fillValue, uint8
         payload[4 + i * 2 + 1] = (uint8_t)((fillValue >> 8) & 0x0F);
     }
     return buildFrame(p, 0x01, payload.data(), payloadLen, out, outCapacity);
+}
+
+size_t buildTableFrame(const Params& p, int block, uint8_t* out, size_t outCapacity) {
+    // The eight blocks the working vendor session uploads carry one continuous
+    // ramp: blocks 0..3 run 0x0555..0x0D50, block 4 is all zeros, block 5 is 169
+    // zeros then 0x0000..0x0156, blocks 6..7 run 0x0157..0x0554. Generated here,
+    // so no vendor data is reproduced.
+    static const uint16_t kStart[8] = {0x0555, 0x0754, 0x0953, 0x0B52, 0, 0, 0x0157, 0x0356};
+    if (block < 0 || block >= 8) { return 0; }
+
+    uint16_t addr = (uint16_t)(p.type1BaseAddr + (uint16_t)block * p.type1Stride);
+    uint8_t payload[4 + 512 * 2];
+    payload[0] = 0x00;
+    payload[1] = 0x04;
+    put16(payload + 2, addr);
+    for (int i = 0; i < 512; i++) {
+        uint16_t w = 0;
+        if (block <= 3) { w = (uint16_t)(kStart[block] + i); }
+        else if (block == 5) { w = (i < 169) ? 0 : (uint16_t)(i - 169); }
+        else if (block >= 6) { w = (uint16_t)(kStart[block] + i); }
+        put16(payload + 4 + i * 2, w);
+    }
+    return buildFrame(p, 0x01, payload, sizeof(payload), out, outCapacity);
 }
 
 int64_t ncoWord(double hz, double scale) { return (int64_t)llround(hz * scale); }
@@ -259,7 +286,8 @@ void Parser::process() {
         }
 
         if (type == 0x5A) {
-            // infoPacketBytes counts the bytes after the sync prefix (type + body + CRC).
+            // Fixed-size info packet. infoPacketBytes counts the bytes after
+            // the sync prefix (5A + subtype + body + CRC).
             size_t packetLen = p.rxHasLenField ? need
                                                : (size_t)(p.infoPacketBytes > 0 ? p.infoPacketBytes : 1);
             if (buf.size() < syncLen + packetLen) { return; }

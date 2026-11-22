@@ -153,6 +153,8 @@ bool FtdiD2xx::load(const std::string& explicitPath, std::string& err) {
     OSA103_RESOLVE(pResetDevice, "FT_ResetDevice");
     OSA103_RESOLVE(pSetBaudRate, "FT_SetBaudRate");
     OSA103_RESOLVE(pSetDataCharacteristics, "FT_SetDataCharacteristics");
+    OSA103_RESOLVE(pSetFlowControl, "FT_SetFlowControl");
+    OSA103_RESOLVE(pSetRts, "FT_SetRts");
     OSA103_RESOLVE(pSetTimeouts, "FT_SetTimeouts");
     OSA103_RESOLVE(pSetLatencyTimer, "FT_SetLatencyTimer");
     OSA103_RESOLVE(pSetBitMode, "FT_SetBitMode");
@@ -226,6 +228,12 @@ uint32_t FtdiD2xx::setBaudRate(uint32_t baud) { return handle ? pSetBaudRate(han
 uint32_t FtdiD2xx::setDataCharacteristics(uint8_t wordLength, uint8_t stopBits, uint8_t parity) {
     return handle ? pSetDataCharacteristics(handle, wordLength, stopBits, parity) : 1;
 }
+
+uint32_t FtdiD2xx::setFlowControl(uint16_t flowControl, uint8_t xon, uint8_t xoff) {
+    return handle ? pSetFlowControl(handle, flowControl, xon, xoff) : 1;
+}
+
+uint32_t FtdiD2xx::setRts() { return handle ? pSetRts(handle) : 1; }
 
 uint32_t FtdiD2xx::setTimeouts(uint32_t readMs, uint32_t writeMs) {
     return handle ? pSetTimeouts(handle, readMs, writeMs) : 1;

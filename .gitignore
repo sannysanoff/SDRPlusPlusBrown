@@ -61,6 +61,13 @@ gradle-wrapper.properties
 
 # Separate nested project (has own .git)
 tools/
+# ...but the OSA103 module's diagnostic tools belong to this tree
+!source_modules/osa103_source/tools/
+
+# OSA103 local test/build artifacts
+source_modules/osa103_source/build-test/
+build-win64/
+win-runtime/
 
 # Editor/compiler caches
 .cache/

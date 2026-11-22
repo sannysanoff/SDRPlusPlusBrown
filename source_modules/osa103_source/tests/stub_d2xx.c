@@ -103,6 +103,20 @@ uint32_t FT_SetDataCharacteristics(void* handle, uint8_t wl, uint8_t sb, uint8_t
     return 0;
 }
 
+uint32_t FT_SetFlowControl(void* handle, uint16_t flow, uint8_t xon, uint8_t xoff) {
+    (void)handle;
+    static char tmp[40];
+    snprintf(tmp, sizeof(tmp), "flow=%04X/%02X/%02X", flow, xon, xoff);
+    logf_(tmp);
+    return 0;
+}
+
+uint32_t FT_SetRts(void* handle) {
+    (void)handle;
+    logf_("rts");
+    return 0;
+}
+
 uint32_t FT_SetTimeouts(void* handle, uint32_t rd, uint32_t wr) {
     (void)handle;
     static char tmp[32];
