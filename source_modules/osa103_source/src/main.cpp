@@ -238,6 +238,7 @@ private:
 
         sampleRate = getDouble(j, "sampleRate", sampleRate);
         dialFreq = getDouble(j, "frequency", dialFreq);
+        showAdvanced = getBool(j, "showAdvanced", showAdvanced);
         config.release();
 
         // Editing surfaces mirror the loaded values.
@@ -348,6 +349,7 @@ public:
     void saveConfig() {
         config.acquire();
         paramsToJson(config.conf, params, sampleRate, dialFreq);
+        config.conf["showAdvanced"] = showAdvanced;
         config.release(true);
     }
 
@@ -726,8 +728,8 @@ private:
         TextBuffers& b = _this->bufs;
         bool dirty = false;
 
+        // The only real choice this hardware offers: which OSA103 to talk to.
         if (_this->running) { SmGui::BeginDisabled(); }
-
         SmGui::FillWidth();
         SmGui::ForceSync();
         if (SmGui::Combo(CONCAT("##_osa103_dev_", _this->name), &_this->devId, _this->devices.txt)) {
@@ -742,19 +744,28 @@ private:
             _this->refresh();
             _this->select(_this->params.serial);
         }
+        if (_this->running) { SmGui::EndDisabled(); }
 
-        SmGui::LeftLabel("Sample rate");
-        SmGui::FillWidth();
-        int sr = (int)llround(_this->sampleRate);
-        if (SmGui::InputInt(CONCAT("##_osa103_sr_", _this->name), &sr, 1000, 10000)) {
-            if (sr > 0) {
-                _this->sampleRate = (double)sr;
-                core::setInputSampleRate(_this->sampleRate);
-                dirty = true;
-            }
+        // Fixed hardware facts, read-only: the device has exactly one sample
+        // rate and one channel width, so they are facts, not knobs.
+        SmGui::Text(("OSA103 - fixed " + std::to_string((int)llround(_this->sampleRate)) +
+                     " S/s, ~65 kHz channel")
+                        .c_str());
+
+        // Driver problems stay visible even with everything else hidden.
+        if (!_this->ftdi.loaded()) {
+            SmGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
+                               "FTDI D2XX library not found - install the FTDI driver");
+        }
+        if (!_this->lastError.empty()) {
+            SmGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), _this->lastError.c_str());
         }
 
-        if (_this->running) { SmGui::EndDisabled(); }
+        // Protocol-level controls only exist for experimentation; hidden unless asked for.
+        if (SmGui::Checkbox(CONCAT("Advanced##_osa103_adv_toggle_", _this->name), &_this->showAdvanced)) {
+            dirty = true;
+        }
+        if (_this->showAdvanced) {
 
         if (SmGui::CollapsingHeader(CONCAT("Tuning##_osa103_tuning_", _this->name))) {
             static const char* ncoModes = "Dial frequency\0Dial + IF\0Dial - IF\0IF only\0";
@@ -875,7 +886,7 @@ private:
         }
 
         if (_this->running) { SmGui::BeginDisabled(); }
-        if (SmGui::CollapsingHeader(CONCAT("Advanced##_osa103_adv_", _this->name))) {
+        if (SmGui::CollapsingHeader(CONCAT("D2XX library##_osa103_d2xxhdr_", _this->name))) {
             SmGui::LeftLabel("D2XX library");
             SmGui::FillWidth();
             if (SmGui::InputText(CONCAT("##_osa103_d2xx_", _this->name), b.d2xxPath, sizeof(b.d2xxPath))) {
@@ -893,29 +904,22 @@ private:
         SmGui::SameLine();
         if (SmGui::Button(CONCAT("Reset stats##_osa103_rs_", _this->name))) { _this->resetStats(); }
 
+        // Stats only make sense with a driver loaded; errors are already shown
+        // above the Advanced section, unconditionally.
         if (_this->ftdi.loaded()) {
             SmGui::Text(("D2XX: " + _this->ftdi.libraryPath()).c_str());
+            SmGui::Text(("read " + std::to_string(_this->bytesRead.load()) + " B, dropped " +
+                         std::to_string((unsigned long long)_this->parser.bytesDiscarded) + " B").c_str());
+            SmGui::Text(("packets " + std::to_string((unsigned long long)_this->parser.dataPackets) + ", info " +
+                         std::to_string((unsigned long long)_this->parser.infoPackets) + ", TX " +
+                         std::to_string(_this->txFrames.load()) + ", CRC err " +
+                         std::to_string((unsigned long long)_this->parser.crcErrors)).c_str());
+            SmGui::Text(("last flags 0x" + [&] {
+                             char tmp[8];
+                             snprintf(tmp, sizeof(tmp), "%02X", (unsigned)_this->parser.lastFlags);
+                             return std::string(tmp);
+                         }()).c_str());
         }
-        else {
-            // Red, always visible while the FTDI library is missing: the module
-            // loads ftd2xx.dll dynamically at runtime, so a missing driver is a
-            // runtime condition, not a build-time one.
-            SmGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
-                               "FTDI D2XX library not found - install the FTDI driver");
-        }
-        SmGui::Text(("read " + std::to_string(_this->bytesRead.load()) + " B, dropped " +
-                     std::to_string((unsigned long long)_this->parser.bytesDiscarded) + " B").c_str());
-        SmGui::Text(("packets " + std::to_string((unsigned long long)_this->parser.dataPackets) + ", info " +
-                     std::to_string((unsigned long long)_this->parser.infoPackets) + ", TX " +
-                     std::to_string(_this->txFrames.load()) + ", CRC err " +
-                     std::to_string((unsigned long long)_this->parser.crcErrors)).c_str());
-        SmGui::Text(("last flags 0x" + [&] {
-                         char tmp[8];
-                         snprintf(tmp, sizeof(tmp), "%02X", (unsigned)_this->parser.lastFlags);
-                         return std::string(tmp);
-                     }()).c_str());
-        if (!_this->lastError.empty()) {
-            SmGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), _this->lastError.c_str());
         }
 
         if (dirty) { _this->saveConfig(); }
@@ -938,6 +942,7 @@ private:
 
     double sampleRate = 65104.0;
     double dialFreq = 100000000.0;
+    bool showAdvanced = false;
 
     std::thread workerThread;
     std::atomic<bool> run{false};
