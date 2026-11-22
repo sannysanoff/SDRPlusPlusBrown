@@ -56,9 +56,7 @@ struct TextBuffers {
     char mode[8] = "1D";
     char rxtxTag[8] = "80";
     char const6258[8] = "6258";
-    char adcGain[8] = "8000";
-    char adcOff1[8] = "0000";
-    char adcOff2[8] = "0000";
+    char adcGain[8] = "0000";
     char ncoScale[32] = "21.47483648";
     char loScale[32] = "1.0";
     char imageOverride[512] = "";
@@ -187,8 +185,6 @@ private:
         params.mode = (uint8_t)getUint(j, "mode", params.mode);
         params.level = (uint8_t)getUint(j, "level", params.level);
         params.adcGainWord = (uint16_t)getUint(j, "adcGainWord", params.adcGainWord);
-        params.adcOffWord = (uint16_t)getUint(j, "adcOffWord", params.adcOffWord);
-        params.adcOffWord2 = (uint16_t)getUint(j, "adcOffWord2", params.adcOffWord2);
         params.ncoScale = getDouble(j, "ncoScale", params.ncoScale);
         params.ncoIfHz = getDouble(j, "ncoIfHz", params.ncoIfHz);
         params.ncoMode = (int)getUint(j, "ncoMode", params.ncoMode);
@@ -236,8 +232,6 @@ private:
         params.calD = (uint8_t)getUint(j, "calD", params.calD);
         params.calE = (uint8_t)getUint(j, "calE", params.calE);
         params.calF = (uint8_t)getUint(j, "calF", params.calF);
-        params.calG = (uint8_t)getUint(j, "calG", params.calG);
-        params.calH = (uint8_t)getUint(j, "calH", params.calH);
         params.sendTxNco = (bool)getBool(j, "sendTxNco", params.sendTxNco);
         params.bigEndianSamples = (bool)getBool(j, "bigEndianSamples", params.bigEndianSamples);
         params.logHexBytes = (int)getUint(j, "logHexBytes", params.logHexBytes);
@@ -252,8 +246,6 @@ private:
         snprintf(bufs.rxtxTag, sizeof(bufs.rxtxTag), "%02X", params.rxtxTag);
         snprintf(bufs.const6258, sizeof(bufs.const6258), "%04X", params.const6258);
         snprintf(bufs.adcGain, sizeof(bufs.adcGain), "%04X", params.adcGainWord);
-        snprintf(bufs.adcOff1, sizeof(bufs.adcOff1), "%04X", params.adcOffWord);
-        snprintf(bufs.adcOff2, sizeof(bufs.adcOff2), "%04X", params.adcOffWord2);
         snprintf(bufs.ncoScale, sizeof(bufs.ncoScale), "%.10g", params.ncoScale);
         snprintf(bufs.loScale, sizeof(bufs.loScale), "%.10g", params.loScale);
         copyToBuf(bufs.imageOverride, sizeof(bufs.imageOverride), params.imageOverrideHex);
@@ -301,8 +293,6 @@ public:
         j["mode"] = params.mode;
         j["level"] = params.level;
         j["adcGainWord"] = params.adcGainWord;
-        j["adcOffWord"] = params.adcOffWord;
-        j["adcOffWord2"] = params.adcOffWord2;
         j["ncoScale"] = params.ncoScale;
         j["ncoIfHz"] = params.ncoIfHz;
         j["ncoMode"] = params.ncoMode;
@@ -348,8 +338,6 @@ public:
         j["calD"] = params.calD;
         j["calE"] = params.calE;
         j["calF"] = params.calF;
-        j["calG"] = params.calG;
-        j["calH"] = params.calH;
         j["sendTxNco"] = params.sendTxNco;
         j["bigEndianSamples"] = params.bigEndianSamples;
         j["logHexBytes"] = params.logHexBytes;
@@ -832,20 +820,6 @@ private:
             SmGui::FillWidth();
             if (SmGui::InputText(CONCAT("##_osa103_gain_", _this->name), b.adcGain, sizeof(b.adcGain))) {
                 _this->params.adcGainWord = (uint16_t)parseHex(b.adcGain, _this->params.adcGainWord);
-                dirty = true;
-            }
-
-            SmGui::LeftLabel("ADC offset 1");
-            SmGui::FillWidth();
-            if (SmGui::InputText(CONCAT("##_osa103_off1_", _this->name), b.adcOff1, sizeof(b.adcOff1))) {
-                _this->params.adcOffWord = (uint16_t)parseHex(b.adcOff1, _this->params.adcOffWord);
-                dirty = true;
-            }
-
-            SmGui::LeftLabel("ADC offset 2");
-            SmGui::FillWidth();
-            if (SmGui::InputText(CONCAT("##_osa103_off2_", _this->name), b.adcOff2, sizeof(b.adcOff2))) {
-                _this->params.adcOffWord2 = (uint16_t)parseHex(b.adcOff2, _this->params.adcOffWord2);
                 dirty = true;
             }
         }
