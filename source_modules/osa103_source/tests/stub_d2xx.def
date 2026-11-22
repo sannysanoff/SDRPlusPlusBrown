@@ -1,0 +1,28 @@
+; Export list for the fake D2XX stub when built with MSVC, which (unlike
+; MinGW) exports nothing from a plain C DLL by default. Everything the
+; binding resolves with GetProcAddress plus the three test hooks that
+; d2xx_test links against directly.
+LIBRARY ftd2xx_stub_msvc
+EXPORTS
+    fakeD2xxLog
+    fakeD2xxIsOpen
+    fakeD2xxSetRx
+    FT_CreateDeviceInfoList
+    FT_GetDeviceInfoList
+    FT_Open
+    FT_OpenEx
+    FT_Close
+    FT_ResetDevice
+    FT_SetBaudRate
+    FT_SetDataCharacteristics
+    FT_SetFlowControl
+    FT_SetRts
+    FT_SetTimeouts
+    FT_SetLatencyTimer
+    FT_SetBitMode
+    FT_Purge
+    FT_StopInTask
+    FT_RestartInTask
+    FT_GetQueueStatus
+    FT_Read
+    FT_Write

@@ -88,12 +88,16 @@ private:
 // corrupts the stack on every call, which is exactly how the first 32-bit
 // stream-test build died at its third D2XX call.
 #if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER)
+#define OSA103_FTAPI __stdcall
+#else
 #define OSA103_FTAPI __attribute__((stdcall))
+#endif
 #else
 #define OSA103_FTAPI
 #endif
 
-    uint32_t (*pCreateDeviceInfoList)(uint32_t*) = nullptr;
+    OSA103_FTAPI uint32_t (*pCreateDeviceInfoList)(uint32_t*) = nullptr;
     OSA103_FTAPI uint32_t (*pGetDeviceInfoList)(void*, uint32_t*) = nullptr;
     OSA103_FTAPI uint32_t (*pOpen)(int, void**) = nullptr;
     OSA103_FTAPI uint32_t (*pOpenEx)(void*, uint32_t, void**) = nullptr;
