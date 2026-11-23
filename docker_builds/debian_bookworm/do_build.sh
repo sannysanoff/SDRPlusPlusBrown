@@ -4,7 +4,7 @@ cd /root
 
 # Install dependencies and tools
 apt update
-apt install -y unzip build-essential cmake git libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev libairspyhf-dev libairspy-dev \
+apt install -y unzip ccache build-essential cmake git libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev libairspyhf-dev libairspy-dev \
             libiio-dev libad9361-dev librtaudio-dev libhackrf-dev librtlsdr-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
             libcodec2-dev autoconf libtool xxd libspdlog-dev liborc-0.4-dev
 
@@ -68,11 +68,23 @@ make -j2
 make install
 cd ../../
 
+# ccache: reuse compiled objects across CI runs. The workflow restores .ccache
+# from the actions cache, so the directory must stay inside the mounted repo.
+mkdir -p /usr/local/lib/ccache
+for t in cc gcc c++ g++; do ln -sf /usr/bin/ccache /usr/local/lib/ccache/$t; done
+export PATH=/usr/local/lib/ccache:$PATH
+export CCACHE_DIR=/root/SDRPlusPlus/.ccache
+export CCACHE_MAXSIZE=1G
+# The compiler binary is reinstalled on every run, so its mtime changes.
+# Key the cache on the compiler version string instead of mtime.
+export CCACHE_COMPILERCHECK="string:$(gcc -dumpmachine)-$(gcc -dumpfullversion)"
+
 cd SDRPlusPlus
 mkdir build
 cd build
-cmake .. -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_DRAGONLABS_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_CH_TETRA_DEMODULATOR=ON
-make VERBOSE=1 -j2
+cmake .. -DCMAKE_BUILD_TYPE=Release -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON -DOPT_BUILD_HYDRASDR_SOURCE=ON -DOPT_BUILD_DRAGONLABS_SOURCE=ON -DOPT_BUILD_CH_EXTRAVHF_DECODER=ON -DOPT_BUILD_CH_TETRA_DEMODULATOR=ON
+make VERBOSE=1 -j$(nproc)
+ccache -s
 
 cd ..
 sh make_debian_package.sh ./build 'libfftw3-dev, libglfw3-dev, libvolk2-dev, librtaudio-dev, libzstd-dev, liborc-0.4-dev, libusb-1.0-0'
