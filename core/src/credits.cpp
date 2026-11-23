@@ -24,6 +24,7 @@ namespace sdrpp_credits {
         "Shuyuan Liu",
         "Syne Ardwin (WI9SYN)",
         "Szymon Zakrent",
+        "UB6LPY",
         "Youssef Touil",
         "Zimm"
     };

@@ -2,6 +2,10 @@
 
 Newest entries are at the top.
 
+2026.11.22
+
+* OSA103 source: validated against real hardware, so the module now receives live I/Q. The driver panel keeps the device choice, the fixed 65,104 S/s rate and driver errors.
+
 2026.11.19
 
 * PlutoSDR source: "Manual IP" field adds an address typed by hand to the device list, so a Pluto on Ethernet works when auto-discovery finds nothing. Accepts an IP, a hostname or a full libiio URI (`192.168.2.1`, `pluto.local`, `ip:192.168.2.1:30431`). The entry is kept in the config and can be used together with any discovered device.

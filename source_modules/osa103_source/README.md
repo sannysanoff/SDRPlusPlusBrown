@@ -55,12 +55,51 @@ included or redistributed; if the FPGA image is needed it has to be extracted by
 user from their own copy of the driver. Nothing here is affiliated with or endorsed
 by the vendor.
 
+### How this was produced: static analysis plus live testing
+
+Two methods were used together, and neither was trusted alone.
+
+* **Static analysis.** `ExtIO_Osa.dll` v3.09 was read as an artifact, not as
+  source: PE headers and sections, imports, strings, the FTDI call sequence, the
+  embedded image header, the 32-bit calling convention of the exports. That gives
+  hypotheses about what the driver sends and in which order.
+* **Live testing.** Every hypothesis was written to a real OSA103 and the reply was
+  captured through the FTDI MITM proxy. Predicted bytes and captured bytes were
+  then diffed. A hypothesis the device rejected was corrected or dropped; nothing
+  in this document rests on the binary alone.
+
+The protocol layer, the module and the tests were written with the AI models
+DeepSeek 4.1 Flash and GLM-5.3 working over those two evidence streams — static
+artifacts on one side, captured frames and live run logs on the other. Where a live
+run contradicted the code, the code lost. This is also where the honesty has to
+start: machine-written protocol code reads plausible even when it is wrong, so each
+claim here is pinned to a test or to a captured byte, and every place the method
+failed is written down instead of hidden — the bit-bang loader still does not
+configure the FPGA, and "Remaining unknowns" lists what is still guesswork.
+
 ## Licence
 
 Non-commercial / educational use only, with no warranty and no liability; commercial
 use needs written permission. Full terms, provenance and the third-party notes
 (FTDI D2XX, and why this plugin stays out of the SDR++ tree despite being GPL-linked)
 are in `LICENSE.md` — read it before redistributing anything.
+
+## Copyright and support status
+
+All rights in the OSA103 / OSA103 Mini hardware, its firmware, its FPGA bitstream,
+the vendor `ExtIO_Osa.dll` and the vendor's documentation stay with the OSA103
+project and its authors. None of their code, binary or bitstream is copied here.
+This driver claims no copyright over the device, its firmware, its bitstream or the
+vendor's software, and it grants you no rights in them. What is written here is an
+independent implementation of observed behaviour; the source in this tree is
+covered only by `LICENSE.md`.
+
+This module is unofficial, unsupported and, in places, broken. It is not affiliated
+with, endorsed by, or supported by the OSA103 project or its authors. Expect it to
+fail: the FPGA bit-bang loader does not configure the chip, and "Remaining
+unknowns" lists behaviour that is still guesswork. Use it at your own risk.
+If you need a supported driver, use the vendor's ExtIO with the vendor's host
+software.
 
 ## Dependencies
 
